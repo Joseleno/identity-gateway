@@ -1,0 +1,122 @@
+# IdentityGateway
+
+> API de governança de identidade multi-tenant em .NET 10, sobre o Keycloak.
+
+O Keycloak sabe autenticar pessoas. Ele não sabe que um tenant tem um plano contratado com
+limite de usuários, que um cliente inadimplente precisa ser suspenso com efeito imediato, ou
+que encerrar um contrato exige um estado terminal auditável. Essas são regras de negócio — e o
+IdentityGateway é a camada que as torna explícitas, versionadas e testáveis.
+
+A frase que resume o desenho inteiro: **a Gateway decide quem pode o quê, mas não participa de
+nenhum login e de nenhuma requisição de negócio.**
+
+---
+
+## Estado do projeto
+
+**Especificação concluída. Implementação começando pelo M0.**
+
+Este repositório é, hoje, a especificação de um sistema — e o registro de como ela chegou até
+aqui. O código começa agora, e o roadmap está em [`docs/especificacao-arquitetural-v2.3.md`](docs/especificacao-arquitetural-v2.3.md) §16.
+
+| Marco | Entrega | Estado |
+|---|---|---|
+| **M0** · Fundação | Compose, bootstrap do realm, health checks, CI | 🔨 em andamento |
+| **M1** · Tenants | Registro, provisionamento via Outbox, suspensão, encerramento | ⬜ |
+| **M2** · Membros e papéis | Convite, desativação, exclusão LGPD, `RoleAssignmentPolicy` | ⬜ |
+| **M3** · Data Plane | `Client.AspNetCore` e `SampleResourceApi` | ⬜ |
+| **M4** · Federação | Domínios, IdP por tenant, discovery | ⬜ |
+| **M5** · Permissões finas | Permission sets, cache com invalidação por evento | ⬜ |
+| **M6** · M2M | Clients com `private_key_jwt`, rotação | ⬜ |
+| **M7** · Hardening | Step-up, rate limiting, README com `curl` reproduzível | ⬜ |
+
+---
+
+## Por onde começar a ler
+
+| Documento | O que responde |
+|---|---|
+| [**Documentação de negócio**](docs/documentacao-negocio.md) | **Comece aqui.** O que a solução faz, para quem e como funciona — com 16 diagramas |
+| [**Especificação arquitetural v2.3**](docs/especificacao-arquitetural-v2.3.md) | A referência de implementação: domínio, endpoints, ADRs, código de referência |
+| [**Revisão crítica**](docs/revisao-critica.md) | Os 33 achados que produziram as correções |
+
+---
+
+## A arquitetura em um parágrafo
+
+Dois planos com ciclos de vida independentes. O **Control Plane** é a Gateway: tenants, membros,
+papéis, permissões, domínios, IdPs federados e aplicações OIDC, tudo como recurso REST. O
+**Data Plane** são as APIs de negócio, que validam o token localmente com as chaves públicas do
+Keycloak (JWKS), sem consultar ninguém. Credenciais são digitadas exclusivamente no Keycloak, e
+os tokens são emitidos por ele direto para a aplicação cliente — a Gateway nunca vê uma senha e
+nunca está no caminho do token.
+
+A consequência prática: **se a Gateway cair, logins continuam funcionando**, e as requisições de
+negócio que dependem só de papéis globais também.
+
+### O limite, dito na cara
+
+O ponto único de falha não foi eliminado — **foi deslocado**. Com o Keycloak fora do ar, nenhum
+login acontece e nenhum token é renovado; decorridos os 5 minutos de vida do access token, o Data
+Plane inteiro para. O ADR-002 tira a Gateway do caminho crítico; ele não torna o sistema
+resiliente à queda do Keycloak. Registrar isso faz parte do projeto.
+
+---
+
+## Decisões arquiteturais
+
+Dez ADRs, com o texto completo na [especificação §4](docs/especificacao-arquitetural-v2.3.md#4-decisões-arquiteturais-adrs).
+
+| ADR | Decisão |
+|---|---|
+| 001 | Tenancy com Organizations em realm único |
+| 002 | Gateway fora do caminho de emissão e validação de tokens |
+| 003 | Sem ROPC e sem manipulação de credenciais |
+| 004 | Claims vêm exclusivamente de Protocol Mappers |
+| 005 | Papéis globais no token, permissões finas na Gateway |
+| 006 | Consistência via Outbox, provisionamento idempotente e reconciliação |
+| 007 | Sincronização Keycloak → Gateway por leitura de eventos |
+| 008 | Integração com o Keycloak isolada atrás de uma porta |
+| 009 | Na v1, um usuário pertence a um único tenant |
+| 010 | Um só executor por job de fundo, via advisory lock |
+
+---
+
+## Como a especificação chegou aqui
+
+A linha evolutiva é parte do que este repositório demonstra. Os documentos **se sucedem, não
+competem** — cada versão fecha pontos que a anterior deixou em aberto, e **nenhum ADR foi revogado
+em nenhum dos saltos**.
+
+```
+ideia → v2.0 → [revisão crítica: 33 achados] → v2.1 → [documentação de negócio] → v2.2 → v2.3
+```
+
+- **v2.1** incorporou a revisão crítica — três frentes independentes, 33 achados e 8 contradições.
+  Duas delas mereceram destaque: o critério de pronto era mais estreito que o princípio que deveria
+  provar (CI-8), e uma dupla de falhas de isolamento que precisavam ser corrigidas **juntas**, já
+  que corrigir uma isoladamente reabriria o sistema com a outra ativa (C1 + C2).
+- **v2.2** nasceu ao escrever a documentação de negócio, que percorreu a spec inteira e encontrou
+  nove lacunas — entre elas um limite de plano declarado que nenhuma operação verificava.
+- **v2.3** fechou as lacunas de arquitetura e reconciliou a spec com o template
+  [CleanStart](https://github.com/Joseleno/CleanStart), base de todos os projetos.
+
+Vale registrar o que a revisão **não** conseguiu derrubar: dos oito alvos examinados, sete
+resistiram inteiros. E das cinco afirmações verificadas contra documentação oficial, duas
+**inocentaram** a especificação. Uma revisão que só reporta achados não permite distinguir "a spec
+é frágil" de "o revisor foi agressivo".
+
+---
+
+## Stack
+
+.NET 10 · Keycloak 26 · PostgreSQL · RabbitMQ · Redis · EF Core 10 · Carter · Serilog ·
+OpenTelemetry · xUnit v3
+
+Parte do template [CleanStart](https://github.com/Joseleno/CleanStart).
+
+---
+
+## Licença
+
+MIT
