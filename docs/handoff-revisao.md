@@ -137,6 +137,12 @@ implementam o Outbox do ADR-006 já existem e têm teste. Ver "O que já está n
 **O primeiro agregado do IdentityGateway é o passo seguinte** — e ele reativa os 4 testes de arquitetura
 hoje em skip, que é o sinal de que a fundação está de fato sendo usada.
 
+> **Ao escrever o primeiro agregado que levanta domain event:** registre o evento em
+> `OutboxEventTypes.PorTipo` **no mesmo passo**, não depois. O mapa está vazio de propósito e `NomeDe`
+> lança quando encontra um evento não registrado — a gravação falha na hora, e é assim que deve ser. Mas
+> descobrir isso pelo estouro custa uma ida e volta que a ordem correta evita. A tabela `outbox_messages`
+> já existe (migration `CriacaoDoOutbox`), então o mapa é o próximo ponto de falha do caminho.
+
 ### 2. Os quatro itens críticos do realm e do compose
 
 Vêm diretamente de achados da revisão e não podem ser esquecidos:
