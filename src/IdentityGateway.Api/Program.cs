@@ -27,8 +27,8 @@ builder.Services.AddApiServices(builder.Configuration);
 
 WebApplication app = builder.Build();
 
-// --migrate e --seed descrevem uma tarefa, não um modo de servir: se alguma delas foi pedida, a aplicação faz o
-// trabalho e encerra com código 0, que é o que um init container ou um passo de pipeline espera.
+// --migrate descreve uma tarefa, não um modo de servir: se foi pedida, a aplicação faz o trabalho e encerra
+// com código 0, que é o que um init container ou um passo de pipeline espera.
 //
 // Antes do pipeline de propósito — não há requisição para atender, e montar middlewares que ninguém vai
 // atravessar seria trabalho perdido.

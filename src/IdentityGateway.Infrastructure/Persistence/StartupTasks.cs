@@ -16,13 +16,13 @@ namespace IdentityGateway.Infrastructure.Persistence;
 /// alguém olhando.
 /// </para>
 /// <para>
-/// <b>A aplicação encerra depois de executá-las.</b> <c>--migrate</c> e <c>--seed</c> descrevem uma tarefa, não
-/// um modo de execução: o contêiner roda, faz o trabalho e sai com código 0, que é o que um <i>init container</i>
+/// <b>A aplicação encerra depois de executá-la.</b> <c>--migrate</c> descreve uma tarefa, não um modo de
+/// execução: o contêiner roda, faz o trabalho e sai com código 0, que é o que um <i>init container</i>
 /// ou um passo de pipeline espera. Continuar servindo depois misturaria as duas coisas e deixaria um processo
 /// vivo onde se esperava uma tarefa concluída.
 /// </para>
 /// <para>
-/// Em desenvolvimento, <c>dotnet run -- --migrate --seed</c> prepara o banco; o compose faz o mesmo por um
+/// Em desenvolvimento, <c>dotnet run -- --migrate</c> prepara o banco; o compose faz o mesmo por um
 /// serviço à parte, se se quiser.
 /// </para>
 /// </remarks>
