@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/SampleResourceApi/SampleResourceApi.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/IdentityGateway.Api/IdentityGateway.Api.csproj" />
+    <Project Path="src/IdentityGateway.Application/IdentityGateway.Application.csproj" />
+    <Project Path="src/IdentityGateway.Domain/IdentityGateway.Domain.csproj" />
+    <Project Path="src/IdentityGateway.Infrastructure/IdentityGateway.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/IdentityGateway.Api.FunctionalTests/IdentityGateway.Api.FunctionalTests.csproj" />
+    <Project Path="tests/IdentityGateway.Application.UnitTests/IdentityGateway.Application.UnitTests.csproj" />
+    <Project Path="tests/IdentityGateway.ArchitectureTests/IdentityGateway.ArchitectureTests.csproj" />
+    <Project Path="tests/IdentityGateway.Domain.UnitTests/IdentityGateway.Domain.UnitTests.csproj" />
+    <Project Path="tests/IdentityGateway.Infrastructure.IntegrationTests/IdentityGateway.Infrastructure.IntegrationTests.csproj" />
+  </Folder>
+</Solution>
