@@ -13,7 +13,13 @@ namespace IdentityGateway.Infrastructure.Configuration;
 /// <para>
 /// <b>Ligar retry em quem não é idempotente é o erro que esta classe não impede.</b> Repetir um <c>GET</c> é
 /// inofensivo; repetir um <c>POST</c> que cobra um cartão cobra duas vezes. Quem decide isso é quem registra o
-/// cliente, não esta configuração — ver <c>AddResiliencia</c>.
+/// cliente, não esta configuração.
+/// </para>
+/// <para>
+/// <b>Ainda não está registrada no contêiner.</b> O consumidor que a justificava saiu com a feature de
+/// exemplo do template, e options validada com <c>ValidateOnStart</c> governando seção que ninguém lê
+/// derruba a aplicação por configuração que não faz nada. A classe fica porque o M0 chama o Keycloak por
+/// HTTP e vai precisar destas políticas: ao registrar o cliente, registre também estas options.
 /// </para>
 /// </remarks>
 public sealed class HttpResilienceOptions

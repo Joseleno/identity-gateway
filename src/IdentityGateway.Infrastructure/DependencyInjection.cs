@@ -6,8 +6,6 @@ using IdentityGateway.Infrastructure.Persistence.Outbox;
 using IdentityGateway.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Http.Resilience;
-using Polly;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -44,7 +42,7 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// Liga as três seções de configuração, validadas no startup.
+    /// Liga as seções de configuração, validadas no startup.
     /// </summary>
     /// <remarks>
     /// <c>ValidateOnStart</c> é o que importa aqui: sem ele, a validação só roda quando alguém pede o
@@ -72,11 +70,6 @@ public static class DependencyInjection
 
         services.AddOptions<OutboxOptions>()
             .Bind(configuration.GetSection(OutboxOptions.SectionName))
-            .ValidateDataAnnotations()
-            .ValidateOnStart();
-
-        services.AddOptions<HttpResilienceOptions>()
-            .Bind(configuration.GetSection(HttpResilienceOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
@@ -120,8 +113,6 @@ public static class DependencyInjection
         // SaveChangesAsync e nada mais. Se um dia o limite transacional precisar de comportamento próprio,
         // a mudança é nesta linha, porque a Application já fala com a interface.
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<AppDbContext>());
-
-
 
         return services;
     }
@@ -207,27 +198,4 @@ public static class DependencyInjection
         return services;
     }
 
-    /// <summary>
-    /// Clientes HTTP tipados, com retry, circuit breaker e timeout.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>A ordem do pipeline é a que o <c>AddResilienceHandler</c> monta, e ela importa:</b> o timeout total
-    /// envolve tudo, o retry vem dentro dele, o circuit breaker dentro do retry, e o timeout por tentativa é o
-    /// mais interno. Assim cada tentativa tem prazo próprio, o conjunto tem prazo máximo, e o breaker conta
-    /// falhas de tentativas individuais — não do conjunto.
-    /// </para>
-    /// <para>
-    /// <b>⚠️ Retry só vale porque este cliente faz apenas <c>GET</c>.</b> É a decisão mais importante deste
-    /// método e a que não se pode copiar sem pensar: repetir uma consulta é inofensivo; repetir um <c>POST</c>
-    /// que cobra um cartão cobra duas vezes. Um cliente que escreve precisa de retry só em operação idempotente
-    /// — na prática, uma que carregue chave de idempotência — ou de retry nenhum.
-    /// </para>
-    /// <para>
-    /// <b>O <c>HttpClient.Timeout</c> fica desligado</b> (<c>InfiniteTimeSpan</c>) de propósito: ele é um
-    /// timeout do cliente inteiro e cancelaria a operação no meio do pipeline, disparando um cancelamento que se
-    /// confunde com o do usuário. Quem controla prazo aqui é a política, que sabe distinguir tentativa de
-    /// conjunto.
-    /// </para>
-    /// </remarks>
 }
