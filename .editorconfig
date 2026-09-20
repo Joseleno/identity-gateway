@@ -145,3 +145,12 @@ dotnet_naming_style.i_maiusculo_prefixo.capitalization = pascal_case
 
 dotnet_naming_style.underscore_camel_case.required_prefix = _
 dotnet_naming_style.underscore_camel_case.capitalization = camel_case
+
+# Migrations do EF Core são código gerado: o scaffolder escreve no estilo dele, e reformatá-las à mão a
+# cada `migrations add` é trabalho recorrente que não melhora nada — ninguém lê uma migration procurando
+# estilo. As regras de estilo e de análise ficam em sugestão aqui, para que o build com
+# TreatWarningsAsErrors não quebre por causa de arquivo que a ferramenta gerou.
+[src/*/Persistence/Migrations/*.cs]
+generated_code = true
+dotnet_diagnostic.IDE0161.severity = suggestion
+dotnet_diagnostic.CA1861.severity = suggestion
