@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Infrastructure → Domain + Application (só implementa as interfaces que a Application declara). -->
+  <ItemGroup>
+    <ProjectReference Include="..\IdentityGateway.Domain\IdentityGateway.Domain.csproj" />
+    <ProjectReference Include="..\IdentityGateway.Application\IdentityGateway.Application.csproj" />
+  </ItemGroup>
+
+  <!--
+    O EF Core vive aqui e só aqui. Há regra de arquitetura garantindo que ele não alcance o Domain nem a
+    Application: persistência é detalhe, e o domínio não sabe que existe banco.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+
+  <!-- Resiliência do cliente HTTP de exemplo (T6.3). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+  </ItemGroup>
+
+  <!-- Dados de exemplo para o seed (T6.5). Só é exercitado quando a flag de seed é passada. -->
+  <ItemGroup>
+    <PackageReference Include="Bogus" />
+  </ItemGroup>
+
+  <!-- Configuração validada no startup, e o cache de dois níveis. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" />
+  </ItemGroup>
+
+  <!--
+    Ferramenta de linha de comando (dotnet ef), com PrivateAssets: é usada para gerar migration em
+    desenvolvimento e não deve vazar como dependência para quem consumir este assembly.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!--
+    Os interceptors, os DbSet e a OutboxMessage são internal de propósito: ninguém fora desta camada deveria
+    alcançá-los. O projeto de teste é a exceção — ele precisa instanciar os interceptors para exercitá-los.
+    Tornar os tipos públicos para satisfazer o teste é o caminho errado: abriria para a Api também.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="IdentityGateway.Infrastructure.IntegrationTests" />
+
+    <!--
+      Os testes funcionais também: eles semeiam dados e conferem o que foi persistido pelo DbContext, em vez de
+      por SQL cru — assim o teste depende do modelo, e um mapeamento errado quebra ali em vez de passar
+      despercebido. Continuam fechados para a Api e para qualquer consumidor externo.
+    -->
+    <InternalsVisibleTo Include="IdentityGateway.Api.FunctionalTests" />
+  </ItemGroup>
+
+</Project>

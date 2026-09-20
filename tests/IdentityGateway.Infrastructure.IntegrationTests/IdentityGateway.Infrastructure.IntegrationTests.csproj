@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Repositório, interceptor e migration contra PostgreSQL e Redis reais, em container. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IdentityGateway.Infrastructure\IdentityGateway.Infrastructure.csproj" />
+
+    <!--
+      Domain e Application explicitamente, e não só através da Infrastructure: os testes usam Order, Money e
+      as abstrações (IDateTimeProvider, IOutboxPublisher) diretamente no código.
+    -->
+    <ProjectReference Include="..\..\src\IdentityGateway.Domain\IdentityGateway.Domain.csproj" />
+    <ProjectReference Include="..\..\src\IdentityGateway.Application\IdentityGateway.Application.csproj" />
+  </ItemGroup>
+
+  <!--
+    Testcontainers e não o provider InMemory do EF Core: o InMemory não tem constraint, não tem transação e
+    não fala SQL — passa em teste que o Postgres reprovaria. Precisa de Docker rodando.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.Redis" />
+    <PackageReference Include="Bogus" />
+
+    <!--
+      NSubstitute também aqui: os interceptors dependem de IDateTimeProvider e ICurrentUser, e substituí-los é o
+      que torna a asserção sobre CreatedAt determinística. O banco continua real (Testcontainers) — o que se
+      substitui são relógio e usuário, nunca a persistência.
+    -->
+    <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+
+  <!--
+    O provider do Npgsql é necessário também para os testes de modelo, que constroem o IModel em memória sem
+    abrir conexão — erro de mapeamento aparece ali, antes de qualquer container subir.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+
+    <!-- EF Core direto: DbContext, ToListAsync, e o Relational para MigrateAsync e ExecuteSqlAsync. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+
+</Project>

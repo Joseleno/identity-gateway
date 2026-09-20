@@ -1,0 +1,154 @@
+<Project>
+
+  <!--
+    Central Package Management: a versão de cada pacote é declarada uma vez aqui, e os .csproj
+    referenciam só o nome. Evita o cenário em que dois projetos da mesma solução resolvem
+    versões diferentes do mesmo pacote.
+
+    Quando entrarem source generators e analyzers (Mediator.SourceGenerator, Riok.Mapperly),
+    eles vão com PrivateAssets="all" no PackageReference: sem isso vazam como dependência
+    transitiva para quem consumir os assemblies.
+
+    Versões verificadas no NuGet em 12/09/2026. Não subir nenhuma sem checar antes — duas linhas
+    têm armadilha conhecida e estão anotadas abaixo.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <!--
+    Application.
+
+    Mediator (martinothamar) e não MediatR: o MediatR passou a exigir licença comercial. Fixado no 3.0.2,
+    que é o estável — o 3.1.0, alinhado ao .NET 10, está em RC (ver decisão 2 do HANDOFF). Roda em net10.0
+    sem problema, e os handlers ficam atrás de marcadores próprios para que subir ao 3.1 seja mudança de
+    uma camada só.
+  -->
+  <ItemGroup Label="Application">
+    <PackageVersion Include="Mediator.Abstractions" Version="3.0.2" />
+    <PackageVersion Include="Mediator.SourceGenerator" Version="3.0.2" />
+    <PackageVersion Include="FluentValidation" Version="12.1.1" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+
+    <!--
+      HybridCache: cache de dois níveis (memória + distribuído) com stampede protection embutida — o
+      problema que o IDistributedCache cru deixa para quem usa. O CachingBehavior o consome atrás de
+      abstração própria, para que a Application não dependa de pacote de infraestrutura.
+    -->
+    <PackageVersion Include="Microsoft.Extensions.Caching.Hybrid" Version="10.10.0" />
+
+    <!--
+      Mapperly (Riok) e não AutoMapper: o AutoMapper passou a exigir licença comercial. Gera o código de
+      mapeamento em tempo de compilação — o mapa errado é erro de build, não exception em runtime.
+      O 5.0 só existe em -next.
+    -->
+    <PackageVersion Include="Riok.Mapperly" Version="4.3.1" />
+  </ItemGroup>
+
+  <!--
+    Infrastructure.
+
+    EF Core e Npgsql ficam na linha 10.x: a 11.x é preview (decisão 4 do HANDOFF). Não subir sem verificar.
+  -->
+  <ItemGroup Label="Infrastructure">
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
+
+    <!-- Options com validação por DataAnnotations, conferida no startup (ValidateOnStart). -->
+    <PackageVersion Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.12" />
+    <!-- BackgroundService, para o despachante do outbox (T6.1). -->
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+
+    <!-- Segundo nível do HybridCache. Opcional: sem Redis configurado, o cache é só local. -->
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.12" />
+  </ItemGroup>
+
+  <!--
+    Api.
+
+    Carter para endpoints (sem controllers) e Scalar para a UI do OpenAPI. O .NET 10 já traz a geração do
+    documento OpenAPI embutida — não é preciso Swashbuckle.
+  -->
+  <ItemGroup Label="Api">
+    <PackageVersion Include="Carter" Version="10.0.0" />
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.17.3" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+
+    <!--
+      Validação de JWT (T6.2). O rate limiting não aparece aqui de propósito: Microsoft.AspNetCore.RateLimiting
+      faz parte do SDK Web desde o .NET 7 e não precisa de pacote.
+    -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
+
+    <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
+
+    <!--
+      Seq em desenvolvimento: o console entrega JSON estruturado, mas ninguém lê JSON no terminal procurando
+      uma requisição específica. O sink só é ativado pelo appsettings.Development.json — em produção o log vai
+      para o coletor do ambiente, que é quem sabe para onde.
+    -->
+    <PackageVersion Include="Serilog.Sinks.Seq" Version="9.1.0" />
+
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
+
+    <!--
+      Rastreamento do banco, consumido pela Api junto das demais instrumentações. Vem do Npgsql, e não do
+      OpenTelemetry.Instrumentation.EntityFrameworkCore: esse último só existe em beta (1.18.0-beta.1), e o kit
+      não fixa pacote instável. Não se perde nada relevante — quem emite o SQL é o Npgsql, então é ele que tem
+      o comando, a duração e o erro.
+    -->
+    <PackageVersion Include="Npgsql.OpenTelemetry" Version="10.0.3" />
+
+    <!-- Resiliência de chamada HTTP externa: retry, circuit breaker e timeout (Polly v8 por baixo). -->
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
+
+    <!-- Health checks de Postgres e Redis, para o /health/ready. -->
+    <PackageVersion Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
+    <PackageVersion Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
+  </ItemGroup>
+
+  <!--
+    Infraestrutura de teste.
+
+    xUnit v3 (pacote `xunit.v3`) não é o v2 com número maior: cada projeto de teste virou um
+    executável próprio rodando sobre Microsoft.Testing.Platform (MTP). Consequências, todas
+    verificadas rodando `dotnet test` no SDK 10.0.401:
+
+    - os projetos levam `OutputType=Exe`;
+    - nada de `xunit.runner.visualstudio`, `Microsoft.NET.Test.Sdk` ou `coverlet.collector` —
+      são do mundo VSTest, e no .NET 10 o VSTest deixou de rodar projeto MTP;
+    - o opt-in no MTP fica no `global.json` (seção `test.runner`), sem o qual `dotnet test` falha;
+    - cobertura vem de `Microsoft.Testing.Extensions.CodeCoverage`, o equivalente MTP do coverlet.
+  -->
+  <ItemGroup Label="Testes">
+    <PackageVersion Include="xunit.v3" Version="4.0.1" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.11.2" />
+
+    <!-- Apache-2.0, API idêntica à da FluentAssertions, que virou licença comercial na v8 (ADR 0008). -->
+    <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
+
+    <!-- NSubstitute e não Moq: o Moq embarcou SponsorLink, que extraía e-mail de quem compilava. -->
+    <PackageVersion Include="NSubstitute" Version="6.2.0" />
+
+    <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
+
+    <!-- Banco e cache de verdade em container. O provider InMemory do EF Core é proibido aqui. -->
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.15.0" />
+    <PackageVersion Include="Testcontainers.Redis" Version="4.15.0" />
+
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+    <PackageVersion Include="Bogus" Version="35.6.5" />
+  </ItemGroup>
+
+</Project>

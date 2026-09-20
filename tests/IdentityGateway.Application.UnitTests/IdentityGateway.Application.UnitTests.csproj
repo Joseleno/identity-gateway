@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Testa handler com os repositórios substituídos por NSubstitute — sem banco, sem container. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IdentityGateway.Application\IdentityGateway.Application.csproj" />
+
+    <!--
+      O Domain é referenciado explicitamente, e não só por vir junto da Application: os testes usam Order,
+      Money e DomainErrors diretamente. Dependência usada no código é dependência declarada — a transitiva
+      compila até a cadeia mudar, e aí o erro aparece longe da alteração que o causou.
+    -->
+    <ProjectReference Include="..\..\src\IdentityGateway.Domain\IdentityGateway.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Bogus" />
+  </ItemGroup>
+
+  <!--
+    Referência direta ao Mediator, só aqui: um teste afirma que os marcadores próprios continuam herdando das
+    interfaces dele, que é como o source generator descobre os handlers. É a exceção que prova a regra — o
+    código de produção da Application não menciona o namespace Mediator fora de Common/Messaging.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Mediator.Abstractions" />
+  </ItemGroup>
+
+</Project>

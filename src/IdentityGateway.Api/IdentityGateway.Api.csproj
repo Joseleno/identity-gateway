@@ -1,0 +1,86 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <!--
+      Identificador do cofre de User Secrets. Não é segredo — é só o nome da pasta onde o dotnet guarda os
+      segredos desta máquina, fora do repositório. A connection string e a chave JWT de desenvolvimento vivem
+      lá, nunca em appsettings versionado.
+    -->
+    <UserSecretsId>33dd6ef1-53b5-4c63-8a7e-e208bc191ea3</UserSecretsId>
+
+    <!--
+      Copia para a saída TODO o grafo de dependências, e não apenas o que esta camada referencia diretamente.
+
+      Sem isto, um assembly que só é usado por reflexão ou por injeção de dependência pode não ser copiado: o
+      compilador não o vê em nenhum `using` da Api, conclui que é desnecessário e o deixa de fora. O build
+      passa; a aplicação quebra ao subir, com "Could not load file or assembly".
+
+      Foi o que aconteceu aqui com Microsoft.EntityFrameworkCore (usado por StartupTasks ao aplicar migrations)
+      e com Microsoft.Extensions.Caching.Hybrid (resolvido pela DI da Infrastructure) — os dois vinham da
+      Infrastructure por referência de projeto, e nenhum aparecia no código desta camada.
+
+      O custo é uma pasta de saída maior. Em troca, o que roda é o grafo inteiro, e a falha deixa de depender
+      de o compilador adivinhar o que a reflexão vai precisar.
+    -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <!--
+    Api → Application, e também → Infrastructure.
+
+    A referência à Infrastructure existe só para o composition root chamar AddInfrastructure(): é o ponto onde
+    as interfaces da Application são ligadas às implementações. Nenhum endpoint conhece DbContext ou repositório
+    concreto, e há regra de arquitetura garantindo que a Application não referencia a Infrastructure de volta.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\IdentityGateway.Application\IdentityGateway.Application.csproj" />
+    <ProjectReference Include="..\IdentityGateway.Infrastructure\IdentityGateway.Infrastructure.csproj" />
+
+    <!--
+      O Domain explicitamente: os endpoints usam Result, DomainErrors e OrderStatus diretamente. Dependência
+      usada no código é dependência declarada — a transitiva compila até a cadeia mudar.
+    -->
+    <ProjectReference Include="..\IdentityGateway.Domain\IdentityGateway.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Carter" />
+    <PackageReference Include="Scalar.AspNetCore" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.Seq" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
+
+    <!--
+      O rastreamento do banco é ligado aqui, com as demais instrumentações, e por isso o pacote é referenciado
+      aqui: o AddNpgsql() do TracerProviderBuilder vem dele. Deixá-lo só na Infrastructure fazia o build
+      depender de o pacote vazar por referência transitiva — funciona até alguém limpar o cache.
+    -->
+    <PackageReference Include="Npgsql.OpenTelemetry" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
+    <PackageReference Include="AspNetCore.HealthChecks.Redis" />
+  </ItemGroup>
+
+  <!--
+    Com top-level statements, a classe Program gerada é internal — e o WebApplicationFactory<Program> dos testes
+    funcionais precisa alcançá-la. É a forma recomendada pela Microsoft, e melhor que declarar
+    `public partial class Program` só para satisfazer o teste: aqui a exceção fica visível e nomeada.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="IdentityGateway.Api.FunctionalTests" />
+  </ItemGroup>
+
+</Project>

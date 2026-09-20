@@ -1,0 +1,88 @@
+using System.Net;
+using System.Net.Http.Headers;
+
+namespace IdentityGateway.Api.FunctionalTests;
+
+/// <summary>
+/// Exercita a autenticação e os cabeçalhos de segurança.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Estes testes existem porque os outros passam.</b> Um teste de caso de uso usa cliente autenticado, e
+/// continuaria passando se a autorização fosse removida dos endpoints — um token a mais no cabeçalho não
+/// incomoda quem não o exige. O que prova que a proteção está ligada é a requisição <b>sem</b> token receber 401,
+/// e é isso que está aqui.
+/// </para>
+/// <para>
+/// Vale contra o token ausente e contra o token errado, que falham por motivos diferentes: o primeiro não chega a
+/// ser validado, o segundo é rejeitado pela assinatura.
+/// </para>
+/// <para>
+/// <b>Dois testes estão em Skip</b> enquanto nenhum módulo registra rota: sem endpoint, o roteamento responde
+/// 404 antes de a autorização ser consultada, e o 401 que eles exigem não tem como acontecer. Reativam-se com
+/// o primeiro módulo do M0 — deixá-los falhando esconderia regressão de verdade no meio do vermelho.
+/// </para>
+/// </remarks>
+public sealed class SegurancaTests(IdentityGatewayApiFactory factory) : IClassFixture<IdentityGatewayApiFactory>
+{
+    private const string RotaProtegida = "/api/v1/tenants";
+
+    [Fact(Skip = "Depende de um endpoint protegido: sem rota registrada o roteamento devolve 404 antes da autorizacao. Reativar com o primeiro modulo do M0.")]
+    public async Task SemToken_Retorna401()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        using HttpClient client = factory.CreateClient();
+
+        HttpResponseMessage resposta = await client.GetAsync(RotaProtegida, ct);
+
+        resposta.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact(Skip = "Depende de um endpoint protegido: sem rota registrada o roteamento devolve 404 antes da autorizacao. Reativar com o primeiro modulo do M0.")]
+    public async Task ComTokenInvalido_Retorna401()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        using HttpClient client = factory.CreateClient();
+
+        // Assinado com outra chave — a forma é de um JWT, o conteúdo não confere. É o caso que prova que a
+        // validação de assinatura está ligada: sem ela, qualquer um emitiria o próprio token.
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmYWxzbyJ9.assinatura-invalida");
+
+        HttpResponseMessage resposta = await client.GetAsync(RotaProtegida, ct);
+
+        resposta.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task OsHealthChecks_ContinuamAbertos()
+    {
+        // Exigir token no health check quebraria o orquestrador: o Kubernetes não se autentica, e a instância
+        // saudável seria marcada como morta e reiniciada em laço.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        using HttpClient client = factory.CreateClient();
+
+        HttpResponseMessage live = await client.GetAsync("/health/live", ct);
+        HttpResponseMessage ready = await client.GetAsync("/health/ready", ct);
+
+        live.StatusCode.Should().Be(HttpStatusCode.OK);
+        ready.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task TodaResposta_TrazOsCabecalhosDeSeguranca()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        using HttpClient client = factory.CreateClient();
+
+        // Numa resposta 401, de propósito: os cabeçalhos precisam valer também para o que o pipeline recusa,
+        // e não só para o caminho feliz.
+        HttpResponseMessage resposta = await client.GetAsync(RotaProtegida, ct);
+
+        resposta.Headers.GetValues("X-Content-Type-Options").Should().Contain("nosniff");
+        resposta.Headers.GetValues("X-Frame-Options").Should().Contain("DENY");
+        resposta.Headers.GetValues("Referrer-Policy").Should().Contain("no-referrer");
+        resposta.Headers.Should().Contain(cabecalho => cabecalho.Key == "Content-Security-Policy");
+    }
+}
