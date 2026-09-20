@@ -6,7 +6,8 @@ body:
     attributes:
       value: |
         Antes de abrir: se **todos** os testes de integração falharam, verifique se o Docker está rodando —
-        cerca de 37% da suíte sobe containers de verdade, e sem o daemon o sintoma parece defeito de código.
+        os testes de integração e os funcionais sobem containers de verdade, e sem o daemon o sintoma
+        parece defeito de código.
 
   - type: textarea
     id: o-que-acontece

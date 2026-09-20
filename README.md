@@ -14,21 +14,54 @@ nenhum login e de nenhuma requisição de negócio.**
 
 ## Estado do projeto
 
-**Especificação concluída. Implementação começando pelo M0.**
+**Especificação concluída. Fundação no lugar. M0 em andamento.**
 
-Este repositório é, hoje, a especificação de um sistema — e o registro de como ela chegou até
-aqui. O código começa agora, e o roadmap está em [`docs/especificacao-arquitetural-v2.3.md`](docs/especificacao-arquitetural-v2.3.md) §16.
+O repositório parte do template [CleanStart](https://github.com/Joseleno/CleanStart) e já traz a fundação
+funcionando — Clean Architecture em quatro camadas, Outbox transacional, cache de dois níveis, middlewares
+de correlação e segurança, testes de arquitetura e CI. **O que ainda não existe é o domínio do
+IdentityGateway:** nenhum agregado, endpoint ou realm Keycloak. O roadmap está em
+[`docs/especificacao-arquitetural-v2.3.md`](docs/especificacao-arquitetural-v2.3.md) §16, e o estado
+detalhado em [`docs/handoff-revisao.md`](docs/handoff-revisao.md).
 
 | Marco | Entrega | Estado |
 |---|---|---|
 | **M0** · Fundação | Compose, bootstrap do realm, health checks, CI | 🔨 em andamento |
 | **M1** · Tenants | Registro, provisionamento via Outbox, suspensão, encerramento | ⬜ |
 | **M2** · Membros e papéis | Convite, desativação, exclusão LGPD, `RoleAssignmentPolicy` | ⬜ |
-| **M3** · Data Plane | `Client.AspNetCore` e `SampleResourceApi` | ⬜ |
+| **M3** · Data Plane | `Client.AspNetCore` e o conteúdo do `SampleResourceApi`, que hoje é só esqueleto | ⬜ |
 | **M4** · Federação | Domínios, IdP por tenant, discovery | ⬜ |
 | **M5** · Permissões finas | Permission sets, cache com invalidação por evento | ⬜ |
 | **M6** · M2M | Clients com `private_key_jwt`, rotação | ⬜ |
 | **M7** · Hardening | Step-up, rate limiting, README com `curl` reproduzível | ⬜ |
+
+---
+
+## Rodando local
+
+Precisa de .NET 10 e Docker. O Docker não é opcional: os testes de integração sobem Postgres por
+Testcontainers.
+
+```bash
+# Toda a suíte — 113 testes, 107 passam e 6 ficam em skip (ver abaixo)
+dotnet test
+
+# As dependências, e a API junto
+docker compose up -d
+```
+
+Com o compose de pé: a API responde em `http://localhost:8080`, `/health/live` e `/health/ready`
+respondem `200`, os logs estruturados vão para o Seq em `http://localhost:5341` e os traces para o Jaeger
+em `http://localhost:16686`.
+
+Rodando pela IDE ou com `dotnet run --project src/IdentityGateway.Api`, a API sobe em
+`https://localhost:7206` e a raiz redireciona para a documentação Scalar. Nesse caminho as dependências
+ainda vêm do compose: `docker compose up -d postgres redis`.
+
+**Os 6 testes em skip são deliberados**, não dívida: quatro regras de arquitetura usam uma guarda
+`NotBeEmpty` que dispara enquanto não houver agregado nem handler para inspecionar — uma regra que varre
+zero tipos passaria sem verificar nada — e dois testes de `401` dependem de um endpoint protegido existir,
+já que sem rota registrada o roteamento responde `404` antes de a autorização ser consultada. Os seis
+reativam com o primeiro módulo do M0.
 
 ---
 
@@ -110,8 +143,10 @@ resistiram inteiros. E das cinco afirmações verificadas contra documentação 
 
 ## Stack
 
-.NET 10 · Keycloak 26 · PostgreSQL · RabbitMQ · Redis · EF Core 10 · Carter · Serilog ·
-OpenTelemetry · xUnit v3
+**No compose hoje:** .NET 10 · PostgreSQL · Redis · EF Core 10 · Carter · Serilog · OpenTelemetry ·
+Seq · Jaeger · xUnit v3
+
+**Entram no M0:** Keycloak 26 · RabbitMQ · Mailpit
 
 Parte do template [CleanStart](https://github.com/Joseleno/CleanStart).
 

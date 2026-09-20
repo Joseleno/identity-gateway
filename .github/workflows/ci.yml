@@ -26,9 +26,9 @@ env:
 jobs:
   # ─────────────────────────── build ───────────────────────────
   #
-  # DEFEITO 2 DO TEMPLATE, corrigido pela existência deste job separado: o template roda `dotnet test --no-build`
-  # num job só, e 20 dos testes sobem containers via Testcontainers. Um erro de compilação só apareceria depois
-  # de o runner ter baixado e iniciado Postgres e Redis. Aqui a compilação falha em segundos, sozinha.
+  # Por que a compilação tem job próprio: parte da suíte sobe containers via Testcontainers. Num job único,
+  # um erro de compilação só apareceria depois de o runner ter baixado e iniciado Postgres e Redis. Aqui a
+  # compilação falha em segundos, sozinha.
   build:
     name: Build
     runs-on: ubuntu-latest

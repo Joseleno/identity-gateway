@@ -14,7 +14,7 @@ descobrir isso depois de implementar, e a issue existe para evitar esse desperd�
 ## O que você precisa ter
 
 - **.NET SDK 10.0.401** ou mais novo (a versão está fixada no `global.json`)
-- **Docker** — cerca de 37% da suíte sobe PostgreSQL e Redis de verdade
+- **Docker** — os testes de integração e os funcionais sobem PostgreSQL de verdade, por Testcontainers
 
 ```bash
 git clone <sua-fork>
