@@ -1,21 +1,41 @@
 # Handoff — onde paramos e como continuar
 
-> **Data:** 2026-09-20 · **Fase:** specs fechadas, implementação não iniciada.
-> Nenhuma linha de código escrita. A pasta contém apenas `docs/`, e ainda **não é repositório git**.
+> **Data:** 2026-09-20 · **Fase:** specs fechadas, repositório publicado, **M0 não iniciado**.
+> O esqueleto da solution existe e compila, mas nenhuma regra de negócio foi escrita.
 >
-> **Atualização:** a documentação de negócio foi produzida e, no processo, encontrou lacunas na v2.1.
-> Todas foram decididas e gravadas na **v2.2**, que passa a ser o documento vigente.
+> **Repositório:** <https://github.com/Joseleno/identity-gateway> (público, branch `main`)
 
 ---
 
 ## Situação
 
-O brainstorm fechou. A especificação foi revisada por três frentes independentes, as decisões em aberto
-foram tomadas, e a spec corrigida está pronta para virar código.
+O brainstorm fechou, a especificação passou por revisão crítica em três frentes, e **todas as pendências
+de decisão foram resolvidas**. O repositório foi criado e publicado com quatro commits: higiene, os oito
+documentos, o README e o esqueleto da solution.
 
 **Documento vigente para implementar: `especificacao-arquitetural-v2.3.md`.**
 
-### Os quatro documentos
+### O que já está no repositório
+
+| Commit | Conteúdo |
+|---|---|
+| `8acaf11` | `.gitignore` e `.gitattributes` (`eol=lf`, com `core.autocrlf false`) |
+| `a7696fe` | Os oito documentos — a linha evolutiva completa |
+| `a7974dc` | README de estágio atual, **sem a seção de `curl`** (ver abaixo) |
+| `a305ca2` | Esqueleto da solution .NET 10 |
+
+**O esqueleto:** dez projetos — quatro camadas em `src/`, `SampleResourceApi` em `samples/` e cinco
+projetos de teste em `tests/`, incluindo `ArchitectureTests`, conforme a §7. Solution em `.slnx`, versões
+centralizadas em `Directory.Packages.props`, configuração comum em `Directory.Build.props` com
+`TreatWarningsAsErrors` ligado, e testes em **xUnit v3** (o template `dotnet new` traz o v2 — foi trocado
+para bater com o CleanStart). As referências entre projetos fluem para dentro; nenhuma aponta para fora.
+
+Verificado: **build limpo** (0 avisos, 0 erros com warnings-as-errors) e **cinco projetos de teste verdes**.
+
+**Ainda não existe:** nenhuma entidade, handler, endpoint, `docker-compose.yml` nem realm. As pastas de
+domínio da §7 estão criadas com `.gitkeep`.
+
+### Os documentos
 
 | Arquivo | Papel |
 |---|---|
@@ -86,22 +106,51 @@ tenant: membros, clients OIDC (aplicações — SPA, mobile, M2M), permission se
 
 ## Próximo passo
 
-**M0**, na ordem do roadmap da v2.3 §16. Ele deixou de ser fundação rotineira e virou a peça mais crítica
-do projeto: com demonstração por README, é o primeiro contato do avaliador, e uma falha ali encerra a
-leitura antes dos ADRs.
+**Continuar o M0**, na ordem do roadmap da v2.3 §16. O esqueleto da solution está pronto; falta a
+fundação de fato. O M0 deixou de ser trabalho rotineiro e virou a peça mais crítica do projeto: com
+demonstração por README, é o primeiro contato do avaliador, e uma falha ali encerra a leitura antes
+dos ADRs.
 
-Quatro itens do M0 vêm diretamente de achados e não podem ser esquecidos:
+### 1. Trazer a fundação do CleanStart
+
+Clonar <https://github.com/Joseleno/CleanStart> e trazer `Domain/Common`, `Application/Common`, os
+interceptors e os `ArchitectureTests`, renomeando `CleanStart` → `IdentityGateway`. **Não trazer a
+feature `Orders`** — é referência, não fundação. Isso dá de uma vez `AggregateRoot<T>`, `Entity`,
+`ValueObject`, `Result<T>`, `Error`, `ICommand`/`IQuery` e seus handlers, além do interceptor de
+`SaveChanges` que já implementa o Outbox do ADR-006.
+
+### 2. Os quatro itens críticos do realm e do compose
+
+Vêm diretamente de achados da revisão e não podem ser esquecidos:
 
 - `KC_FEATURES=organization` no compose — **singular**. Sem isso o Keycloak sobe, o import passa e
-  `POST .../organizations` dá 404. Falha silenciosa (A3).
-- Remover `offline_access` do `default-roles` do realm — hardening de uma linha, sem o qual a desativação
-  de membro não revoga de fato (C8).
+  `POST .../organizations` dá 404. Falha silenciosa (A3). O M0 inclui um *smoke test* que falha
+  explicitamente nesse 404, para o erro aparecer na subida e não na primeira demonstração.
+- Remover `offline_access` do `default-roles` do realm — hardening de uma linha, sem o qual a
+  desativação de membro não revoga de fato (C8).
 - Os dois client scopes em `defaultDefaultClientScopes`: `gateway-roles` (§12.1) e `gateway-tenant`
   (§12.2).
-- Bootstrap do `platform-admin` com senha **gerada**, nunca literal no JSON versionado (C13).
+- Bootstrap do `platform-admin` com senha **gerada**, nunca literal no JSON versionado (C13). Um
+  teste de CI falha se houver credencial literal no bootstrap.
 
-**Antes de codar:** vale `git init`. O projeto vai crescer, e versionar desde as specs preserva a linha
-evolutiva que hoje depende de nomes de arquivo.
+### 3. O resto do M0
+
+`docker-compose.yml` unificado (§15: keycloak, postgres com dois bancos, rabbitmq, mailpit, redis,
+seq, jaeger e as duas APIs), health checks, CI com os testes de arquitetura, e auditoria e
+observabilidade desde já.
+
+### 4. Ao final, atualizar o README
+
+O README atual é **de estágio atual** e deliberadamente **não tem seção de `curl`** — prometer
+`docker compose up` sem código funcionando falharia exatamente onde a §16 diz que não se pode falhar.
+Quando o M0 fechar, acrescentar as duas demonstrações que a §16 exige:
+
+1. `docker compose stop keycloak` → `POST /tenants` responde `202` → `docker compose start keycloak`
+   → o tenant vira `Active` sozinho.
+2. Com token do tenant A: rota do tenant B dá **403**; `memberId` do tenant B dentro da rota do
+   tenant A dá **404**.
+
+E trocar o estado do M0 de 🔨 para ✅ na tabela de marcos.
 
 ---
 
@@ -126,6 +175,25 @@ feature `Orders`**, preservando `Domain/Common`, `Application/Common`, os interc
 2. **O toggle de Organizations por realm é necessário além da feature flag de build?** (A3)
 
 Ambas se resolvem com o Keycloak real rodando — não vale especular antes.
+
+---
+
+## Convenções fixadas no esqueleto
+
+Decisões tomadas ao montar a solution que a spec não registra, e que valem para os próximos projetos:
+
+| Convenção | Por quê |
+|---|---|
+| Solution em **`.slnx`** | Formato novo do .NET, e é a convenção canônica do time |
+| **`Directory.Packages.props`** com versões centralizadas | Um lugar só para versionar pacote; evita divergência entre dez projetos |
+| **`Directory.Build.props`** com `TreatWarningsAsErrors` | Ligado desde o primeiro commit — depois de acumular avisos, ninguém liga |
+| **xUnit v3** | O template `dotnet new xunit` traz o v2; trocado à mão para bater com o CleanStart |
+| **`.gitattributes` com `eol=lf`** e `core.autocrlf false` | Repositório nasce com terminadores consistentes, em vez de normalizar depois |
+| Pastas da §7 com **`.gitkeep`** | A estrutura de camadas fica visível antes de existir código |
+
+> **Cuidado com CRLF.** Editar os documentos com script Python em Windows reescreve o arquivo inteiro
+> em CRLF e polui o diff. Se for editar por script, normalizar para LF antes de commitar — já aconteceu
+> uma vez e foi corrigido.
 
 ---
 
