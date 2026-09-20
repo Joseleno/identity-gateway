@@ -110,7 +110,11 @@
     -->
     <PackageVersion Include="Npgsql.OpenTelemetry" Version="10.0.3" />
 
-    <!-- Resiliência de chamada HTTP externa: retry, circuit breaker e timeout (Polly v8 por baixo). -->
+    <!--
+      Resiliência de chamada HTTP externa: retry, circuit breaker e timeout (Polly v8 por baixo).
+      Sem PackageReference hoje — o consumidor saiu com a feature de exemplo do template. A versão fica
+      fixada porque o cliente do Keycloak entra no M0; ver HttpResilienceOptions para o que cabear.
+    -->
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
 
     <!-- Health checks de Postgres e Redis, para o /health/ready. -->
