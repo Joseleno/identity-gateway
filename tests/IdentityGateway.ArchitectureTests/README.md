@@ -1,6 +1,6 @@
 # Testes de arquitetura
 
-As regras do `CLAUDE.md` como teste executável. Quando um destes reprova, a resposta é **mover o código** —
+As regras de arquitetura do projeto como teste executável. Quando um destes reprova, a resposta é **mover o código** —
 nunca afrouxar o teste.
 
 A mensagem de falha nomeia os tipos violadores (ver `ArchTestResultExtensions`): `IsSuccessful.Should().BeTrue()`
@@ -15,18 +15,27 @@ diria apenas "expected true, found false", que informa que a arquitetura foi vio
 | 3 | Application não referencia Infrastructure nem Api | `Application_NaoDependeDeInfrastructureNemDeApi` |
 | 3 | Application não referencia EF Core | `Application_NaoReferenciaEfCore` |
 | 4 | Infrastructure não referencia Api | `Infrastructure_NaoDependeDeApi` |
-| 7 | Entidade não expõe setter público | `Entidades_NaoExpoemSetterPublico` (T1.3) |
-| — | Raiz de agregado expõe coleção somente leitura | `RaizesDeAgregado_ExpoemColecoesSomenteLeitura` (T1.3) |
-| 5 | Handlers são `sealed` | `Handlers_SaoSealed` (T2.3) |
-| 6 | Commands e queries são `record` | `CommandsEQueries_SaoRecord` (T2.3) |
-| — | Fora de `Common/Messaging` e `Common/Behaviors`, nada referencia `Mediator` | `ForaDosMarcadores_NadaReferenciaOMediator...` (T2.1) |
+| — | Fora de `Common/Messaging` e `Common/Behaviors`, nada referencia `Mediator` | `ForaDosMarcadores_NadaReferenciaOMediator...` |
 
-**As sete regras da T0.3 estão implementadas.** As regras 5, 6 e 7 chegaram depois da fase que as previa, cada
-uma junto com o primeiro tipo que elas podiam inspecionar — ver decisão 17.
+## Em `Skip` até o primeiro agregado
 
-Cada uma foi verificada **reprovando**, não só passando: introduzir `DbContext` no Domain faz a regra 2 falhar
-nomeando o tipo, e trocar `private set` por `set` em `Order.Status` faz a regra 7 falhar nomeando a propriedade.
-As demais seguem verdes — a falha é específica, não em bloco.
+| # | Regra | Teste |
+|---|---|---|
+| 7 | Entidade não expõe setter público | `Entidades_NaoExpoemSetterPublico` |
+| — | Raiz de agregado expõe coleção somente leitura | `RaizesDeAgregado_ExpoemColecoesSomenteLeitura` |
+| 5 | Handlers são `sealed` | `Handlers_SaoSealed` |
+| 6 | Commands e queries são `record` | `CommandsEQueries_SaoRecord` |
+
+As quatro **existem e estão escritas**; o que falta é o que inspecionar. Cada uma abre afirmando
+`NotBeEmpty` — sem agregado nem handler no assembly, a regra passaria varrendo zero tipos, e um verde
+vazio é pior que um vermelho: afirma que a arquitetura foi verificada quando nada foi. A guarda dispara, e
+por isso estão em `Skip` com o motivo no atributo, em vez de vermelhas permanentes que ninguém mais lê.
+
+**Reativam-se removendo o `Skip`** quando o primeiro agregado do M0 entrar — é o teste de que a fundação
+está sendo usada, não só presente.
+
+Cada regra ativa foi verificada **reprovando**, não só passando: introduzir `DbContext` no Domain faz a
+regra 2 falhar nomeando o tipo. A falha é específica, não em bloco.
 
 As regras de domínio usam reflexão direta (`RegrasDeDominioTests`), não o NetArchTest: a pergunta é sobre o
 **membro** ("esta propriedade tem setter público?") e a API do NetArchTest opera sobre tipos. Ambas começam
@@ -45,11 +54,12 @@ e ele referencia o namespace dele em toda assinatura porque é o trabalho dele �
 
 Toda regra que varre tipos começa afirmando que **encontrou algo para inspecionar**
 (`handlers.Should().NotBeEmpty()`). Sem isso, um namespace renomeado ou uma base trocada fariam o teste passar
-sem verificar nada, e ninguém perceberia — é o verde vacuoso que a decisão 17 do HANDOFF existe para evitar.
+sem verificar nada, e ninguém perceberia — é o verde vacuoso que esta suíte existe para evitar.
 
-O guard já trabalhou: as regras 5 e 6 foram escritas na T2.1 e **removidas no mesmo passo**, porque ele reprovou
-— a Application só tinha os marcadores, sem handler nem command de verdade. Voltaram na T2.3, quando havia o que
-inspecionar, e foram verificadas reprovando.
+**O guard está trabalhando agora.** As quatro regras da seção anterior estão em `Skip` exatamente porque ele
+reprovou: o domínio ainda não tem agregado nem handler, e sem isso elas varreriam zero tipos. É o
+comportamento desejado — a regra se recusa a dar um verde que não significaria nada. Saem do `Skip` quando o
+primeiro agregado do M0 entrar.
 
 Nota para quem escrever regra sobre `record`: ele não tem marca própria em metadados. O sinal confiável é o
 método sintetizado `<Clone>$`, que o compilador gera para todo record e para nada mais.

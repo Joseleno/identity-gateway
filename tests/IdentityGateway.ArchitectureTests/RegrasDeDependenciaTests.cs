@@ -7,7 +7,7 @@ using ArchTestResult = NetArchTest.Rules.TestResult;
 namespace IdentityGateway.ArchitectureTests;
 
 /// <summary>
-/// Trava as regras de dependência entre camadas declaradas no <c>CLAUDE.md</c>:
+/// Trava as regras de dependência entre camadas declaradas na especificação arquitetural:
 /// <c>Api → Application → Domain</c>, <c>Domain → nada</c>, <c>Infrastructure → Domain + Application</c>.
 /// </summary>
 /// <remarks>

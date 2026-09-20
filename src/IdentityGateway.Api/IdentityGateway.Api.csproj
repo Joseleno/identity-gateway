@@ -37,8 +37,8 @@
     <ProjectReference Include="..\IdentityGateway.Infrastructure\IdentityGateway.Infrastructure.csproj" />
 
     <!--
-      O Domain explicitamente: os endpoints usam Result, DomainErrors e OrderStatus diretamente. Dependência
-      usada no código é dependência declarada — a transitiva compila até a cadeia mudar.
+      O Domain explicitamente: os endpoints usam Result, DomainErrors e os tipos de domínio diretamente.
+      Dependência usada no código é dependência declarada — a transitiva compila até a cadeia mudar.
     -->
     <ProjectReference Include="..\IdentityGateway.Domain\IdentityGateway.Domain.csproj" />
   </ItemGroup>

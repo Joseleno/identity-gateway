@@ -14,9 +14,9 @@ namespace IdentityGateway.Infrastructure.IntegrationTests;
 /// <remarks>
 /// <para>
 /// <b>PostgreSQL de verdade, nunca o provider InMemory.</b> O InMemory não tem constraint, não tem transação e
-/// não fala SQL — um teste que passa nele não diz nada sobre o banco real. É proibido pelo <c>CLAUDE.md</c>, e
-/// esta fase é justamente onde a proibição se paga: a migration, o filtro parcial do índice único e a tradução
-/// LINQ dos conversores de valor só se provam contra o Postgres.
+/// não fala SQL — um teste que passa nele não diz nada sobre o banco real. É proibido pela convenção do projeto, e
+/// esta fase é justamente onde a proibição se paga: a migration e o filtro parcial do índice do outbox
+/// (<c>processed_on IS NULL</c>) só se provam contra o Postgres — ver <c>SchemaDoOutboxTests</c>.
 /// </para>
 /// <para>
 /// O container sobe uma vez por classe de teste (<c>IAsyncLifetime</c>) e é derrubado no fim — nenhum banco local

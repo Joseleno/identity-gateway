@@ -5,8 +5,8 @@
     <ProjectReference Include="..\..\src\IdentityGateway.Infrastructure\IdentityGateway.Infrastructure.csproj" />
 
     <!--
-      Domain e Application explicitamente, e não só através da Infrastructure: os testes usam Order, Money e
-      as abstrações (IDateTimeProvider, IOutboxPublisher) diretamente no código.
+      Domain e Application explicitamente, e não só através da Infrastructure: os testes usam os tipos de
+      domínio e as abstrações (IDateTimeProvider, IOutboxPublisher) diretamente no código.
     -->
     <ProjectReference Include="..\..\src\IdentityGateway.Domain\IdentityGateway.Domain.csproj" />
     <ProjectReference Include="..\..\src\IdentityGateway.Application\IdentityGateway.Application.csproj" />

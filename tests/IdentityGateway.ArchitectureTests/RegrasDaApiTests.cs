@@ -163,7 +163,7 @@ public sealed class RegrasDaApiTests
     /// chamou, vai para o contexto de sincronização e derruba o processo. Num endpoint, o cliente recebe uma
     /// resposta que não corresponde ao que aconteceu.
     /// <para>
-    /// A regra varre as quatro camadas porque a proibição não é da Api — está no <c>CLAUDE.md</c> para o
+    /// A regra varre as quatro camadas porque a proibição não é da Api — está na especificação arquitetural para o
     /// projeto inteiro. Fica neste arquivo por ser onde a inspeção por assinatura já mora.
     /// </para>
     /// </remarks>

@@ -8,8 +8,8 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Scalar.AspNetCore;
 using Serilog;
 
-// Composition root. A ordem de tudo aqui é deliberada, e os comentários dizem por quê — num kit de referência,
-// "funciona" não basta: quem lê precisa poder mudar sem descobrir a razão por tentativa e erro.
+// Composition root. A ordem de tudo aqui é deliberada, e os comentários dizem por quê: "funciona" não basta,
+// quem lê precisa poder mudar sem descobrir a razão por tentativa e erro.
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 // Serilog substitui o logging padrão antes de qualquer outro registro: o que falhar no startup a partir daqui já
@@ -84,7 +84,7 @@ if (app.Environment.IsDevelopment())
 
     // A raiz leva à documentação. Sem isto, abrir https://localhost:7206 no navegador — que é o que a IDE faz
     // ao rodar — devolve 404, porque nenhuma rota responde em "/". O 404 está certo, mas quem acabou de clonar
-    // o kit lê aquilo como "não subiu", e não como "subiu, e a porta de entrada é outra".
+    // o repositório lê aquilo como "não subiu", e não como "subiu, e a porta de entrada é outra".
     //
     // Só em Development, junto com o próprio Scalar: em produção "/" continua 404, que é o correto para uma API.
     app.MapGet("/", () => Results.Redirect("/scalar/v1"))
@@ -104,7 +104,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     Predicate = check => check.Tags.Contains("ready"),
 });
 
-// Carter mapeia os módulos descobertos por varredura. Os endpoints de pedidos são a T4.2.
+// Carter mapeia os módulos descobertos por varredura. Os módulos do IdentityGateway entram no M0.
 app.MapCarter();
 
 await app.RunAsync();

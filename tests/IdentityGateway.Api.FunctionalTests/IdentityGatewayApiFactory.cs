@@ -73,8 +73,8 @@ public sealed class IdentityGatewayApiFactory : WebApplicationFactory<Program>, 
         builder.UseSetting("Jwt:SigningKey", new string('t', 32));
 
         // O despachante do outbox fica desligado nos testes funcionais. Ele competiria com o teste pela mesma
-        // tabela: vários testes conferem a mensagem que o pedido gerou, e a limpeza de processadas antigas
-        // poderia apagá-la entre a requisição e a asserção — uma falha intermitente, dependente de tempo, que
+        // tabela: um teste que confira a mensagem gerada por um caso de uso veria a limpeza de processadas
+        // antigas apagá-la entre a requisição e a asserção — uma falha intermitente, dependente de tempo, que
         // apareceria na CI e não aqui. Quem exercita o despachante é o teste de integração, que o chama
         // diretamente. Note que isto continua sendo configuração, não troca de registro.
         builder.UseSetting("Outbox:Enabled", "false");
@@ -117,8 +117,12 @@ public sealed class IdentityGatewayApiFactory : WebApplicationFactory<Program>, 
     /// Executa uma ação com um escopo de DI próprio.
     /// </summary>
     /// <remarks>
-    /// Usado para semear dados: não há endpoint de cliente, e inserir por SQL cru deixaria o teste dependente do
-    /// nome das colunas em vez do modelo.
+    /// Para preparar estado que não tem endpoint que o crie, e para conferir o que foi persistido: inserir ou
+    /// ler por SQL cru deixaria o teste dependente do nome das colunas em vez do modelo.
+    /// <para>
+    /// <b>Sem chamador enquanto não há caso de uso.</b> Fica porque é infraestrutura de teste, não código de
+    /// produção, e o primeiro teste de endpoint do M0 precisa exatamente disto.
+    /// </para>
     /// </remarks>
     public async Task ComEscopoAsync(Func<AppDbContext, Task> acao)
     {

@@ -5,9 +5,9 @@
     <ProjectReference Include="..\..\src\IdentityGateway.Application\IdentityGateway.Application.csproj" />
 
     <!--
-      O Domain é referenciado explicitamente, e não só por vir junto da Application: os testes usam Order,
-      Money e DomainErrors diretamente. Dependência usada no código é dependência declarada — a transitiva
-      compila até a cadeia mudar, e aí o erro aparece longe da alteração que o causou.
+      O Domain é referenciado explicitamente, e não só por vir junto da Application: os testes usam Result e
+      DomainErrors diretamente. Dependência usada no código é dependência declarada — a transitiva compila
+      até a cadeia mudar, e aí o erro aparece longe da alteração que o causou.
     -->
     <ProjectReference Include="..\..\src\IdentityGateway.Domain\IdentityGateway.Domain.csproj" />
   </ItemGroup>
