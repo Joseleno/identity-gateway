@@ -1,7 +1,7 @@
 # Handoff — onde paramos e como continuar
 
-> **Data:** 2026-09-20 · **Fase:** specs fechadas, repositório publicado, **M0 não iniciado**.
-> O esqueleto da solution existe e compila, mas nenhuma regra de negócio foi escrita.
+> **Data:** 2026-09-20 · **Fase:** specs fechadas, fundação do CleanStart no lugar, **M0 não iniciado**.
+> A fundação existe, compila e tem testes; nenhuma regra de negócio do IdentityGateway foi escrita.
 >
 > **Repositório:** <https://github.com/Joseleno/identity-gateway> (público, branch `main`)
 
@@ -10,8 +10,9 @@
 ## Situação
 
 O brainstorm fechou, a especificação passou por revisão crítica em três frentes, e **todas as pendências
-de decisão foram resolvidas**. O repositório foi criado e publicado com quatro commits: higiene, os oito
-documentos, o README e o esqueleto da solution.
+de decisão foram resolvidas**. O repositório foi refeito a partir do template CleanStart — que é a origem
+correta e não tinha sido usada: o histórico anterior nascia de um `git init` vazio, e o esqueleto criado
+com `dotnet new` tinha a topologia certa e nenhum conteúdo.
 
 **Documento vigente para implementar: `especificacao-arquitetural-v2.3.md`.**
 
@@ -19,21 +20,38 @@ documentos, o README e o esqueleto da solution.
 
 | Commit | Conteúdo |
 |---|---|
-| `8acaf11` | `.gitignore` e `.gitattributes` (`eol=lf`, com `core.autocrlf false`) |
-| `a7696fe` | Os oito documentos — a linha evolutiva completa |
-| `a7974dc` | README de estágio atual, **sem a seção de `curl`** (ver abaixo) |
-| `a305ca2` | Esqueleto da solution .NET 10 |
+| `chore:` | Repositório a partir do template CleanStart — a fundação inteira |
+| `docs:` | Os oito documentos — a linha evolutiva completa — e o README |
 
-**O esqueleto:** dez projetos — quatro camadas em `src/`, `SampleResourceApi` em `samples/` e cinco
-projetos de teste em `tests/`, incluindo `ArchitectureTests`, conforme a §7. Solution em `.slnx`, versões
-centralizadas em `Directory.Packages.props`, configuração comum em `Directory.Build.props` com
-`TreatWarningsAsErrors` ligado, e testes em **xUnit v3** (o template `dotnet new` traz o v2 — foi trocado
-para bater com o CleanStart). As referências entre projetos fluem para dentro; nenhuma aponta para fora.
+**A fundação**, vinda do template e renomeada `CleanStart` → `IdentityGateway`:
 
-Verificado: **build limpo** (0 avisos, 0 erros com warnings-as-errors) e **cinco projetos de teste verdes**.
+| Camada | O que já existe |
+|---|---|
+| `Domain/Common` | `AggregateRoot`, `Entity`, `Result`, `ValueObject`, `IAuditable`, `ISoftDeletable`, `IDomainEvent`, `IHasDomainEvents` |
+| `Domain/Errors` | `Error`, `ErrorType`, `DomainErrors` |
+| `Domain/ValueObjects` | `Email` |
+| `Application/Common` | `ICommand`/`IQuery` e handlers, 8 abstrações, behaviors de Logging, Validation, Transaction e CacheInvalidation |
+| `Infrastructure` | Interceptors de auditoria, domain event e soft delete; Outbox completo; HybridCache; options validadas |
+| `Api` | Middlewares de correlação, log, exceção e cabeçalhos de segurança; `ResultExtensions`; `JwtTokenService` |
+| `tests/` | 4 suítes de regras de arquitetura + testes de domínio, behaviors, DI e segurança |
 
-**Ainda não existe:** nenhuma entidade, handler, endpoint, `docker-compose.yml` nem realm. As pastas de
-domínio da §7 estão criadas com `.gitkeep`.
+Também entraram `Dockerfile`, `docker-compose.yml` (postgres, redis, seq, jaeger), `.editorconfig`,
+`global.json` e o workflow de CI — nada disso existia no esqueleto anterior.
+
+Verificado em 2026-09-20: **build limpo** (0 avisos, 0 erros com warnings-as-errors) e **111 testes —
+105 passam, 6 em skip documentado, 0 falham**.
+
+**Os 6 skips são deliberados e se reativam sozinhos no M0:** quatro regras de arquitetura cuja guarda
+`NotBeEmpty` dispara enquanto não há agregado nem handler para inspecionar (a guarda existe para a regra
+não passar em vacuidade), e dois testes de 401 que dependem de um endpoint protegido existir — sem rota
+registrada, o roteamento responde 404 antes de a autorização ser consultada.
+
+**O que saiu do template:** a feature de exemplo (`Orders`, `Customers`, migrations, seeder,
+`ExchangeRateClient`), os value objects `Money` e `Document`, e o `DevTokenModule` — que emite JWT sem
+senha, e num gateway de identidade seria um emissor paralelo ao Keycloak.
+
+**Ainda não existe:** nenhuma entidade, handler ou endpoint do IdentityGateway, nem o realm Keycloak. O
+`docker-compose.yml` existe mas ainda não tem keycloak, rabbitmq, mailpit nem a segunda API.
 
 ### Os documentos
 
@@ -106,18 +124,18 @@ tenant: membros, clients OIDC (aplicações — SPA, mobile, M2M), permission se
 
 ## Próximo passo
 
-**Continuar o M0**, na ordem do roadmap da v2.3 §16. O esqueleto da solution está pronto; falta a
-fundação de fato. O M0 deixou de ser trabalho rotineiro e virou a peça mais crítica do projeto: com
-demonstração por README, é o primeiro contato do avaliador, e uma falha ali encerra a leitura antes
-dos ADRs.
+**Continuar o M0**, na ordem do roadmap da v2.3 §16. A fundação já está no lugar; falta o domínio. O M0
+deixou de ser trabalho rotineiro e virou a peça mais crítica do projeto: com demonstração por README, é o
+primeiro contato do avaliador, e uma falha ali encerra a leitura antes dos ADRs.
 
-### 1. Trazer a fundação do CleanStart
+### 1. ~~Trazer a fundação do CleanStart~~ — feito
 
-Clonar <https://github.com/Joseleno/CleanStart> e trazer `Domain/Common`, `Application/Common`, os
-interceptors e os `ArchitectureTests`, renomeando `CleanStart` → `IdentityGateway`. **Não trazer a
-feature `Orders`** — é referência, não fundação. Isso dá de uma vez `AggregateRoot<T>`, `Entity`,
-`ValueObject`, `Result<T>`, `Error`, `ICommand`/`IQuery` e seus handlers, além do interceptor de
-`SaveChanges` que já implementa o Outbox do ADR-006.
+Feito refazendo o repositório a partir do template, como deveria ter sido desde o início. `AggregateRoot<T>`,
+`Entity`, `ValueObject`, `Result<T>`, `Error`, `ICommand`/`IQuery` e os interceptors de `SaveChanges` que
+implementam o Outbox do ADR-006 já existem e têm teste. Ver "O que já está no repositório", acima.
+
+**O primeiro agregado do IdentityGateway é o passo seguinte** — e ele reativa os 4 testes de arquitetura
+hoje em skip, que é o sinal de que a fundação está de fato sendo usada.
 
 ### 2. Os quatro itens críticos do realm e do compose
 
@@ -138,6 +156,11 @@ Vêm diretamente de achados da revisão e não podem ser esquecidos:
 `docker-compose.yml` unificado (§15: keycloak, postgres com dois bancos, rabbitmq, mailpit, redis,
 seq, jaeger e as duas APIs), health checks, CI com os testes de arquitetura, e auditoria e
 observabilidade desde já.
+
+Parte disso veio do template e é ponto de partida, não folha em branco: o compose já sobe postgres,
+redis, seq e jaeger, o CI já tem build, testes e imagem Docker, e os health checks `/health/live` e
+`/health/ready` já respondem (com teste). Falta acrescentar keycloak, rabbitmq, mailpit e a segunda API,
+e ligar os testes de arquitetura no CI.
 
 ### 4. Ao final, atualizar o README
 
@@ -187,13 +210,14 @@ Decisões tomadas ao montar a solution que a spec não registra, e que valem par
 | Solution em **`.slnx`** | Formato novo do .NET, e é a convenção canônica do time |
 | **`Directory.Packages.props`** com versões centralizadas | Um lugar só para versionar pacote; evita divergência entre dez projetos |
 | **`Directory.Build.props`** com `TreatWarningsAsErrors` | Ligado desde o primeiro commit — depois de acumular avisos, ninguém liga |
-| **xUnit v3** | O template `dotnet new xunit` traz o v2; trocado à mão para bater com o CleanStart |
+| **xUnit v3** | Herdado do CleanStart, que é a base do repositório |
 | **`.gitattributes` com `eol=lf`** e `core.autocrlf false` | Repositório nasce com terminadores consistentes, em vez de normalizar depois |
-| Pastas da §7 com **`.gitkeep`** | A estrutura de camadas fica visível antes de existir código |
+| **Partir do template, não de `dotnet new`** | O CleanStart é um *template repository*: usá-lo dá a fundação inteira com testes. Criar a topologia à mão dá pastas vazias que parecem prontas — foi o que aconteceu na primeira tentativa e custou um refazimento |
 
-> **Cuidado com CRLF.** Editar os documentos com script Python em Windows reescreve o arquivo inteiro
-> em CRLF e polui o diff. Se for editar por script, normalizar para LF antes de commitar — já aconteceu
-> uma vez e foi corrigido.
+> **Cuidado ao editar estes documentos por script em Windows.** Script reescreve o arquivo inteiro em
+> CRLF e polui o diff; pior, `perl -e` inline lê o próprio script como Latin-1 e transforma os acentos
+> em mojibake (`fundação` → `fundaÃ§Ã£o`) sem avisar. Editar com ferramenta que preserve o encoding, ou
+> normalizar para LF e conferir os acentos antes de commitar. Já aconteceu duas vezes.
 
 ---
 
