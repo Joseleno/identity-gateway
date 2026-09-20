@@ -25,7 +25,7 @@ dotnet test
 
 Se **todos** os testes de integração falharem, o Docker não está rodando. É a primeira coisa a verificar.
 
-O [guia de primeiros passos](docs/getting-started.md) leva do clone ao primeiro request.
+O [README](README.md) leva do clone ao ambiente local de pé.
 
 ---
 
@@ -75,7 +75,7 @@ Nenhuma mudança é considerada pronta sem teste no nível apropriado:
 | Estrutura ou convenção | `ArchitectureTests` |
 
 > **O provider InMemory do EF Core é proibido** em teste de integração. Ele não tem constraint, não tem
-> transação e não fala SQL: aprova o que o PostgreSQL reprovaria. Ver [ADR 0007](docs/adr/0007-testcontainers-para-integracao.md).
+> transação e não fala SQL: aprova o que o PostgreSQL reprovaria. Teste de integração usa Testcontainers.
 
 ### Dependência nova precisa de justificativa
 
@@ -105,7 +105,8 @@ Outras convenções: comentário em **português**, identificadores em **inglês
 e exception fica para falha de infraestrutura; `IDateTimeProvider` em vez de `DateTime.UtcNow`;
 `CancellationToken` propagado em toda chamada assíncrona; um caso de uso é **uma pasta** com tudo dentro.
 
-O guia de [como acrescentar uma funcionalidade](docs/adding-a-feature.md) percorre um caso de uso completo.
+A [especificação arquitetural v2.3](docs/especificacao-arquitetural-v2.3.md) descreve as camadas, os
+agregados e os contratos que um caso de uso novo precisa respeitar.
 
 ## Commits
 
@@ -124,8 +125,8 @@ decisão registrada nos ADRs, diga isso explicitamente.
 - `dotnet build` e `dotnet test` verdes — a CI confere, mas descobrir na sua máquina é mais rápido.
 - Se mudou comportamento, **atualize a documentação afetada** no mesmo PR. Documentação que envelhece é pior que
   documentação ausente: afirma com confiança um estado que já não é verdade.
-- Decisão técnica nova merece um **ADR** em `docs/adr/` — contexto → decisão → consequências, e a seção de
-  consequências não lista só benefícios.
+- Decisão técnica nova merece um **ADR** na seção de ADRs da especificação — contexto → decisão →
+  consequências, e a seção de consequências não lista só benefícios.
 
 A CI roda build, testes e a construção da imagem. Os três precisam passar.
 

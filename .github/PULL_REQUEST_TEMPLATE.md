@@ -40,6 +40,6 @@
 - [ ] Nenhum segredo, connection string real ou dado pessoal no diff
 
 <!--
-  Decisão técnica nova merece um ADR em docs/adr/ — contexto → decisão → consequências.
+  Decisão técnica nova merece um ADR na especificação — contexto → decisão → consequências.
   A seção de consequências não lista só benefícios.
 -->

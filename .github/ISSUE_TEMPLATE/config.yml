@@ -1,18 +1,19 @@
 blank_issues_enabled: false
 
 contact_links:
-  - name: Dúvida sobre como usar o kit
-    url: https://github.com/Joseleno/IdentityGateway/discussions
+  - name: Dúvida sobre como usar o projeto
+    url: https://github.com/Joseleno/identity-gateway/discussions
     about: >
       Pergunta não é defeito. Discussions é o lugar — e a resposta fica pesquisável para quem tiver a mesma
       dúvida depois.
 
   - name: Por que a arquitetura é assim
-    url: https://github.com/Joseleno/IdentityGateway/tree/main/docs/adr
+    url: https://github.com/Joseleno/identity-gateway/tree/main/docs
     about: >
-      Os dez ADRs explicam cada decisão, o que foi descartado e o que a escolha custou. Se a resposta não
-      estiver lá, é um defeito da documentação — abra uma issue.
+      A especificação arquitetural (v2.3 é a vigente) e a revisão crítica explicam cada decisão, o que foi
+      descartado e o que a escolha custou. Se a resposta não estiver lá, é um defeito da documentação —
+      abra uma issue.
 
-  - name: Primeiros passos
-    url: https://github.com/Joseleno/IdentityGateway/blob/main/docs/getting-started.md
-    about: Do clone ao primeiro request, incluindo o que fazer quando algo não funciona.
+  - name: Estado do projeto e próximos passos
+    url: https://github.com/Joseleno/identity-gateway/blob/main/docs/handoff-revisao.md
+    about: O que já existe, o que falta, e em que ordem o M0 continua.

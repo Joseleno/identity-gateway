@@ -136,7 +136,7 @@ public static partial class StartupTasks
             │
             │      dotnet user-secrets list --project src/IdentityGateway.Api
             │
-            └─ O passo a passo está em docs/getting-started.md (Caminho 2).
+            └─ O README tem o passo a passo do ambiente local.
 
             """);
 
@@ -163,7 +163,7 @@ public static partial class StartupTasks
 
                       dotnet user-secrets list --project src/IdentityGateway.Api
 
-                  O passo a passo está em docs/getting-started.md (Caminho 2).
+                  O README tem o passo a passo do ambiente local.
                   """)]
     private static partial void BancoNaoResponde(ILogger logger, string servidor);
 }
