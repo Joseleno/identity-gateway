@@ -13,12 +13,13 @@
 ## Global Constraints
 
 - **`TreatWarningsAsErrors` está ligado** (`Directory.Build.props`). Aviso do analisador quebra o build — inclusive `IDE0161` (namespace com escopo de arquivo) e `CA1861`. Escreva `namespace X;` com ponto e vírgula, nunca com chaves.
-- **`var` quando o tipo é aparente, explícito quando não é.** O `.editorconfig` tem as três faces da
-  regra: `csharp_style_var_when_type_is_apparent = true` (linha 51), `var_for_built_in_types = false`
-  (50) e `var_elsewhere = false` (52). Então `var resultado = TenantSlug.Create(x);` — o tipo está no lado
-  direito — mas `string normalizado = value.Trim();` e `int contador = 0;`. Os blocos de código deste
-  plano usam tipo explícito em alguns pontos onde a regra pede `var`: **siga a regra, não a transcrição**,
-  e confirme com `dotnet build`.
+- **`var` e tipo explícito convivem; o `dotnet build` é o árbitro.** O `.editorconfig` tem as três faces
+  da regra (`var_when_type_is_apparent = true`, `var_for_built_in_types = false`, `var_elsewhere = false`),
+  todas como `warning`. Na prática o IDE0007 só considera o tipo "aparente" quando o construtor aparece à
+  direita — `new T(...)`, cast, `as`. **Retorno de factory method não conta**, por isso o código do
+  template escreve `Result<Email> resultado = Email.Of(entrada);` com tipo explícito e compila limpo. Siga
+  os blocos deste plano como estão e confirme com o build; se ele apontar IDE0007 ou IDE0008 em alguma
+  linha, é essa linha que muda, não o padrão inteiro.
 - **Comentário e documentação em português**, seguindo o tom do repositório: explique o *porquê*, não o *o quê*.
 - **XML doc em todo membro público** — o repositório trata doc ausente como aviso.
 - **Nomes de teste:** `Metodo_Cenario_Resultado` (ex.: `ReleaseSeat_SemVagaOcupada_Lanca`).
