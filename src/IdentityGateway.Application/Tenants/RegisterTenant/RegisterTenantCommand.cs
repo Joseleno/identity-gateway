@@ -1,5 +1,3 @@
-#pragma warning disable MSG0005
-
 using IdentityGateway.Application.Common.Messaging;
 using IdentityGateway.Domain.Tenants;
 
@@ -24,5 +22,3 @@ public sealed record RegisterTenantCommand(
     string Slug,
     string PlanCode,
     string InitialAdminEmail) : ICommand<TenantId>;
-
-#pragma warning restore MSG0005
