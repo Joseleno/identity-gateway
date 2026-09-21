@@ -29,7 +29,7 @@ public sealed class RegrasDeDominioTests
     /// atribui, e o segundo só atua na construção. O que a regra proíbe é o setter <b>acessível de fora</b>.
     /// </para>
     /// </remarks>
-    [Fact(Skip = "Sem agregado/handler no dominio ainda: a guarda NotBeEmpty dispara de proposito para a regra nao passar em vacuidade. Reativar com o primeiro agregado do M0.")]
+    [Fact]
     public void Entidades_NaoExpoemSetterPublico()
     {
         List<Type> entidades = [.. Domain.GetTypes().Where(EhEntidade)];
@@ -64,7 +64,7 @@ public sealed class RegrasDeDominioTests
     /// <summary>
     /// Toda raiz de agregado expõe os eventos como coleção somente leitura.
     /// </summary>
-    [Fact(Skip = "Sem agregado/handler no dominio ainda: a guarda NotBeEmpty dispara de proposito para a regra nao passar em vacuidade. Reativar com o primeiro agregado do M0.")]
+    [Fact]
     public void RaizesDeAgregado_ExpoemColecoesSomenteLeitura()
     {
         List<Type> raizes = [.. Domain.GetTypes().Where(EhRaizDeAgregado)];
