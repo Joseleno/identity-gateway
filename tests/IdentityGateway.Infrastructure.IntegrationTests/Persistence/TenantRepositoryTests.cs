@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using IdentityGateway.Application.Common.Abstractions;
 using IdentityGateway.Domain.Tenants;
 using IdentityGateway.Infrastructure.Persistence;
@@ -13,6 +14,11 @@ namespace IdentityGateway.Infrastructure.IntegrationTests.Persistence;
 /// comparação mal mapeada viraria avaliação client-side — que num dublê passaria despercebida e em produção
 /// traria a tabela inteira para a memória.
 /// </remarks>
+[SuppressMessage(
+    "Performance",
+    "CA1859:Use concrete types when possible for improved performance",
+    Justification = "O teste exercita o repositório PELA PORTA que a Application consome. Trocar por "
+        + "TenantRepository provaria a classe concreta e não o contrato — e é o contrato que o handler usa.")]
 public sealed class TenantRepositoryTests(PostgresFixture postgres) : IClassFixture<PostgresFixture>
 {
     [Fact]

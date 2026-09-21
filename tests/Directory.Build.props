@@ -20,13 +20,8 @@
       convenção é justamente `Metodo_Cenario_ResultadoEsperado` — o underscore é o que separa as
       três partes e faz o nome do teste que falhou ser legível no relatório. Desligado apenas em
       tests/, nunca na raiz.
-
-      CA1859 (usar o tipo concreto em vez da interface, por desempenho) também vale em produção,
-      mas em teste de integração o ponto é justamente exercitar o repositório através do PORT
-      (ITenantRepository) que o código de produção consome — trocar pelo tipo concreto interno
-      esconderia exatamente o que o teste quer provar.
     -->
-    <NoWarn>$(NoWarn);CA1707;CA1859</NoWarn>
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
   </PropertyGroup>
 
   <!-- Infraestrutura de teste comum aos cinco projetos. -->

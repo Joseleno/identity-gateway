@@ -21,7 +21,7 @@ public sealed class SchemaDeTenantsTests(PostgresFixture postgres) : IClassFixtu
 
         int total = await contexto.Tenants.CountAsync(ct);
 
-        total.Should().BeGreaterThanOrEqualTo(0);
+        total.Should().Be(0);
     }
 
     [Fact]
