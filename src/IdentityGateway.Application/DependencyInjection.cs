@@ -1,4 +1,5 @@
 using IdentityGateway.Application.Common.Behaviors;
+using IdentityGateway.Application.Tenants.RegisterTenant;
 using FluentValidation;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
@@ -48,6 +49,7 @@ public static class DependencyInjection
     private static IServiceCollection AddValidators(this IServiceCollection services)
     {
         // Um registro por validator, conforme os agregados do IdentityGateway forem entrando.
+        services.AddScoped<IValidator<RegisterTenantCommand>, RegisterTenantValidator>();
 
         return services;
     }
