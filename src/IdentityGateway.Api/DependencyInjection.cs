@@ -98,7 +98,12 @@ public static class DependencyInjection
                 };
             });
 
-        services.AddAuthorization();
+        // Claim plano, não RequireRole: a §12.1 documenta que RequireRole falha com o Keycloak, porque o papel
+        // chega aninhado em realm_access.roles. RequireRole passaria hoje, com o JwtTokenService dos testes, e
+        // quebraria quando o Keycloak entrasse — o pior momento para descobrir.
+        services.AddAuthorization(options =>
+            options.AddPolicy("PlatformAdmin", policy =>
+                policy.RequireClaim("roles", "platform-admin")));
 
         // Mecânica de emissão/validação de JWT. No IdentityGateway o emissor é o Keycloak: este serviço fica
         // para os testes e para cabear a validação contra o realm no M0.

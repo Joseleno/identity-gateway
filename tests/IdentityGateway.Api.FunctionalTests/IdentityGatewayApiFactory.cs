@@ -99,14 +99,14 @@ public sealed class IdentityGatewayApiFactory : WebApplicationFactory<Program>, 
     /// O usuário do token, ou nulo para gerar um. É este identificador que a auditoria grava em
     /// <c>CreatedBy</c>, então um teste que confira autoria precisa informá-lo.
     /// </param>
-    public HttpClient CreateClientAutenticado(Guid? usuarioId = null)
+    public HttpClient CreateClientAutenticado(Guid? usuarioId = null, params string[] roles)
     {
         HttpClient cliente = CreateClient();
 
         using IServiceScope escopo = Services.CreateScope();
         JwtTokenService emissor = escopo.ServiceProvider.GetRequiredService<JwtTokenService>();
 
-        string token = emissor.Emitir(usuarioId ?? Guid.CreateVersion7(), "teste");
+        string token = emissor.Emitir(usuarioId ?? Guid.CreateVersion7(), "teste", roles);
 
         cliente.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
