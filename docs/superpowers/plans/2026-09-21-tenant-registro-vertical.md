@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - **`TreatWarningsAsErrors` ligado** — todo aviso quebra o build, inclusive os de estilo do `.editorconfig`.
-- **`var` só quando o tipo está aparente à direita.** `WebApplicationBuilder builder = WebApplication.CreateBuilder(args);` — `var` ali não compila. `var id = Guid.CreateVersion7();` compila.
+- **A regra do `var` é bidirecional e vale como ERRO (`IDE0007`/`IDE0008`).** `var` é OBRIGATÓRIO quando o tipo está aparente à direita — `var tenant = Tenant.Register(...)`, `var id = Guid.CreateVersion7()`. E é PROIBIDO quando não está — `WebApplicationBuilder builder = WebApplication.CreateBuilder(args);`, `Result<TenantSlug> slug = TenantSlug.Create(...)` (o tipo devolvido nao aparece a direita). Errar qualquer um dos dois lados quebra o build.
 - **Comentário em português, identificadores em inglês.** Comentário explica **por quê**, nunca o quê.
 - **Erro de negócio devolve `Result`; exception fica para falha de infraestrutura.**
 - **`CancellationToken` propagado em toda chamada assíncrona.**
@@ -483,7 +483,7 @@ public sealed class RegisterTenantHandler(
             return Result.Failure<TenantId>(TenantErrors.UnknownPlan(command.PlanCode));
         }
 
-        Tenant tenant = Tenant.Register(command.Name, slug.Value, plano);
+        var tenant = Tenant.Register(command.Name, slug.Value, plano);
 
         repositorio.Add(tenant);
 
@@ -560,7 +560,7 @@ public sealed class MapeamentoDeTenantTests(PostgresFixture postgres) : IClassFi
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         TenantSlug slug = TenantSlug.Create($"acme-{Guid.NewGuid():N}"[..20]).Value;
-        Tenant original = Tenant.Register("Acme Corp", slug, new Plan(PlanTier.Standard, 50, 5));
+        var original = Tenant.Register("Acme Corp", slug, new Plan(PlanTier.Standard, 50, 5));
 
         await using (AppDbContext escrita = postgres.CriarContexto())
         {
@@ -588,7 +588,7 @@ public sealed class MapeamentoDeTenantTests(PostgresFixture postgres) : IClassFi
         // enum aberto ao lado. E a ordem dos membros deixa de ser dado de schema.
         CancellationToken ct = TestContext.Current.CancellationToken;
         TenantSlug slug = TenantSlug.Create($"enum-{Guid.NewGuid():N}"[..20]).Value;
-        Tenant tenant = Tenant.Register("Enum", slug, new Plan(PlanTier.Enterprise, 500, 50));
+        var tenant = Tenant.Register("Enum", slug, new Plan(PlanTier.Enterprise, 500, 50));
 
         await using AppDbContext contexto = postgres.CriarContexto();
         contexto.Tenants.Add(tenant);
