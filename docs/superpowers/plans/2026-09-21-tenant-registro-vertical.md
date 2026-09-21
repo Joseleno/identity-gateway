@@ -882,7 +882,7 @@ public sealed class AtomicidadeDoRegistroTests(PostgresFixture postgres) : IClas
         // Uma mensagem, do tenant que de fato entrou — não duas.
         await using AppDbContext conferencia = postgres.CriarContexto();
         List<string> conteudos = await conferencia.OutboxMessages
-            .Where(mensagem => mensagem.Type == "tenant-registered" && mensagem.Content.Contains(valor))
+            .Where(mensagem => mensagem.Type == "tenant-registered")
             .Select(mensagem => mensagem.Content)
             .ToListAsync(ct);
 
@@ -903,7 +903,7 @@ public sealed class AtomicidadeDoRegistroTests(PostgresFixture postgres) : IClas
         await contexto.SaveChangesAsync(ct);
 
         List<string> conteudos = await contexto.OutboxMessages
-            .Where(mensagem => mensagem.Type == "tenant-registered" && mensagem.Content.Contains(valor))
+            .Where(mensagem => mensagem.Type == "tenant-registered")
             .Select(mensagem => mensagem.Content)
             .ToListAsync(ct);
 
