@@ -41,4 +41,14 @@ public static class DomainErrors
             $"'{valor}' não é um endereço de e-mail válido.");
     }
 
+    /// <summary>Erros do value object <c>TenantSlug</c>.</summary>
+    public static class TenantSlug
+    {
+        /// <summary>Slug fora do formato aceito.</summary>
+        public static Error Invalido(string valor) => Error.Validation(
+            "TenantSlug.Invalido",
+            $"'{valor}' não é um slug válido: use de 3 a 63 caracteres entre letras minúsculas, dígitos e "
+            + "hífen, sem hífen no início, no fim ou repetido.");
+    }
+
 }
