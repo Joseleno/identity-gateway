@@ -36,7 +36,7 @@ public sealed class TenantTests
 
         tenant.DomainEvents.Should().ContainSingle()
             .Which.Should().BeOfType<TenantRegistered>()
-            .Which.Slug.Value.Should().Be("acme");
+            .Which.Slug.Should().Be("acme");
     }
 
     [Fact]

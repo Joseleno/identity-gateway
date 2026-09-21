@@ -67,7 +67,7 @@ public sealed class Tenant : AggregateRoot<TenantId>
 
         Tenant tenant = new(TenantId.New(), name, slug, plan);
 
-        tenant.RaiseDomainEvent(new TenantRegistered(tenant.Id, slug));
+        tenant.RaiseDomainEvent(new TenantRegistered(tenant.Id, slug.Value));
 
         return tenant;
     }
