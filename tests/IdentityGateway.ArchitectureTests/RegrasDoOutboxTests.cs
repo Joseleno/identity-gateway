@@ -123,6 +123,14 @@ public sealed class RegrasDoOutboxTests
             return true;
         }
 
+        // Converter próprio resolve a reconstrução sozinho, qualquer que seja a forma dos construtores.
+        // Sem esta saída a regra reprovaria um tipo que o serializador sabe ler — bloquear código correto
+        // é pior que o defeito que a regra caça, porque o autor não tem como satisfazê-la.
+        if (efetivo.GetCustomAttribute<JsonConverterAttribute>() is not null)
+        {
+            return true;
+        }
+
         ConstructorInfo[] publicos = efetivo.GetConstructors();
 
         return publicos.Any(c => c.GetParameters().Length == 0)
