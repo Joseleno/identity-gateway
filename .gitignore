@@ -480,3 +480,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Workspace scratch do subagent-driven-development: ledger, briefs e pacotes de
+# review de um plano em execucao. O registro que sobrevive e o git log.
+.superpowers/
