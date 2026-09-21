@@ -52,6 +52,8 @@ public sealed class DependencyInjectionTests
     [InlineData(typeof(ICorrelationIdProvider))]
     [InlineData(typeof(ICurrentUser))]
     [InlineData(typeof(IOutboxPublisher))]
+    [InlineData(typeof(ITenantRepository))]
+    [InlineData(typeof(IPlanCatalog))]
     public void TodasAsAbstracoesDaApplication_SaoResolviveis(Type servico)
     {
         // Se a Application declara uma interface que ninguém registrou, o erro aparece aqui — não na primeira
