@@ -9,12 +9,16 @@ namespace IdentityGateway.Infrastructure.Persistence.Configurations;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Não há construtor sem parâmetro no agregado, e não é preciso.</b> O EF Core materializa pelo construtor
-/// parametrizado, casando os parâmetros <c>id</c>, <c>name</c>, <c>slug</c> e <c>plan</c> com as propriedades
-/// de mesmo nome. O que fica de fora dele — <c>Status</c>, <c>ExternalOrganizationId</c>, <c>OccupiedSeats</c>
-/// e <c>OverSubscribed</c> — é escrito no campo de apoio, como já aconteceria por causa do <c>private set</c>.
-/// A alternativa seria um <c>private Tenant()</c> com três <c>null!</c>: um agregado momentaneamente inválido
-/// para agradar o ORM.
+/// <b>O agregado não tem construtor sem parâmetro, e não precisa.</b> O EF materializa pelo construtor de
+/// três parâmetros do <see cref="Tenant"/>, casando <c>id</c>, <c>name</c> e <c>slug</c> com as propriedades
+/// de mesmo nome — os três são conversões de valor único. O que fica de fora é escrito no campo de apoio,
+/// como já aconteceria por causa do <c>private set</c>.
+/// </para>
+/// <para>
+/// <b>O <c>Plan</c> não entra no construtor porque o EF recusa vincular value object de múltiplos campos</b>
+/// — nem como <c>ComplexProperty</c>, nem como <c>OwnsOne</c> (dotnet/efcore#31621). Por isso o
+/// <see cref="Tenant"/> tem dois construtores: este, que o ORM usa, e o de quatro parâmetros, que o domínio
+/// usa e que mantém o plano obrigatório. A razão completa está no XML doc de cada um.
 /// </para>
 /// </remarks>
 internal sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
@@ -96,7 +100,13 @@ internal sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
 
         // Concorrência otimista por xmin, que a §6.1 exige para OccupiedSeats. Propriedade de sombra porque
         // xmin é coluna de sistema do PostgreSQL: o domínio não deve carregar um campo de versão que só o ORM
-        // entende. Não gera coluna na migration — gera o WHERE xmin = @original no UPDATE.
+        // entende. O efeito é o WHERE xmin = @original no UPDATE.
+        //
+        // ATENÇÃO ao regerar a migration inicial: mesmo com HasColumnType("xid"), o EF emite a coluna xmin no
+        // CreateTable, e ela foi removida à mão de CriacaoDeTenants — criá-la falharia, porque o PostgreSQL já
+        // a tem em toda tabela. Não é problema recorrente: depois desta migration, xmin está nos dois lados do
+        // snapshot que o differ compara, então nunca mais reaparece. Só volta a morder quem apagar e refizer
+        // esta migration do zero.
         builder.Property<uint>("xmin")
             .HasColumnName("xmin")
             .HasColumnType("xid")
