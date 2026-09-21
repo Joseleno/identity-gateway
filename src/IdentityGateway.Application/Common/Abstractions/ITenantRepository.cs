@@ -23,5 +23,5 @@ public interface ITenantRepository
     /// Dá a mensagem de negócio boa (<c>409</c> nomeando o slug). Não substitui o índice único do banco: entre
     /// esta consulta e o <c>INSERT</c> há uma janela em que outra requisição grava o mesmo slug.
     /// </remarks>
-    Task<bool> SlugExistsAsync(TenantSlug slug, CancellationToken cancellationToken);
+    Task<bool> SlugExistsAsync(TenantSlug slug, CancellationToken cancellationToken = default);
 }
