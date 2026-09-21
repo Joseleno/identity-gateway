@@ -1730,7 +1730,7 @@ internal sealed class TenantsModule : ICarterModule
 - [ ] **Step 5: Rodar e ver passar**
 
 Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter RegistroDeTenantTests`
-Expected: PASS, 8 execucoes de teste (6 metodos; as duas [Theory] contam 2 cada).
+Expected: PASS, 7 testes.
 
 - [ ] **Step 6: Commit**
 
