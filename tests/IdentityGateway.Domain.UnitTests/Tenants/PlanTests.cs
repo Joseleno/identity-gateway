@@ -24,6 +24,33 @@ public sealed class PlanTests
     }
 
     [Fact]
+    public void ComMaxUsersNegativo_Lanca()
+    {
+        // Recusar aqui, e não adiante: um MaxUsers negativo faria ReserveSeat recusar toda reserva com
+        // "o plano não admite mais de -5 membros", mensagem que descreve o sintoma e esconde a causa.
+        Action criar = () => _ = new Plan(PlanTier.Free, maxUsers: -5, maxClients: 1);
+
+        criar.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void ComMaxClientsNegativo_Lanca()
+    {
+        Action criar = () => _ = new Plan(PlanTier.Free, maxUsers: 5, maxClients: -1);
+
+        criar.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void ComLimitesZerados_Aceita()
+    {
+        // Zero é decisão comercial possível, não impossibilidade — diferente de negativo.
+        Action criar = () => _ = new Plan(PlanTier.Free, maxUsers: 0, maxClients: 0);
+
+        criar.Should().NotThrow();
+    }
+
+    [Fact]
     public void PlanosDeTiersDiferentes_NaoSaoIguais()
     {
         var gratuito = new Plan(PlanTier.Free, maxUsers: 5, maxClients: 1);

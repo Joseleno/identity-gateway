@@ -182,4 +182,59 @@ public sealed class TenantTests
 
         liberar.Should().Throw<DomainInvariantViolation>();
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Register_ComNomeVazio_Lanca(string nome)
+    {
+        Action registrar = () => Tenant.Register(nome, SlugValido(), PlanoPadrao());
+
+        registrar.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void Register_ComSlugNulo_Lanca()
+    {
+        Action registrar = () => Tenant.Register("Acme", null!, PlanoPadrao());
+
+        registrar.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void Register_ComPlanoNulo_Lanca()
+    {
+        Action registrar = () => Tenant.Register("Acme", SlugValido(), null!);
+
+        registrar.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void Register_ComNomeCercadoDeEspacos_Apara()
+    {
+        // O nome é aparado mas mantém a caixa: é texto de exibição, não identificador. O slug, que é
+        // identificador, normaliza a caixa — a diferença entre os dois é deliberada.
+        var tenant = Tenant.Register("  Acme Corp  ", SlugValido(), PlanoPadrao());
+
+        tenant.Name.Should().Be("Acme Corp");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void MarkProvisioned_ComIdExternoVazio_Lanca(string idExterno)
+    {
+        // Sem esta guarda o tenant iria a Active com id externo em branco — indistinguível de "não
+        // provisionado" para o job de reconciliação, que compara tenants com as Organizations existentes.
+        Tenant tenant = TenantRegistrado();
+
+        Action provisionar = () => tenant.MarkProvisioned(idExterno);
+
+        provisionar.Should().Throw<ArgumentException>();
+        tenant.Status.Should().Be(TenantStatus.Pending);
+    }
+
+    private static TenantSlug SlugValido() => TenantSlug.Create("acme").Value;
+
+    private static Plan PlanoPadrao() => new(PlanTier.Standard, maxUsers: 10, maxClients: 5);
 }

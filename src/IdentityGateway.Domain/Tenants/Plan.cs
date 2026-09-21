@@ -20,16 +20,39 @@ namespace IdentityGateway.Domain.Tenants;
 /// <param name="tier">Nível comercial.</param>
 /// <param name="maxUsers">Teto de vagas de membro.</param>
 /// <param name="maxClients">Teto de clients OIDC ativos.</param>
-public sealed class Plan(PlanTier tier, int maxUsers, int maxClients) : ValueObject
+public sealed class Plan : ValueObject
 {
+    /// <summary>
+    /// Cria o plano com os limites contratados.
+    /// </summary>
+    /// <remarks>
+    /// Limite negativo é recusado aqui, e não mais adiante: um <c>MaxUsers</c> negativo faria
+    /// <c>ReserveSeat</c> recusar toda reserva com "o plano não admite mais de -5 membros" — uma mensagem
+    /// que descreve o sintoma e esconde a causa, que é catálogo mal configurado. Zero é permitido: um
+    /// plano sem vagas é estranho, mas é uma decisão comercial possível, e não uma impossibilidade.
+    /// </remarks>
+    /// <param name="tier">Nível comercial.</param>
+    /// <param name="maxUsers">Teto de vagas de membro; não pode ser negativo.</param>
+    /// <param name="maxClients">Teto de clients OIDC ativos; não pode ser negativo.</param>
+    /// <exception cref="ArgumentOutOfRangeException">Se algum dos tetos for negativo.</exception>
+    public Plan(PlanTier tier, int maxUsers, int maxClients)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxUsers);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxClients);
+
+        Tier = tier;
+        MaxUsers = maxUsers;
+        MaxClients = maxClients;
+    }
+
     /// <summary>Nível comercial do plano.</summary>
-    public PlanTier Tier { get; } = tier;
+    public PlanTier Tier { get; }
 
     /// <summary>Teto de vagas de membro.</summary>
-    public int MaxUsers { get; } = maxUsers;
+    public int MaxUsers { get; }
 
     /// <summary>Teto de clients OIDC ativos.</summary>
-    public int MaxClients { get; } = maxClients;
+    public int MaxClients { get; }
 
     /// <inheritdoc />
     protected override IEnumerable<object?> GetEqualityComponents()

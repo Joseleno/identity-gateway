@@ -65,7 +65,11 @@ public sealed class Tenant : AggregateRoot<TenantId>
         ArgumentNullException.ThrowIfNull(slug);
         ArgumentNullException.ThrowIfNull(plan);
 
-        Tenant tenant = new(TenantId.New(), name, slug, plan);
+        // O nome é aparado, mas não tem a caixa alterada, e a diferença em relação ao slug é deliberada:
+        // o slug é identificador — `Acme` e `acme` seriam o mesmo tenant e precisam colidir —, enquanto o
+        // nome é texto de exibição, e "IBM" não pode virar "ibm". Aparar o entorno resolve o espaço colado
+        // sem tocar no que o cliente escolheu se chamar.
+        Tenant tenant = new(TenantId.New(), name.Trim(), slug, plan);
 
         tenant.RaiseDomainEvent(new TenantRegistered(tenant.Id, slug.Value));
 
@@ -106,7 +110,9 @@ public sealed class Tenant : AggregateRoot<TenantId>
     /// Marca que o provisionamento falhou depois de esgotados os retries.
     /// </summary>
     /// <remarks>
-    /// O tenant fica aguardando retry manual, e o evento segue disponível para reprocessamento. Idempotente
+    /// O tenant fica aguardando retry manual: a mensagem original continua no Outbox, e reprocessá-la
+    /// chama <see cref="MarkProvisioned"/>, que aceita sair deste estado. Não levanta evento — nada reage
+    /// à falha hoje, e um evento sem consumidor seria despachado a cada tentativa esgotada. Idempotente
     /// porque o consumidor de Fault também pode reentregar.
     /// </remarks>
     /// <exception cref="DomainInvariantViolation">Se o tenant não estiver em Pending nem já falhado.</exception>
@@ -180,15 +186,23 @@ public sealed class Tenant : AggregateRoot<TenantId>
         OccupiedSeats--;
     }
 
-    private void EnsureStatusIn(params TenantStatus[] permitidos)
+    /// <summary>
+    /// Exige que o tenant esteja em um dos estados informados.
+    /// </summary>
+    /// <remarks>
+    /// <c>params ReadOnlySpan</c> e não <c>params TenantStatus[]</c>: o array seria alocado a cada
+    /// chamada, inclusive quando a transição é válida e nada falha. Com o span, os valores ficam na pilha
+    /// e o caminho feliz não aloca. Os chamadores não mudam.
+    /// </remarks>
+    private void EnsureStatusIn(params ReadOnlySpan<TenantStatus> permitidos)
     {
-        if (Array.IndexOf(permitidos, Status) >= 0)
+        if (permitidos.Contains(Status))
         {
             return;
         }
 
         throw new DomainInvariantViolation(
-            $"Tenant {Id.Value}: operação exige o estado {string.Join(" ou ", permitidos)}, "
+            $"Tenant {Id.Value}: operação exige o estado {string.Join(" ou ", permitidos.ToArray())}, "
             + $"mas o tenant está em {Status}.");
     }
 }
