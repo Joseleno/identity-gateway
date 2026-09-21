@@ -74,6 +74,11 @@ public static class DependencyInjection
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        // Catálogo inválido derruba a aplicação na subida, não na primeira requisição.
+        services.AddOptions<PlanOptions>()
+            .Bind(configuration.GetSection(PlanOptions.SectionName))
+            .ValidateOnStart();
+
         return services;
     }
 
@@ -157,6 +162,9 @@ public static class DependencyInjection
         // Padrão sem usuário. A Api registra por cima a implementação que lê o HttpContext (Fase 4); job e
         // seed continuam com esta, gravando autoria nula.
         services.AddScoped<ICurrentUser, NoCurrentUser>();
+
+        // Singleton: é configuração imutável, e uma instância por requisição só produziria lixo.
+        services.AddSingleton<IPlanCatalog, PlanCatalog>();
 
         return services;
     }
