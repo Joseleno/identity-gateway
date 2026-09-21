@@ -1,4 +1,4 @@
-#pragma warning disable CA1710
+using System.Diagnostics.CodeAnalysis;
 
 namespace IdentityGateway.Domain.Common;
 
@@ -17,6 +17,12 @@ namespace IdentityGateway.Domain.Common;
 /// precisa dizer qual invariante caiu e em qual agregado, ou a mensagem não ajuda quem for depurar.
 /// </para>
 /// </remarks>
+[SuppressMessage(
+    "Naming",
+    "CA1710:Identifiers should have correct suffix",
+    Justification = "O nome vem da especificação arquitetural (§11.1) e é lido no código de domínio como "
+        + "uma frase — `throw new DomainInvariantViolation(...)` diz o que aconteceu. O sufixo `Exception` "
+        + "acrescentaria ruído sem informação: a herança já diz que é exceção.")]
 public sealed class DomainInvariantViolation : Exception
 {
     /// <summary>
