@@ -9,12 +9,32 @@ namespace IdentityGateway.Domain.Tenants;
 /// </summary>
 public sealed class Tenant : AggregateRoot<TenantId>
 {
-    private Tenant(TenantId id, string name, TenantSlug slug, Plan plan)
+    /// <remarks>
+    /// <para>
+    /// <b><c>Plan</c> fica fora do construtor por imposição do EF Core, e é a única concessão ao ORM neste
+    /// agregado.</b> O EF materializa por construtor parametrizado casando parâmetros com propriedades
+    /// mapeadas, mas recusa vincular um value object de múltiplos campos: tanto <c>OwnsOne</c> (navegação)
+    /// quanto <c>ComplexProperty</c> falham com "No suitable constructor was found ... Cannot bind 'plan'"
+    /// (dotnet/efcore#31621, em aberto na 10.0.12). Os outros três parâmetros são conversões de valor único
+    /// e vinculam normalmente.
+    /// </para>
+    /// <para>
+    /// A alternativa seria o <c>private Tenant() { }</c> com quatro <c>null!</c> — um agregado inteiro
+    /// momentaneamente inválido. Aqui o construtor continua exigindo id, nome e slug, e só o plano é
+    /// atribuído logo em seguida, por <see cref="Register"/>, que é o único caminho de criação. Nenhum
+    /// chamador consegue produzir um <c>Tenant</c> sem plano.
+    /// </para>
+    /// </remarks>
+    private Tenant(TenantId id, string name, TenantSlug slug)
         : base(id)
     {
         Name = name;
         Slug = slug;
-        Plan = plan;
+
+        // Atribuído por Register, imediatamente após o construtor. O null! existe porque o EF Core não
+        // vincula value object de múltiplos campos a parâmetro de construtor — ver o remarks acima.
+        Plan = null!;
+
         Status = TenantStatus.Pending;
     }
 
@@ -69,7 +89,7 @@ public sealed class Tenant : AggregateRoot<TenantId>
         // o slug é identificador — `Acme` e `acme` seriam o mesmo tenant e precisam colidir —, enquanto o
         // nome é texto de exibição, e "IBM" não pode virar "ibm". Aparar o entorno resolve o espaço colado
         // sem tocar no que o cliente escolheu se chamar.
-        Tenant tenant = new(TenantId.New(), name.Trim(), slug, plan);
+        Tenant tenant = new(TenantId.New(), name.Trim(), slug) { Plan = plan };
 
         tenant.RaiseDomainEvent(new TenantRegistered(tenant.Id, slug.Value));
 
