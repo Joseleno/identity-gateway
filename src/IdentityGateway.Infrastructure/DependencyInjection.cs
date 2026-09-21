@@ -3,6 +3,7 @@ using IdentityGateway.Infrastructure.Configuration;
 using IdentityGateway.Infrastructure.Persistence;
 using IdentityGateway.Infrastructure.Persistence.Interceptors;
 using IdentityGateway.Infrastructure.Persistence.Outbox;
+using IdentityGateway.Infrastructure.Persistence.Repositories;
 using IdentityGateway.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -113,6 +114,8 @@ public static class DependencyInjection
         // SaveChangesAsync e nada mais. Se um dia o limite transacional precisar de comportamento próprio,
         // a mudança é nesta linha, porque a Application já fala com a interface.
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<AppDbContext>());
+
+        services.AddScoped<ITenantRepository, TenantRepository>();
 
         return services;
     }
