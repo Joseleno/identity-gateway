@@ -1,4 +1,5 @@
 using IdentityGateway.Domain.Common;
+using IdentityGateway.Domain.Tenants.Events;
 
 namespace IdentityGateway.Infrastructure.Persistence.Outbox;
 
@@ -36,8 +37,8 @@ internal static class OutboxEventTypes
     /// <summary>Do tipo do evento para o nome curto — usado ao gravar a mensagem.</summary>
     private static readonly Dictionary<Type, string> PorTipo = new()
     {
-        // Uma linha por domain event do IdentityGateway. O teste de arquitetura exige que todo
-        // IDomainEvent esteja registrado aqui.
+        [typeof(TenantRegistered)] = "tenant-registered",
+        [typeof(TenantActivated)] = "tenant-activated",
     };
 
     /// <summary>Do nome curto para o tipo do evento — usado ao despachar.</summary>
