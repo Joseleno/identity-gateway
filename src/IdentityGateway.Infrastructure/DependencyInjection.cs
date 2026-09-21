@@ -75,8 +75,20 @@ public static class DependencyInjection
             .ValidateOnStart();
 
         // Catálogo inválido derruba a aplicação na subida, não na primeira requisição.
+        //
+        // A validação é escrita à mão, e não por `ValidateDataAnnotations`: `PlanOptions` herda de
+        // `Dictionary`, e as anotações só valem para as propriedades do objeto raiz — nunca para os VALORES
+        // do dicionário, que é justamente onde os limites moram. Verificado: com `[Range]` em
+        // `PlanDefinition.MaxUsers` e `ValidateDataAnnotations()`, um `maxUsers: -5` no appsettings passa
+        // sem erro nenhum.
+        //
+        // Limite negativo aqui viraria `ArgumentOutOfRangeException` lá no construtor do `Plan`, no meio do
+        // primeiro registro de tenant — erro de catálogo mal configurado disfarçado de falha de requisição.
         services.AddOptions<PlanOptions>()
             .Bind(configuration.GetSection(PlanOptions.SectionName))
+            .Validate(
+                planos => planos.Values.All(plano => plano.MaxUsers >= 0 && plano.MaxClients >= 0),
+                "Plans: nenhum plano pode ter maxUsers ou maxClients negativo.")
             .ValidateOnStart();
 
         return services;
