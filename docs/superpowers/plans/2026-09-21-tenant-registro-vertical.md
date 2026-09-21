@@ -559,7 +559,7 @@ public sealed class MapeamentoDeTenantTests(PostgresFixture postgres) : IClassFi
     public async Task Tenant_SobreviveAoRoundTrip()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
-        TenantSlug slug = TenantSlug.Create($"acme-{Guid.CreateVersion7():N}"[..20]).Value;
+        TenantSlug slug = TenantSlug.Create($"acme-{Guid.NewGuid():N}"[..20]).Value;
         Tenant original = Tenant.Register("Acme Corp", slug, new Plan(PlanTier.Standard, 50, 5));
 
         await using (AppDbContext escrita = postgres.CriarContexto())
@@ -587,7 +587,7 @@ public sealed class MapeamentoDeTenantTests(PostgresFixture postgres) : IClassFi
         // Texto e não int: um SELECT em producao dizendo 'Pending' responde a pergunta; dizendo '0', exige o
         // enum aberto ao lado. E a ordem dos membros deixa de ser dado de schema.
         CancellationToken ct = TestContext.Current.CancellationToken;
-        TenantSlug slug = TenantSlug.Create($"enum-{Guid.CreateVersion7():N}"[..20]).Value;
+        TenantSlug slug = TenantSlug.Create($"enum-{Guid.NewGuid():N}"[..20]).Value;
         Tenant tenant = Tenant.Register("Enum", slug, new Plan(PlanTier.Enterprise, 500, 50));
 
         await using AppDbContext contexto = postgres.CriarContexto();
@@ -811,7 +811,7 @@ public sealed class SchemaDeTenantsTests(PostgresFixture postgres) : IClassFixtu
         // É esta constraint que fecha a janela entre o SELECT de unicidade do handler e o INSERT: duas
         // requisicoes concorrentes com o mesmo slug passariam as duas pela checagem em memoria.
         CancellationToken ct = TestContext.Current.CancellationToken;
-        string valor = $"dup-{Guid.CreateVersion7():N}"[..18];
+        string valor = $"dup-{Guid.NewGuid():N}"[..18];
         TenantSlug slug = TenantSlug.Create(valor).Value;
 
         await using (AppDbContext primeiro = postgres.CriarContexto())
@@ -861,7 +861,7 @@ public sealed class AtomicidadeDoRegistroTests(PostgresFixture postgres) : IClas
     public async Task OTenantEAMensagem_GravamJuntosOuNenhum()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
-        string valor = $"atom-{Guid.CreateVersion7():N}"[..18];
+        string valor = $"atom-{Guid.NewGuid():N}"[..18];
         TenantSlug slug = TenantSlug.Create(valor).Value;
 
         await using (AppDbContext primeiro = postgres.CriarContexto())
@@ -895,7 +895,7 @@ public sealed class AtomicidadeDoRegistroTests(PostgresFixture postgres) : IClas
         // O payload carrega string, nunca value object: TenantRegistered com TenantSlug lancava
         // NotSupportedException ao voltar do Outbox, e toda mensagem iria a dead-letter.
         CancellationToken ct = TestContext.Current.CancellationToken;
-        string valor = $"ok-{Guid.CreateVersion7():N}"[..16];
+        string valor = $"ok-{Guid.NewGuid():N}"[..16];
         TenantSlug slug = TenantSlug.Create(valor).Value;
 
         await using AppDbContext contexto = postgres.CriarContexto();
@@ -964,7 +964,7 @@ public sealed class TenantRepositoryTests(PostgresFixture postgres) : IClassFixt
     public async Task SlugExistsAsync_VerdadeiroQuandoJaGravado()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
-        TenantSlug slug = TenantSlug.Create($"rep-{Guid.CreateVersion7():N}"[..18]).Value;
+        TenantSlug slug = TenantSlug.Create($"rep-{Guid.NewGuid():N}"[..18]).Value;
 
         await using AppDbContext contexto = postgres.CriarContexto();
         ITenantRepository repositorio = new TenantRepository(contexto);
@@ -981,7 +981,7 @@ public sealed class TenantRepositoryTests(PostgresFixture postgres) : IClassFixt
     public async Task SlugExistsAsync_FalsoQuandoNaoExiste()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
-        TenantSlug inexistente = TenantSlug.Create($"nao-{Guid.CreateVersion7():N}"[..18]).Value;
+        TenantSlug inexistente = TenantSlug.Create($"nao-{Guid.NewGuid():N}"[..18]).Value;
 
         await using AppDbContext contexto = postgres.CriarContexto();
         ITenantRepository repositorio = new TenantRepository(contexto);
@@ -997,7 +997,7 @@ public sealed class TenantRepositoryTests(PostgresFixture postgres) : IClassFixt
         // O commit e do TransactionBehavior. Um repositorio que salvasse sozinho tiraria o INSERT e a mensagem
         // do Outbox do mesmo SaveChanges.
         CancellationToken ct = TestContext.Current.CancellationToken;
-        TenantSlug slug = TenantSlug.Create($"sem-{Guid.CreateVersion7():N}"[..18]).Value;
+        TenantSlug slug = TenantSlug.Create($"sem-{Guid.NewGuid():N}"[..18]).Value;
 
         await using AppDbContext contexto = postgres.CriarContexto();
         ITenantRepository repositorio = new TenantRepository(contexto);
@@ -1505,7 +1505,7 @@ public sealed class RegistroDeTenantTests(IdentityGatewayApiFactory factory)
         initialAdminEmail = "admin@acme.com",
     };
 
-    private static string SlugUnico() => $"acme-{Guid.CreateVersion7():N}"[..20];
+    private static string SlugUnico() => $"acme-{Guid.NewGuid():N}"[..20];
 
     [Fact]
     public async Task ComandoValido_Responde202ComLocationECorpo()
