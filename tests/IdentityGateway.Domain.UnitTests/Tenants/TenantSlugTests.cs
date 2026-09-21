@@ -29,6 +29,10 @@ public sealed class TenantSlugTests
     [InlineData("acme_corp")]           // underscore não é válido em DNS
     [InlineData("acmé")]                // fora de [a-z0-9-]
     [InlineData("acme corp")]           // espaço interno
+    [InlineData("---")]                 // só hífens, tamanho válido — recusa tem que vir da forma
+    [InlineData("a--")]                 // hífen consecutivo na borda direita
+    [InlineData("--a")]                 // hífen consecutivo na borda esquerda
+    [InlineData("a---b")]               // três hífens entre blocos válidos
     public void Create_ComValorInvalido_Recusa(string entrada)
     {
         Result<TenantSlug> resultado = TenantSlug.Create(entrada);
@@ -50,6 +54,15 @@ public sealed class TenantSlugTests
         string limite = new('a', 63);
 
         TenantSlug.Create(limite).IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Create_ComEspacosAoRedorDe63Caracteres_Aceita()
+    {
+        // O tamanho é medido depois do trim: os espaços não contam para o limite.
+        string comEspacos = "  " + new string('a', 63) + "  ";
+
+        TenantSlug.Create(comEspacos).IsSuccess.Should().BeTrue();
     }
 
     [Fact]
