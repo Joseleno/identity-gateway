@@ -5,7 +5,7 @@ namespace IdentityGateway.Domain.Tenants;
 /// </summary>
 /// <remarks>
 /// <para>
-/// O enum declara os oito estados da máquina documentada na especificação, embora o agregado ainda só
+/// O enum declara os sete estados da máquina documentada na especificação, embora o agregado ainda só
 /// implemente as transições do caminho de registro. Declarar todos evita que uma fatia posterior invente
 /// um nome diferente para um estado que a especificação já nomeou.
 /// </para>

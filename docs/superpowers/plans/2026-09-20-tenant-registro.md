@@ -37,7 +37,7 @@
 | `Domain/Tenants/TenantSlug.cs` | Slug validado e normalizado |
 | `Domain/Tenants/PlanTier.cs` | Enum do nível do plano |
 | `Domain/Tenants/Plan.cs` | Value object com limites do plano |
-| `Domain/Tenants/TenantStatus.cs` | Os 8 estados da §6.2 |
+| `Domain/Tenants/TenantStatus.cs` | Os 7 estados da §6.2 |
 | `Domain/Tenants/TenantErrors.cs` | Catálogo de erros de negócio do tenant |
 | `Domain/Tenants/Events/TenantRegistered.cs` | Evento de registro |
 | `Domain/Tenants/Events/TenantActivated.cs` | Evento de ativação |
@@ -555,7 +555,7 @@ namespace IdentityGateway.Domain.Tenants;
 /// </summary>
 /// <remarks>
 /// <para>
-/// O enum declara os oito estados da máquina documentada na especificação, embora o agregado ainda só
+/// O enum declara os sete estados da máquina documentada na especificação, embora o agregado ainda só
 /// implemente as transições do caminho de registro. Declarar todos evita que uma fatia posterior invente
 /// um nome diferente para um estado que a especificação já nomeou.
 /// </para>

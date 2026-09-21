@@ -61,7 +61,7 @@ tenants já cadastrados; afrouxá-la não quebra ninguém.
 
 ### Estados
 
-`TenantStatus` declara os **oito** estados da §6.2 — `Pending`, `Active`, `Suspending`, `Suspended`,
+`TenantStatus` declara os **sete** estados da §6.2 — `Pending`, `Active`, `Suspending`, `Suspended`,
 `Terminating`, `Terminated`, `ProvisioningFailed` — embora esta fatia implemente transições de apenas
 alguns. O enum é a máquina de estados documentada; valores faltando convidariam a inventar outros depois.
 
@@ -121,7 +121,7 @@ src/IdentityGateway.Domain/
     TenantSlug.cs                  ValueObject + Create
     Plan.cs                        ValueObject
     PlanTier.cs                    enum
-    TenantStatus.cs                enum (8 estados)
+    TenantStatus.cs                enum (7 estados)
     TenantErrors.cs                NotActive, SeatLimitReached, SlugInUse, UnknownPlan
     Events/TenantRegistered.cs
     Events/TenantActivated.cs
