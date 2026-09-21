@@ -32,8 +32,13 @@ public static class DependencyInjection
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        // Carter descobre os módulos por varredura do assembly; os endpoints são mapeados em MapCarter().
-        services.AddCarter();
+        // Carter descobre os módulos por varredura de assembly. Sem informar qual, ele usa o assembly de
+        // entrada do processo — sob WebApplicationFactory<Program> isso é o host de teste, não esta Api, e a
+        // varredura não encontra módulo nenhum: toda rota responde 404 como se nada estivesse mapeado.
+        // Apontar aqui, para o assembly desta própria camada, mantém a varredura automática — um módulo novo
+        // continua dispensando alteração neste método — e a faz valer tanto em produção quanto sob teste
+        // funcional.
+        services.AddCarter(new DependencyContextAssemblyCatalog(typeof(DependencyInjection).Assembly));
 
         // Geração do documento OpenAPI embutida no .NET 10 — não precisa de Swashbuckle.
         services.AddOpenApi();
@@ -85,6 +90,12 @@ public static class DependencyInjection
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
+                // Sem isto, o JwtSecurityTokenHandler remapeia claims curtas para URI antes de a policy ver o
+                // token: "roles" vira "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", e
+                // RequireClaim("roles", ...) nunca casa — falha silenciosa, sempre 403, mesmo com o token certo.
+                // Desligar o mapeamento é o que faz o claim chegar como o emissor o escreveu.
+                options.MapInboundClaims = false;
+
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
