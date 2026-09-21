@@ -13,7 +13,13 @@
 ## Global Constraints
 
 - **`TreatWarningsAsErrors` está ligado** (`Directory.Build.props`). Aviso do analisador quebra o build — inclusive `IDE0161` (namespace com escopo de arquivo) e `CA1861`. Escreva `namespace X;` com ponto e vírgula, nunca com chaves.
-- **Tipo explícito, nunca `var`** (`.editorconfig`, regra `IDE0008` como erro).
+- **`var` e tipo explícito convivem; o `dotnet build` é o árbitro.** O `.editorconfig` tem as três faces
+  da regra (`var_when_type_is_apparent = true`, `var_for_built_in_types = false`, `var_elsewhere = false`),
+  todas como `warning`. Na prática o IDE0007 só considera o tipo "aparente" quando o construtor aparece à
+  direita — `new T(...)`, cast, `as`. **Retorno de factory method não conta**, por isso o código do
+  template escreve `Result<Email> resultado = Email.Of(entrada);` com tipo explícito e compila limpo. Siga
+  os blocos deste plano como estão e confirme com o build; se ele apontar IDE0007 ou IDE0008 em alguma
+  linha, é essa linha que muda, não o padrão inteiro.
 - **Comentário e documentação em português**, seguindo o tom do repositório: explique o *porquê*, não o *o quê*.
 - **XML doc em todo membro público** — o repositório trata doc ausente como aviso.
 - **Nomes de teste:** `Metodo_Cenario_Resultado` (ex.: `ReleaseSeat_SemVagaOcupada_Lanca`).
@@ -32,7 +38,7 @@
 | `Domain/Tenants/TenantSlug.cs` | Slug validado e normalizado |
 | `Domain/Tenants/PlanTier.cs` | Enum do nível do plano |
 | `Domain/Tenants/Plan.cs` | Value object com limites do plano |
-| `Domain/Tenants/TenantStatus.cs` | Os 8 estados da §6.2 |
+| `Domain/Tenants/TenantStatus.cs` | Os 7 estados da §6.2 |
 | `Domain/Tenants/TenantErrors.cs` | Catálogo de erros de negócio do tenant |
 | `Domain/Tenants/Events/TenantRegistered.cs` | Evento de registro |
 | `Domain/Tenants/Events/TenantActivated.cs` | Evento de ativação |
@@ -550,7 +556,7 @@ namespace IdentityGateway.Domain.Tenants;
 /// </summary>
 /// <remarks>
 /// <para>
-/// O enum declara os oito estados da máquina documentada na especificação, embora o agregado ainda só
+/// O enum declara os sete estados da máquina documentada na especificação, embora o agregado ainda só
 /// implemente as transições do caminho de registro. Declarar todos evita que uma fatia posterior invente
 /// um nome diferente para um estado que a especificação já nomeou.
 /// </para>
