@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -167,8 +168,14 @@ public static class DependencyInjection
 
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(contexto =>
             {
+                // Lê as duas formas do claim de identidade, como o `HttpCurrentUser`: a validação roda com
+                // `MapInboundClaims = false`, então o `sub` chega na forma curta e não vira
+                // `ClaimTypes.NameIdentifier`. Lendo só a forma longa, TODO usuário autenticado cairia na
+                // partição por IP — e os que estivessem atrás do mesmo NAT dividiriam uma cota só, que é
+                // exatamente o que particionar por usuário existe para evitar.
                 string particao =
-                    contexto.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                    contexto.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+                    ?? contexto.User.FindFirstValue(ClaimTypes.NameIdentifier)
                     ?? contexto.Connection.RemoteIpAddress?.ToString()
                     ?? "desconhecido";
 
