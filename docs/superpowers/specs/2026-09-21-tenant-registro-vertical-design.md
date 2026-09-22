@@ -69,18 +69,35 @@ aqui — ela vive em `TenantSlug.Create`, que devolve `Result`.
 
 ### 2 · Infrastructure
 
-#### O `Tenant` não precisa de construtor sem parâmetro
+#### O `Tenant` ganha um segundo construtor, só para o EF
 
-A §11.1 anota `private Tenant() { }` como "exigido pelo EF Core". **Não é.** O EF Core mapeia construtor
-parametrizado casando parâmetros com propriedades por nome: `private Tenant(TenantId id, string name,
-TenantSlug slug, Plan plan)` casa com `Id`, `Name`, `Slug` e `Plan`. O que não passa pelo construtor
-(`Status`, `ExternalOrganizationId`, `OccupiedSeats`, `OverSubscribed`) o EF escreve no campo de apoio, que
-é o que já faria por causa do `private set`.
+> **Corrigido durante a implementação.** O desenho original afirmava que o construtor de quatro parâmetros
+> bastaria. Não basta, e o erro só apareceu ao gerar a migration.
 
-Mantê-lo como está evita a instância com três `null!` — um agregado momentaneamente inválido para agradar o
-ORM. Encerra a pendência que a fatia anterior adiou por não ter a configuração EF na frente.
+A §11.1 anota `private Tenant() { }` como "exigido pelo EF Core", e isso continua não sendo verdade — mas a
+premissa oposta, de que o construtor existente serviria inteiro, também era falsa.
 
-**O risco que isso abre:** se o construtor deixar de casar — renomear um parâmetro, por exemplo — o erro é de
+O EF Core casa parâmetros de construtor com propriedades mapeadas **escalares**. `TenantId` e `TenantSlug`
+são conversões de valor único e casam normalmente; `Plan` **não casa**, por ser value object de múltiplos
+campos. Tanto `OwnsOne` (navegação) quanto `ComplexProperty` falham com:
+
+```
+No suitable constructor was found for the type 'Tenant'.
+    Cannot bind 'plan' in 'Tenant(TenantId id, string name, TenantSlug slug, Plan plan)'
+```
+
+É limitação em aberto do EF Core 10.0.12 ([dotnet/efcore#31621](https://github.com/dotnet/efcore/issues/31621)),
+não erro de configuração — as duas estratégias de mapeamento foram testadas.
+
+**A solução são dois construtores privados:** um de três parâmetros, que só o ORM usa e que carrega o
+`Plan = null!`; outro de quatro, com o plano obrigatório, que é o único que o domínio chama, via `Register`.
+Assim o `null!` fica confinado ao construtor do ORM, e o compilador continua exigindo o plano em todo caminho
+de criação legítimo — um caminho novo que o esquecesse não compila.
+
+Descartada a alternativa de um construtor único sem o plano: ela funciona, mas troca a garantia do compilador
+por uma convenção, e o erro reapareceria só em uso.
+
+**O risco que permanece:** se o casamento de nomes quebrar — renomear um parâmetro, por exemplo — o erro é de
 materialização em runtime, não de compilação. O teste de round-trip da seção 4 existe para isso.
 
 #### Mapeamento: colunas planas na tabela `tenants`
@@ -126,11 +143,27 @@ requisições concorrentes de gravarem o mesmo slug, já que entre o `SELECT` e 
 
 #### `xmin` como propriedade de sombra
 
-`builder.Property<uint>("xmin").IsRowVersion().HasColumnName("xmin").ValueGeneratedOnAddOrUpdate()`.
+```csharp
+builder.Property<uint>("xmin")
+    .HasColumnName("xmin")
+    .HasColumnType("xid")
+    .ValueGeneratedOnAddOrUpdate()
+    .IsConcurrencyToken();
+```
 
 Sombra porque `xmin` é coluna de sistema do PostgreSQL e o domínio não deve carregar um campo de versão que
-só o ORM entende. Não gera coluna na migration — gera a cláusula `WHERE xmin = @original` no `UPDATE`, que é
-o que a §6.1 exige para `OccupiedSeats`.
+só o ORM entende. O efeito é a cláusula `WHERE xmin = @original` no `UPDATE`, que é o que a §6.1 exige para
+`OccupiedSeats`.
+
+> **Corrigido durante a implementação, em dois pontos.** O desenho original usava `IsRowVersion()` e afirmava
+> que a coluna não apareceria na migration. Ambos errados: sem `HasColumnType("xid")` o EF trata `xmin` como
+> coluna comum, e mesmo com ele a emite no `CreateTable`. A linha foi **removida à mão** da migration —
+> criá-la falharia, porque o PostgreSQL já tem `xmin` em toda tabela.
+>
+> A correção manual é única, não recorrente: depois desta migration, `xmin` está nos dois snapshots que o
+> *differ* compara, então nunca reaparece. Verificado gerando uma migration de conferência — veio vazia, com
+> o snapshot intocado. Só volta a morder quem apagar e refizer **esta** migration do zero, e o comentário no
+> código avisa disso.
 
 Mapeado agora porque é schema e muda barato; o behavior de retry que o acompanha fica para o M1, quando
 houver comando que o exercite.
@@ -141,8 +174,28 @@ houver comando que o exercite.
 isso que põe o `INSERT` e o Outbox na mesma unidade de trabalho. `SlugExistsAsync` usa `AnyAsync`, que
 funciona com o conversor porque a comparação é por igualdade simples.
 
-`PlanCatalog` (`Configuration/`) lê `PlanOptions` bindado da seção `Plans` com `ValidateOnStart` — catálogo
-inválido derruba na subida, não na primeira requisição. `Find` é case-insensitive e devolve `Plan?`.
+`PlanCatalog` (`Configuration/`) lê `PlanOptions` bindado da seção `Plans` com `Validate(...)` mais
+`ValidateOnStart` — catálogo inválido derruba na subida, não na primeira requisição. `Find` é
+case-insensitive e devolve `Plan?`.
+
+> **Corrigido durante a implementação.** `ValidateOnStart` **sozinho é no-op**: sem nenhuma regra registrada,
+> não há o que validar, e a promessa de derrubar na subida era falsa.
+>
+> A correção aparente — `[Range]` em `PlanDefinition` mais `ValidateDataAnnotations()` — **também não
+> funciona**, e foi verificada: `PlanOptions` herda de `Dictionary`, e as anotações só valem para as
+> propriedades do objeto raiz, nunca para os **valores** do dicionário, que é onde os limites moram. Um
+> `maxUsers: -5` passava limpo.
+>
+> O que funciona é um `Validate(...)` escrito à mão percorrendo `planos.Values`. Verificado subindo a Api com
+> `maxUsers: -5`: `OptionsValidationException: Plans: nenhum plano pode ter maxUsers ou maxClients negativo`.
+> Sem isso, o limite negativo só apareceria como `ArgumentOutOfRangeException` no construtor do `Plan`, no
+> meio do primeiro registro de tenant — catálogo mal configurado disfarçado de falha de requisição.
+>
+> A `case-insensitivity` **sobrevive ao binding**, o que não era óbvio e foi confirmado por dois testes
+> independentes: o binder popula a instância já criada pelo construtor sem parâmetro, em vez de substituí-la.
+> É justamente por isso que `PlanOptions` **herda** de `Dictionary` em vez de expor um como propriedade — na
+> segunda forma, o binder criaria um dicionário novo, com comparador padrão, e a busca por `"FREE"` quebraria
+> em silêncio.
 
 Registro: repositório `Scoped`, catálogo `Singleton` (config imutável).
 
@@ -158,8 +211,18 @@ acontece independentemente do corpo. Não amplia escopo e destrava os dois skips
 
 #### Módulo Carter com rota literal
 
-`Api/Modules/TenantsModule.cs`, `internal sealed`, implementando `ICarterModule`. O `app.MapCarter()` já
-existe no `Program.cs` e descobre por varredura — nada muda lá.
+`Api/Modules/TenantsModule.cs`, **`public sealed`**, implementando `ICarterModule`.
+
+> **Corrigido durante a implementação.** O desenho pedia `internal`, e isso **não funciona**: o `AddCarter`
+> enumera `GetExportedTypes()`, e `InternalsVisibleTo` cobre chamada direta, não reflexão. Com o módulo
+> `internal`, `MapCarter()` não mapeia rota nenhuma — toda requisição responde `404`, **sem erro de startup**.
+> Falha silenciosa completa.
+>
+> Junto com isso, o `AddCarter` passou a receber o assembly da Api explicitamente
+> (`new DependencyContextAssemblyCatalog(typeof(DependencyInjection).Assembly)`): o padrão resolve o *entry
+> assembly*, que sob `WebApplicationFactory<Program>` é o host de teste, não a Api.
+>
+> Verificado por mutação: revertendo o módulo para `internal`, 7 dos 15 testes funcionais falham.
 
 ```
 POST /api/v1/tenants  →  RequireAuthorization("PlatformAdmin")  →  202 + Location
@@ -196,6 +259,25 @@ aninhado em `realm_access.roles`, e chama isso de "o ponto que mais gera erro ne
 os testes do caminho feliz precisam de um token com `platform-admin`. Entra uma sobrecarga
 `Emitir(Guid, string, params string[] roles)`, emitindo um claim `roles` por papel. A assinatura atual
 continua válida, então nada existente quebra.
+
+> **Descoberto durante a implementação: a policy não funcionava, e o motivo é o mesmo que a §12.1 alerta.**
+> O `JwtSecurityTokenHandler` remapeia o claim curto `roles` para a URI longa
+> (`http://schemas.microsoft.com/ws/2008/06/identity/claims/role`) **antes** de a policy comparar. Resultado:
+> `403` mesmo com token correto carregando o claim correto.
+>
+> A correção é `options.MapInboundClaims = false` no `AddJwtBearer` — os claims passam a chegar como o
+> emissor os escreveu, que é também o que um IdP externo entrega.
+>
+> **E essa correção trouxe uma regressão**, que a revisão pegou: com o remapeamento desligado, o `sub`
+> também deixa de virar `ClaimTypes.NameIdentifier`, e o `HttpCurrentUser` — que lia só a forma longa —
+> passou a devolver nulo para **todo** usuário autenticado. Invisível à suíte, porque nenhuma entidade
+> implementa `IAuditable` ainda: o primeiro agregado auditável é que nasceria com `CreatedBy` nulo.
+> O `HttpCurrentUser` passa a ler `sub` com a URI longa como alternativa, e `HttpCurrentUserTests` cobre as
+> duas formas.
+>
+> **A lição de processo:** a policy foi dada por pronta com build verde e revisão aprovada, e estava quebrada.
+> Só apareceu quando um teste funcional exercitou o caminho autorizado, três tarefas depois. Verde sem teste
+> que exercite o caminho não é evidência de nada.
 
 #### Request, response e o `202`
 
@@ -322,11 +404,18 @@ O ADR do versionamento (seção 3) vai no corpo do PR e, aprovado, para a seçã
 
 ## Critério de pronto
 
-- `dotnet build` sem avisos, com `TreatWarningsAsErrors`
-- `dotnet test` verde, **com os 4 skips reativados** — nenhum skip novo
-- `POST /api/v1/tenants` responde `202` com `Location` e corpo; `401`, `403`, `400` e `409` cobertos
-- A atomicidade provada nos dois estados, não só no caminho feliz
-- Documentação afetada atualizada no mesmo PR
+- [x] `dotnet build` sem avisos, com `TreatWarningsAsErrors` — 0 erros, 0 avisos nos 10 projetos
+- [x] Suíte verde, **com os 4 skips reativados** e nenhum skip novo — **209 testes, 0 falhas, 0 skips**
+      (109 domínio · 35 application · 18 arquitetura · 32 integração · 15 funcional)
+- [x] `POST /api/v1/tenants` responde `202` com `Location` e corpo; `401`, `403`, `400` e `409` cobertos
+- [x] A atomicidade provada nos dois estados, não só no caminho feliz
+- [x] Documentação afetada atualizada no mesmo PR
+
+**Nota sobre o método.** Quatro provas desta fatia foram feitas por **mutação**, não por leitura: quebrar
+deliberadamente o código e confirmar que o teste falha. Ela pegou o que o verde não pegaria — a atomicidade
+do Outbox, a resolução das portas no contêiner, os dois testes de `401` e a regressão da identificação do
+usuário. Três defeitos desta fatia chegaram à revisão com build verde e só apareceram quando algo exercitou
+o caminho: a policy `PlatformAdmin`, o `ValidateOnStart` do catálogo e o `HttpCurrentUser`.
 
 ## Próxima fatia
 
