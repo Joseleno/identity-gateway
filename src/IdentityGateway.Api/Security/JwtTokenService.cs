@@ -37,9 +37,11 @@ internal sealed class JwtTokenService(IOptions<JwtOptions> options, IDateTimePro
     /// </summary>
     /// <remarks>
     /// O identificador vai em <c>sub</c>, que é o claim padrão do registro do JWT para "quem é o sujeito deste
-    /// token". O <c>HttpCurrentUser</c> o lê como <see cref="ClaimTypes.NameIdentifier"/> porque o handler do
-    /// ASP.NET Core faz esse mapeamento por padrão — mantê-lo ligado é o que permite trocar este emissor por um
-    /// IdP sem tocar no resto do código.
+    /// token". O <c>HttpCurrentUser</c> o lê <b>nessa mesma forma curta</b>, porque a validação roda com
+    /// <c>MapInboundClaims = false</c>: o remapeamento automático do handler traduzia <c>roles</c> para a URI
+    /// longa antes de a policy <c>PlatformAdmin</c> comparar, e o <c>403</c> vinha mesmo com o token correto.
+    /// Desligá-lo conserta a policy e, de quebra, faz os claims chegarem como o emissor os escreveu — que é o
+    /// que um IdP externo vai entregar. O <c>HttpCurrentUser</c> ainda aceita a URI longa como alternativa.
     /// <para>
     /// <b>O claim de papel é <c>roles</c> plano, não aninhado.</b> A §12.1 documenta que <c>RequireRole</c>
     /// falha com o Keycloak porque o papel chega dentro de <c>realm_access.roles</c> — e chama isso de "o ponto
