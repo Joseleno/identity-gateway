@@ -114,11 +114,16 @@ materialização em runtime, não de compilação. O teste de round-trip da seç
 | `ExternalOrganizationId` | `external_organization_id` `text` nullable | — |
 | `OccupiedSeats` | `occupied_seats` `integer` | — |
 | `OverSubscribed` | `over_subscribed` `boolean` | — |
-| *(sombra)* | `xmin` | `IsRowVersion()` |
+| *(sombra)* | `xmin` | `HasColumnType("xid")` + `IsConcurrencyToken()` |
 
-**`Plan` como owned type achatado** (`OwnsOne` + `HasColumnName`), e não três propriedades soltas no
-`Tenant`: a §6.1 o define como value object, e achatá-lo à mão faria o agregado precisar de propriedades
-espelho só para o ORM. `OwnsOne` sem tabela separada dá as colunas planas e mantém o value object intacto.
+**`Plan` como complex type achatado** (`ComplexProperty` + `HasColumnName`), e não três propriedades soltas
+no `Tenant`: a §6.1 o define como value object, e achatá-lo à mão faria o agregado precisar de propriedades
+espelho só para o ORM. O complex type dá as colunas planas na mesma tabela e mantém o value object intacto.
+
+> **Corrigido durante a implementação.** O desenho pedia `OwnsOne`. Nenhuma das duas formas permite vincular
+> o `Plan` ao construtor (ver acima), mas `ComplexProperty` é a que descreve corretamente o que ele é: um
+> value object sem identidade própria, não uma entidade possuída. `OwnsOne` criaria uma navegação para algo
+> que não é entidade.
 
 **Enums como texto, não `int`.** Um `SELECT` em produção dizendo `Pending` responde a pergunta; dizendo `0`,
 exige o enum aberto ao lado. E a ordem dos membros deixa de ser dado de schema — inserir um estado no meio de
@@ -140,6 +145,16 @@ subdomínio: o espaço de nomes é do sistema inteiro.
 A unicidade fica no banco **além** do `SlugExistsAsync`. Os papéis são distintos e nenhum substitui o outro:
 a checagem no handler dá a mensagem de negócio (`409` nomeando o slug); o índice é o que impede duas
 requisições concorrentes de gravarem o mesmo slug, já que entre o `SELECT` e o `INSERT` há uma janela.
+
+> **Limitação conhecida, a fechar em fatia própria.** Quem *perde* essa corrida recebe **`500`, não `409`**.
+> O handler devolve sucesso, o `TransactionBehavior` chama `SaveChangesAsync` fora de `try/catch`, a
+> `DbUpdateException` sobe até o catch-all do `ExceptionHandlingMiddleware` e vira "erro inesperado" — com
+> entrada no log de erro, para um caso que é resposta de negócio legítima.
+>
+> Não bloqueia a fatia: a janela é estreita, o dado permanece correto e o índice cumpre seu papel de impedir
+> a duplicata. Mas o cliente recebe a resposta errada, e a correção — traduzir violação de unicidade em
+> `Conflict` — pertence ao tratamento de erro, não a este caso de uso: vale para todo `INSERT` com constraint
+> única que venha depois.
 
 #### `xmin` como propriedade de sombra
 

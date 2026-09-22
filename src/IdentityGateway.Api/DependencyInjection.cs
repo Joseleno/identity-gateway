@@ -168,16 +168,7 @@ public static class DependencyInjection
 
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(contexto =>
             {
-                // Lê as duas formas do claim de identidade, como o `HttpCurrentUser`: a validação roda com
-                // `MapInboundClaims = false`, então o `sub` chega na forma curta e não vira
-                // `ClaimTypes.NameIdentifier`. Lendo só a forma longa, TODO usuário autenticado cairia na
-                // partição por IP — e os que estivessem atrás do mesmo NAT dividiriam uma cota só, que é
-                // exatamente o que particionar por usuário existe para evitar.
-                string particao =
-                    contexto.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
-                    ?? contexto.User.FindFirstValue(ClaimTypes.NameIdentifier)
-                    ?? contexto.Connection.RemoteIpAddress?.ToString()
-                    ?? "desconhecido";
+                string particao = ChaveDaParticao(contexto);
 
                 return RateLimitPartition.GetFixedWindowLimiter(particao, _ => new FixedWindowRateLimiterOptions
                 {
@@ -193,6 +184,34 @@ public static class DependencyInjection
 
         return services;
     }
+
+    /// <summary>
+    /// A chave que identifica a cota de quem faz a requisição.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Lê as duas formas do claim de identidade.</b> A validação do token roda com
+    /// <c>MapInboundClaims = false</c> — desligado porque o remapeamento quebrava a policy
+    /// <c>PlatformAdmin</c> —, e por causa disso o <c>sub</c> chega na forma curta, sem virar
+    /// <see cref="ClaimTypes.NameIdentifier"/>. Lendo só a forma longa, <b>todo</b> usuário autenticado cairia
+    /// na partição por IP, e os que estivessem atrás do mesmo NAT dividiriam uma cota só — exatamente o que
+    /// particionar por usuário existe para evitar.
+    /// </para>
+    /// <para>
+    /// <c>internal</c> e não uma lambda embutida no registro: é regra com consequência de segurança, e regra
+    /// assim precisa de teste. Dentro da lambda ela não teria como ser exercitada.
+    /// </para>
+    /// </remarks>
+    internal static string ChaveDaParticao(HttpContext contexto)
+    {
+        ArgumentNullException.ThrowIfNull(contexto);
+
+        return contexto.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? contexto.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? contexto.Connection.RemoteIpAddress?.ToString()
+            ?? "desconhecido";
+    }
+
 
     /// <summary>
     /// Sobrescreve os padrões da Infrastructure pelas implementações que leem o <c>HttpContext</c>.
