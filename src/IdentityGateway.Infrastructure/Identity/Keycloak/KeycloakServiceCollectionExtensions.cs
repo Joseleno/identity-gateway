@@ -37,6 +37,7 @@ internal static class KeycloakServiceCollectionExtensions
             .ValidateOnStart();
 
         services.AddSingleton<GatewaySigningKey>();
+        services.AddSingleton<ClientAssertionFactory>();
 
         return services;
     }
