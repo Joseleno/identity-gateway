@@ -225,7 +225,13 @@ public sealed class DependencyInjectionTests
         // É o que permite subir uma instância só-API, e é o que impede o despachante de competir com os testes
         // funcionais pela mesma tabela. O processor continua registrado: desligar o laço não tira a capacidade
         // de despachar à mão.
-        provider.GetServices<IHostedService>().Should().BeEmpty();
+        //
+        // Não é mais "nenhum hosted service": o AddHealthChecks() do Keycloak registra o
+        // HealthCheckPublisherHostedService, que nada tem a ver com o despachante do outbox. O que este teste prova
+        // é que o OutboxWorker especificamente não está entre eles.
+        provider.GetServices<IHostedService>().Should().NotContain(
+            servico => servico.GetType().Name == "OutboxWorker",
+            "com o outbox desligado, ninguém despacha sozinho");
 
         using IServiceScope escopo = provider.CreateScope();
         escopo.ServiceProvider.GetService<IOutboxPublisher>().Should().NotBeNull();

@@ -2,6 +2,7 @@ using IdentityGateway.Application.Common.Abstractions;
 using IdentityGateway.Infrastructure.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
 
@@ -84,6 +85,14 @@ internal static class KeycloakServiceCollectionExtensions
         admin.AddHttpMessageHandler<ServiceAccountTokenHandler>();
 
         services.AddTransient<IIdentityProvider, KeycloakIdentityProvider>();
+
+        // Registrado aqui, e não pela Api: o check depende do cache do token, que é interno a esta camada, e a Api
+        // não conhece nenhum tipo do Keycloak (teste de arquitetura). A tag "ready" é a que o /health/ready filtra.
+        services.AddHealthChecks().AddCheck<KeycloakHealthCheck>(
+            "keycloak",
+            failureStatus: HealthStatus.Unhealthy,
+            tags: ["ready"],
+            timeout: TimeSpan.FromSeconds(5));
 
         // Token endpoint: cliente próprio, SEM resiliência. O jti é de uso único, e uma política de retry reenviaria
         // o mesmo assertion. Timeout curto, igual ao de uma tentativa da Admin API: sem ele, valeria o padrão de 100s

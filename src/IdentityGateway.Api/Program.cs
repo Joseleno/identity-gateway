@@ -98,7 +98,8 @@ app.MapHealthChecks("/health/live", new HealthCheckOptions
     Predicate = _ => false,
 });
 
-// ready: posso receber tráfego. Checa Postgres e Redis — sem eles, a instância sai do balanceador.
+// ready: posso receber tráfego. Checa Postgres, Redis e o Keycloak (obtendo o token do service account) — sem eles,
+// a instância sai do balanceador.
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready"),
