@@ -42,6 +42,7 @@ internal static class KeycloakServiceCollectionExtensions
         services.AddSingleton<ClientAssertionFactory>();
         services.AddSingleton<ITokenEndpoint, KeycloakTokenClient>();
         services.AddSingleton<ServiceAccountTokenCache>();
+        services.AddTransient<ServiceAccountTokenHandler>();
 
         // Token endpoint: cliente próprio, SEM resiliência. O jti é de uso único, e uma política de retry reenviaria
         // o mesmo assertion. Timeout curto, igual ao de uma tentativa da Admin API: sem ele, valeria o padrão de 100s
