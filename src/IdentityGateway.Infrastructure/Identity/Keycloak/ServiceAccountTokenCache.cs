@@ -11,13 +11,24 @@ namespace IdentityGateway.Infrastructure.Identity.Keycloak;
 /// cache guardado neles morreria junto, sem erro — e cada ciclo pediria um token novo.
 /// </para>
 /// <para>
-/// <b>Single-flight.</b> Sem a trava, N chamadas simultâneas com o cache vazio pediriam N tokens — e cada pedido
-/// assina um assertion e ocupa o Keycloak. Com ela, uma busca e as demais esperam o resultado.
+/// <b>Uma busca de cada vez, não uma busca para todos.</b> Sem a trava, N chamadas simultâneas com o cache vazio
+/// pediriam N tokens ao mesmo tempo — cada um assinando um assertion e ocupando o Keycloak. Com ela, é sempre uma
+/// busca por vez: se ela tiver sucesso, quem esperava na trava reusa o token que ela acabou de obter, sem pedir de
+/// novo. Se ela falhar, nada fica em cache (ver abaixo), e o próximo da fila faz a sua própria busca. Numa
+/// indisponibilidade do Keycloak, isso significa que cada chamada enfileirada acaba buscando por sua vez, uma atrás
+/// da outra — a espera cresce com o tamanho da fila —, mas nunca mais de uma requisição chega ao Keycloak ao mesmo
+/// tempo, o que poupa um serviço já com problema.
 /// </para>
 /// <para>
 /// <b>Falha não fica em cache.</b> A trava é liberada no <c>finally</c> sem gravar nada, e a próxima chamada tenta de
 /// novo. Pelo mesmo motivo, cancelar quem disparou a busca não afeta quem espera: a exceção é só dele, e o próximo
 /// da fila busca outra vez.
+/// </para>
+/// <para>
+/// <b>A espera não passa do orçamento de quem chamou.</b> Quem aguarda a trava usa <c>WaitAsync(cancellationToken)</c>
+/// com o próprio token do chamador, não um token à parte — então a fila nunca segura ninguém além do que o
+/// chamador toleraria sozinho: o health check pelo timeout do seu registro, as chamadas da Admin API pelos timeouts
+/// de resiliência.
 /// </para>
 /// </remarks>
 internal sealed class ServiceAccountTokenCache(ITokenEndpoint endpoint, IDateTimeProvider relogio) : IDisposable
