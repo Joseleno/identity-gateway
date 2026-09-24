@@ -1,5 +1,6 @@
 using IdentityGateway.Application.Common.Abstractions;
 using IdentityGateway.Infrastructure.Configuration;
+using IdentityGateway.Infrastructure.Identity.Keycloak;
 using IdentityGateway.Infrastructure.Persistence;
 using IdentityGateway.Infrastructure.Persistence.Interceptors;
 using IdentityGateway.Infrastructure.Persistence.Outbox;
@@ -37,7 +38,8 @@ public static class DependencyInjection
             .AddPersistencia()
             .AddCache(configuration)
             .AddServicos()
-            .AddOutbox(configuration);
+            .AddOutbox(configuration)
+            .AddKeycloakIdentity(configuration);
 
         return services;
     }

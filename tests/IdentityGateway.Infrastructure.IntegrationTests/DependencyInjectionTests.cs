@@ -24,6 +24,8 @@ namespace IdentityGateway.Infrastructure.IntegrationTests;
 /// </remarks>
 public sealed class DependencyInjectionTests
 {
+    private static readonly string ChaveDeTeste = Identity.Keycloak.ChavesDeTeste.Gerar().PemPrivado;
+
     private static IConfiguration ConfiguracaoValida(
         string? connectionString = "Host=localhost;Database=identitygateway;Username=postgres;Password=x") =>
         new ConfigurationBuilder()
@@ -33,6 +35,11 @@ public sealed class DependencyInjectionTests
                 ["Jwt:Issuer"] = "identitygateway",
                 ["Jwt:Audience"] = "identitygateway-api",
                 ["Jwt:SigningKey"] = new string('k', 32),
+                ["Keycloak:Admin:BaseUrl"] = "http://keycloak.test:8080",
+                ["Keycloak:Admin:Realm"] = "identity-gateway",
+                ["Keycloak:Admin:ClientId"] = "identity-gateway",
+                ["Keycloak:Admin:PrivateKeyPem"] = ChaveDeTeste,
+                ["Keycloak:Admin:AllowInsecureHttp"] = "true",
             })
             .Build();
 
@@ -54,6 +61,7 @@ public sealed class DependencyInjectionTests
     [InlineData(typeof(IOutboxPublisher))]
     [InlineData(typeof(ITenantRepository))]
     [InlineData(typeof(IPlanCatalog))]
+    [InlineData(typeof(IIdentityProvider))]
     public void TodasAsAbstracoesDaApplication_SaoResolviveis(Type servico)
     {
         // Se a Application declara uma interface que ninguém registrou, o erro aparece aqui — não na primeira
@@ -221,5 +229,19 @@ public sealed class DependencyInjectionTests
 
         using IServiceScope escopo = provider.CreateScope();
         escopo.ServiceProvider.GetService<IOutboxPublisher>().Should().NotBeNull();
+    }
+
+    [Fact]
+    public void IIdentityProvider_ETransient()
+    {
+        // Transient como o cliente tipado que envolve: ele não depende de DbContext, e a v2.3 o justificava como
+        // Scoped por um motivo que não se aplica.
+        using ServiceProvider provider = Construir(ConfiguracaoValida());
+        using IServiceScope scope = provider.CreateScope();
+
+        IIdentityProvider primeiro = scope.ServiceProvider.GetRequiredService<IIdentityProvider>();
+        IIdentityProvider segundo = scope.ServiceProvider.GetRequiredService<IIdentityProvider>();
+
+        primeiro.Should().NotBeSameAs(segundo);
     }
 }

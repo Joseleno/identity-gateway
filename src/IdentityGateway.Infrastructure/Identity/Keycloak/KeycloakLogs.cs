@@ -13,6 +13,30 @@ namespace IdentityGateway.Infrastructure.Identity.Keycloak;
 internal static partial class KeycloakLogs
 {
     [LoggerMessage(
+        EventId = 2200,
+        Level = LogLevel.Debug,
+        Message = "Keycloak: Organization do tenant {TenantId} já existia")]
+    public static partial void OrganizacaoJaExistia(ILogger logger, Guid tenantId);
+
+    [LoggerMessage(
+        EventId = 2201,
+        Level = LogLevel.Information,
+        Message = "Keycloak: Organization do tenant {TenantId} criada")]
+    public static partial void OrganizacaoCriada(ILogger logger, Guid tenantId);
+
+    [LoggerMessage(
+        EventId = 2202,
+        Level = LogLevel.Information,
+        Message = "Keycloak: corrida na criação da Organization do tenant {TenantId} resolvida pela reconsulta")]
+    public static partial void CorridaResolvida(ILogger logger, Guid tenantId);
+
+    [LoggerMessage(
+        EventId = 2203,
+        Level = LogLevel.Error,
+        Message = "Keycloak: o slug do tenant {TenantId} está em uso por Organization não correlacionada")]
+    public static partial void ConflitoNaoCorrelacionado(ILogger logger, Guid tenantId);
+
+    [LoggerMessage(
         EventId = 2204,
         Level = LogLevel.Warning,
         Message = "Keycloak: token do service account recusado com {Status} — {Erro}")]

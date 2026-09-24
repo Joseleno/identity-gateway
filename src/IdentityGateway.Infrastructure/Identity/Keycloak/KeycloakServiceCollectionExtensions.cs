@@ -1,6 +1,8 @@
+using IdentityGateway.Application.Common.Abstractions;
 using IdentityGateway.Infrastructure.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
 
 namespace IdentityGateway.Infrastructure.Identity.Keycloak;
@@ -43,6 +45,45 @@ internal static class KeycloakServiceCollectionExtensions
         services.AddSingleton<ITokenEndpoint, KeycloakTokenClient>();
         services.AddSingleton<ServiceAccountTokenCache>();
         services.AddTransient<ServiceAccountTokenHandler>();
+
+        IHttpClientBuilder admin = services.AddHttpClient<KeycloakAdminClient>((provider, http) =>
+        {
+            http.BaseAddress = provider.GetRequiredService<IOptions<KeycloakAdminOptions>>().Value.AdminBaseAddress;
+
+            // O timeout é da resiliência (por tentativa e total). Este cancelaria no meio do pipeline, com um
+            // cancelamento indistinguível do que parte de quem chamou.
+            http.Timeout = Timeout.InfiniteTimeSpan;
+        });
+
+        // A ORDEM IMPORTA: o primeiro handler registrado é o mais externo. Resiliência por fora e token por dentro
+        // fazem cada tentativa renovar o token se preciso, e deixam o "401 → repete uma vez" DENTRO de uma
+        // tentativa, contido no timeout total. Na ordem inversa, o reenvio após 401 entraria na pipeline do zero.
+        admin.AddStandardResilienceHandler().Configure(
+            (HttpStandardResilienceOptions resiliencia, IServiceProvider provider) =>
+            {
+                HttpResilienceOptions politica = provider.GetRequiredService<IOptions<HttpResilienceOptions>>().Value;
+
+                resiliencia.Retry.MaxRetryAttempts = politica.MaxRetryAttempts;
+                resiliencia.Retry.Delay = TimeSpan.FromSeconds(politica.BaseDelaySeconds);
+
+                // POST não é idempotente: retry automático só em métodos seguros. A idempotência das escritas vem do
+                // "consultar antes de criar" do adaptador — e há teste contra o Keycloak real provando que o POST não
+                // é repetido.
+                resiliencia.Retry.DisableForUnsafeHttpMethods();
+
+                resiliencia.AttemptTimeout.Timeout = TimeSpan.FromSeconds(politica.AttemptTimeoutSeconds);
+                resiliencia.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(politica.TotalTimeoutSeconds);
+                resiliencia.CircuitBreaker.FailureRatio = politica.FailureRatio;
+                resiliencia.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(politica.BreakDurationSeconds);
+
+                // O pipeline padrão recusa amostragem menor que o dobro do timeout por tentativa.
+                resiliencia.CircuitBreaker.SamplingDuration =
+                    TimeSpan.FromSeconds(Math.Max(30, 2 * politica.AttemptTimeoutSeconds));
+            });
+
+        admin.AddHttpMessageHandler<ServiceAccountTokenHandler>();
+
+        services.AddTransient<IIdentityProvider, KeycloakIdentityProvider>();
 
         // Token endpoint: cliente próprio, SEM resiliência. O jti é de uso único, e uma política de retry reenviaria
         // o mesmo assertion. Timeout curto, igual ao de uma tentativa da Admin API: sem ele, valeria o padrão de 100s

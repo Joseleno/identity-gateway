@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using IdentityGateway.Api.Security;
 using IdentityGateway.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
@@ -39,6 +40,18 @@ public sealed class IdentityGatewayApiFactory : WebApplicationFactory<Program>, 
 
     private readonly RedisContainer _redis = new RedisBuilder("redis:7-alpine").Build();
 
+    /// <summary>
+    /// Chave fictícia: a Api valida a configuração do Keycloak na subida, mas nenhum teste funcional chama o Keycloak.
+    /// Gerada em memória — nunca um <c>.pem</c> versionado.
+    /// </summary>
+    private static readonly string ChaveFicticia = GerarChave();
+
+    private static string GerarChave()
+    {
+        using var rsa = RSA.Create(2048);
+        return rsa.ExportPkcs8PrivateKeyPem();
+    }
+
     public async ValueTask InitializeAsync()
     {
         // Em paralelo: são independentes, e subir em série dobra o tempo de arranque da suíte.
@@ -78,6 +91,12 @@ public sealed class IdentityGatewayApiFactory : WebApplicationFactory<Program>, 
         // apareceria na CI e não aqui. Quem exercita o despachante é o teste de integração, que o chama
         // diretamente. Note que isto continua sendo configuração, não troca de registro.
         builder.UseSetting("Outbox:Enabled", "false");
+
+        // O Keycloak não sobe na suíte funcional: nenhum endpoint desta fatia o chama, e o ready com Keycloak é
+        // coberto pelos testes de integração e pelo job de compose da CI. A porta 9 (discard) garante que, se algo
+        // tentar, falhe na hora em vez de pendurar.
+        builder.UseSetting("Keycloak:Admin:BaseUrl", "http://127.0.0.1:9");
+        builder.UseSetting("Keycloak:Admin:PrivateKeyPem", ChaveFicticia);
     }
 
     /// <summary>
