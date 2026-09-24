@@ -42,7 +42,9 @@ internal sealed class ClientAssertionFactory(
         {
             Issuer = opcoes.ClientId,
 
-            // Só aqui, e nunca também em Claims["aud"]: as duas fontes juntas viram um array.
+            // Só aqui: o Keycloak 26.2+ recusa aud com mais de um valor. Repetir em Claims["aud"] seria, no
+            // mínimo, redundante — nesta versão da biblioteca Audience prevalece em silêncio — e dependeria de
+            // uma precedência não documentada que uma atualização poderia inverter.
             Audience = opcoes.Issuer,
             Claims = new Dictionary<string, object>
             {
