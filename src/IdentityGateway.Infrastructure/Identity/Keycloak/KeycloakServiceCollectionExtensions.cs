@@ -1,5 +1,7 @@
+using IdentityGateway.Infrastructure.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace IdentityGateway.Infrastructure.Identity.Keycloak;
 
@@ -38,6 +40,15 @@ internal static class KeycloakServiceCollectionExtensions
 
         services.AddSingleton<GatewaySigningKey>();
         services.AddSingleton<ClientAssertionFactory>();
+        services.AddSingleton<ITokenEndpoint, KeycloakTokenClient>();
+
+        // Token endpoint: cliente próprio, SEM resiliência. O jti é de uso único, e uma política de retry reenviaria
+        // o mesmo assertion. Timeout curto, igual ao de uma tentativa da Admin API: sem ele, valeria o padrão de 100s
+        // do HttpClient, e um Keycloak pendurado seguraria a sonda de health e a chamada de negócio por quase dois
+        // minutos.
+        services.AddHttpClient(KeycloakTokenClient.NomeDoCliente, (provider, http) =>
+            http.Timeout = TimeSpan.FromSeconds(
+                provider.GetRequiredService<IOptions<HttpResilienceOptions>>().Value.AttemptTimeoutSeconds));
 
         return services;
     }
