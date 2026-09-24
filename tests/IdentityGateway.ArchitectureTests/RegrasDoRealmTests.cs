@@ -16,6 +16,11 @@ namespace IdentityGateway.ArchitectureTests;
 /// <b>Placeholder sem default.</b> <c>${GATEWAY_CLIENT_CERT:MIIC...}</c> parece placeholder e carrega um literal no
 /// default. Só <c>${NOME}</c> puro passa.
 /// </para>
+/// <para>
+/// <b>Limite honesto.</b> Estes testes pegam chave proibida, placeholder impuro, base64 longo e bloco PEM; não
+/// pegam um segredo curto colado numa chave qualquer, fora da lista de <see cref="ChavesProibidas"/> — isso fica
+/// para a revisão humana.
+/// </para>
 /// </remarks>
 public sealed partial class RegrasDoRealmTests
 {
@@ -108,6 +113,22 @@ public sealed partial class RegrasDoRealmTests
         ];
 
         violacoes.Should().BeEmpty("certificado ou chave colados no realm são literal versionado");
+    }
+
+    [Fact]
+    public void NenhumBlocoPemLiteral()
+    {
+        string[] violacoes =
+        [
+            .. Percorrer(Realm(), "$")
+                .Where(item => item.Valor.ValueKind == JsonValueKind.String)
+                .Where(item => item.Valor.GetString()!.Contains("-----BEGIN", StringComparison.Ordinal))
+                .Select(item => item.Caminho),
+        ];
+
+        violacoes.Should().BeEmpty(
+            "certificado ou chave colados com armadura PEM são literal versionado, mesmo quando o base64 sozinho "
+            + "não chega a 200 caracteres por causa das quebras de linha e do cabeçalho/rodapé");
     }
 
     [Fact]
