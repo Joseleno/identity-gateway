@@ -91,6 +91,12 @@ public static class DependencyInjection
                 "Plans: nenhum plano pode ter maxUsers ou maxClients negativo.")
             .ValidateOnStart();
 
+        // Política do cliente da Admin API do Keycloak — o consumidor que o comentário da classe esperava.
+        services.AddOptions<HttpResilienceOptions>()
+            .Bind(configuration.GetSection(HttpResilienceOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         return services;
     }
 

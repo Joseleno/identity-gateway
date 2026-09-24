@@ -120,6 +120,15 @@
     <!-- Health checks de Postgres e Redis, para o /health/ready. -->
     <PackageVersion Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
     <PackageVersion Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
+
+    <!--
+      Keycloak (M0). A versão do JsonWebTokens é a mesma que o JwtBearer já traz transitivamente — conferida
+      listando os pacotes transitivos da Api — para a Infrastructure não resolver uma versão diferente da
+      que a Api já usa.
+    -->
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.2" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.12" />
+    <PackageVersion Include="Testcontainers.Keycloak" Version="4.15.0" />
   </ItemGroup>
 
   <!--
