@@ -9,6 +9,51 @@ namespace IdentityGateway.Domain.Tenants;
 /// </summary>
 public sealed class Tenant : AggregateRoot<TenantId>
 {
+    /// <summary>
+    /// Construtor exclusivo do EF Core. <b>Nunca chamado por código de domínio.</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Existe porque o EF Core não vincula value object de múltiplos campos a parâmetro de
+    /// construtor.</b> Ele materializa por construtor parametrizado casando parâmetros com propriedades
+    /// mapeadas, mas recusa o <c>Plan</c>: tanto <c>OwnsOne</c> (navegação) quanto <c>ComplexProperty</c>
+    /// falham com "No suitable constructor was found ... Cannot bind 'plan'" (dotnet/efcore#31621, em
+    /// aberto na 10.0.12). <c>TenantId</c> e <c>TenantSlug</c> são conversões de valor único e vinculam
+    /// normalmente.
+    /// </para>
+    /// <para>
+    /// <b>Por que dois construtores, e não um só sem o plano:</b> com o plano fora do construtor único, o
+    /// compilador deixaria de exigi-lo, e um caminho de criação novo poderia esquecê-lo — o erro só
+    /// apareceria em uso. Mantendo o construtor de domínio abaixo com o plano obrigatório, a garantia
+    /// volta a ser do compilador, e o <c>null!</c> fica confinado a este construtor, que só o ORM chama.
+    /// O EF escolhe este por ser o único cujos parâmetros ele consegue vincular; a duplicidade não gera
+    /// ambiguidade.
+    /// </para>
+    /// <para>
+    /// A alternativa descartada era o <c>private Tenant() { }</c> com quatro <c>null!</c> — um agregado
+    /// inteiro momentaneamente inválido, em vez de um único campo que o EF preenche logo em seguida.
+    /// </para>
+    /// </remarks>
+    private Tenant(TenantId id, string name, TenantSlug slug)
+        : base(id)
+    {
+        Name = name;
+        Slug = slug;
+
+        // Preenchido pelo EF logo após a construção, ao materializar o complex type. Inalcançável por
+        // código de domínio: este construtor não tem chamador fora do ORM.
+        Plan = null!;
+
+        Status = TenantStatus.Pending;
+    }
+
+    /// <summary>
+    /// Construtor do domínio: exige o plano, como toda criação legítima de tenant.
+    /// </summary>
+    /// <remarks>
+    /// É o que <see cref="Register"/> usa. Ter o plano como parâmetro obrigatório é o que faz o compilador
+    /// recusar um caminho de criação que o esqueça.
+    /// </remarks>
     private Tenant(TenantId id, string name, TenantSlug slug, Plan plan)
         : base(id)
     {

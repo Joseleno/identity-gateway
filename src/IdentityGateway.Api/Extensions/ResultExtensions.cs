@@ -42,6 +42,38 @@ internal static class ResultExtensions
     }
 
     /// <summary>
+    /// Converte um resultado com valor em <c>202 Accepted</c> ou na resposta de erro correspondente.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><c>202</c> e não <c>201</c>:</b> o recurso foi aceito, não concluído. Num registro de tenant, o
+    /// Keycloak só será chamado pelo consumidor do Outbox — responder <c>201</c> afirmaria um recurso pronto
+    /// que ainda não existe do outro lado.
+    /// </para>
+    /// <para>
+    /// O <c>Location</c> aponta para onde acompanhar o processamento, não para o recurso criado.
+    /// </para>
+    /// </remarks>
+    /// <param name="resultado">O resultado do caso de uso.</param>
+    /// <param name="localizacao">Onde acompanhar o processamento.</param>
+    /// <param name="corpo">O que devolver no corpo da resposta.</param>
+    /// <param name="correlationId">Identificador da requisição, incluído em toda resposta de erro.</param>
+    public static IResult ParaAccepted<TValue>(
+        this Result<TValue> resultado,
+        Func<TValue, string> localizacao,
+        Func<TValue, object> corpo,
+        string correlationId)
+    {
+        ArgumentNullException.ThrowIfNull(resultado);
+        ArgumentNullException.ThrowIfNull(localizacao);
+        ArgumentNullException.ThrowIfNull(corpo);
+
+        return resultado.Match(
+            onSuccess: valor => Results.Accepted(localizacao(valor), corpo(valor)),
+            onFailure: erro => ParaProblem(erro, correlationId));
+    }
+
+    /// <summary>
     /// Converte um resultado com valor em <c>200 OK</c> ou na resposta de erro correspondente.
     /// </summary>
     public static IResult ParaOk<TValue>(this Result<TValue> resultado, string correlationId)

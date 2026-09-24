@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using IdentityGateway.Application.Common.Abstractions;
 
@@ -25,7 +26,19 @@ internal sealed class HttpCurrentUser(IHttpContextAccessor accessor) : ICurrentU
     {
         get
         {
-            string? valor = accessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            ClaimsPrincipal? usuario = accessor.HttpContext?.User;
+
+            // Lê as DUAS formas do mesmo claim, e isso não é redundância defensiva: a validação do JWT roda com
+            // `MapInboundClaims = false`, porque o remapeamento automático quebrava a policy `PlatformAdmin`
+            // (o handler traduzia `roles` para a URI longa antes de a policy comparar). Com o remapeamento
+            // desligado, o `sub` também deixa de virar `ClaimTypes.NameIdentifier` — e ler só a forma longa
+            // devolveria nulo para todo usuário autenticado.
+            //
+            // A forma longa continua sendo consultada porque um IdP externo pode emitir o claim já nela, e
+            // porque é o que valeria se o remapeamento voltasse a ser ligado.
+            string? valor =
+                usuario?.FindFirstValue(JwtRegisteredClaimNames.Sub)
+                ?? usuario?.FindFirstValue(ClaimTypes.NameIdentifier);
 
             // Guid.TryParse e não Parse: um claim malformado é dado externo, e derrubar a requisição por causa
             // dele seria pior que tratar a operação como anônima.

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -32,8 +33,13 @@ public static class DependencyInjection
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        // Carter descobre os módulos por varredura do assembly; os endpoints são mapeados em MapCarter().
-        services.AddCarter();
+        // Carter descobre os módulos por varredura de assembly. Sem informar qual, ele usa o assembly de
+        // entrada do processo — sob WebApplicationFactory<Program> isso é o host de teste, não esta Api, e a
+        // varredura não encontra módulo nenhum: toda rota responde 404 como se nada estivesse mapeado.
+        // Apontar aqui, para o assembly desta própria camada, mantém a varredura automática — um módulo novo
+        // continua dispensando alteração neste método — e a faz valer tanto em produção quanto sob teste
+        // funcional.
+        services.AddCarter(new DependencyContextAssemblyCatalog(typeof(DependencyInjection).Assembly));
 
         // Geração do documento OpenAPI embutida no .NET 10 — não precisa de Swashbuckle.
         services.AddOpenApi();
@@ -85,6 +91,12 @@ public static class DependencyInjection
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
+                // Sem isto, o JwtSecurityTokenHandler remapeia claims curtas para URI antes de a policy ver o
+                // token: "roles" vira "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", e
+                // RequireClaim("roles", ...) nunca casa — falha silenciosa, sempre 403, mesmo com o token certo.
+                // Desligar o mapeamento é o que faz o claim chegar como o emissor o escreveu.
+                options.MapInboundClaims = false;
+
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
@@ -98,7 +110,12 @@ public static class DependencyInjection
                 };
             });
 
-        services.AddAuthorization();
+        // Claim plano, não RequireRole: a §12.1 documenta que RequireRole falha com o Keycloak, porque o papel
+        // chega aninhado em realm_access.roles. RequireRole passaria hoje, com o JwtTokenService dos testes, e
+        // quebraria quando o Keycloak entrasse — o pior momento para descobrir.
+        services.AddAuthorization(options =>
+            options.AddPolicy("PlatformAdmin", policy =>
+                policy.RequireClaim("roles", "platform-admin")));
 
         // Mecânica de emissão/validação de JWT. No IdentityGateway o emissor é o Keycloak: este serviço fica
         // para os testes e para cabear a validação contra o realm no M0.
@@ -151,10 +168,7 @@ public static class DependencyInjection
 
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(contexto =>
             {
-                string particao =
-                    contexto.User.FindFirstValue(ClaimTypes.NameIdentifier)
-                    ?? contexto.Connection.RemoteIpAddress?.ToString()
-                    ?? "desconhecido";
+                string particao = ChaveDaParticao(contexto);
 
                 return RateLimitPartition.GetFixedWindowLimiter(particao, _ => new FixedWindowRateLimiterOptions
                 {
@@ -170,6 +184,34 @@ public static class DependencyInjection
 
         return services;
     }
+
+    /// <summary>
+    /// A chave que identifica a cota de quem faz a requisição.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Lê as duas formas do claim de identidade.</b> A validação do token roda com
+    /// <c>MapInboundClaims = false</c> — desligado porque o remapeamento quebrava a policy
+    /// <c>PlatformAdmin</c> —, e por causa disso o <c>sub</c> chega na forma curta, sem virar
+    /// <see cref="ClaimTypes.NameIdentifier"/>. Lendo só a forma longa, <b>todo</b> usuário autenticado cairia
+    /// na partição por IP, e os que estivessem atrás do mesmo NAT dividiriam uma cota só — exatamente o que
+    /// particionar por usuário existe para evitar.
+    /// </para>
+    /// <para>
+    /// <c>internal</c> e não uma lambda embutida no registro: é regra com consequência de segurança, e regra
+    /// assim precisa de teste. Dentro da lambda ela não teria como ser exercitada.
+    /// </para>
+    /// </remarks>
+    internal static string ChaveDaParticao(HttpContext contexto)
+    {
+        ArgumentNullException.ThrowIfNull(contexto);
+
+        return contexto.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? contexto.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? contexto.Connection.RemoteIpAddress?.ToString()
+            ?? "desconhecido";
+    }
+
 
     /// <summary>
     /// Sobrescreve os padrões da Infrastructure pelas implementações que leem o <c>HttpContext</c>.

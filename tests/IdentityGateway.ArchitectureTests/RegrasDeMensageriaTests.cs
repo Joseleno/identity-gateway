@@ -50,10 +50,10 @@ public sealed class RegrasDeMensageriaTests
     /// alguém põe uma regra que vale para dois handlers e não para o terceiro. Lógica comum vira serviço
     /// injetado.
     /// <para>
-    /// Esperou da T0.3 até aqui porque não havia handler para inspecionar — ver decisão 17.
+    /// Reativado com o handler de RegisterTenant.
     /// </para>
     /// </remarks>
-    [Fact(Skip = "Sem handler nem command na Application ainda: a guarda NotBeEmpty dispara de proposito para a regra nao passar em vacuidade. Reativar com o handler de RegisterTenant.")]
+    [Fact]
     public void Handlers_SaoSealed()
     {
         List<Type> handlers = [.. Application.GetTypes().Where(EhHandler)];
@@ -77,7 +77,7 @@ public sealed class RegrasDeMensageriaTests
     /// as três coisas. Com <c>class</c> de setters, um behavior do pipeline poderia alterar a mensagem no meio
     /// do caminho, e o handler receberia algo diferente do que foi enviado.
     /// </remarks>
-    [Fact(Skip = "Sem handler nem command na Application ainda: a guarda NotBeEmpty dispara de proposito para a regra nao passar em vacuidade. Reativar com o handler de RegisterTenant.")]
+    [Fact]
     public void CommandsEQueries_SaoRecord()
     {
         List<Type> mensagens = [.. Application.GetTypes().Where(EhMensagem)];

@@ -37,15 +37,23 @@ internal sealed class JwtTokenService(IOptions<JwtOptions> options, IDateTimePro
     /// </summary>
     /// <remarks>
     /// O identificador vai em <c>sub</c>, que é o claim padrão do registro do JWT para "quem é o sujeito deste
-    /// token". O <c>HttpCurrentUser</c> o lê como <see cref="ClaimTypes.NameIdentifier"/> porque o handler do
-    /// ASP.NET Core faz esse mapeamento por padrão — mantê-lo ligado é o que permite trocar este emissor por um
-    /// IdP sem tocar no resto do código.
+    /// token". O <c>HttpCurrentUser</c> o lê <b>nessa mesma forma curta</b>, porque a validação roda com
+    /// <c>MapInboundClaims = false</c>: o remapeamento automático do handler traduzia <c>roles</c> para a URI
+    /// longa antes de a policy <c>PlatformAdmin</c> comparar, e o <c>403</c> vinha mesmo com o token correto.
+    /// Desligá-lo conserta a policy e, de quebra, faz os claims chegarem como o emissor os escreveu — que é o
+    /// que um IdP externo vai entregar. O <c>HttpCurrentUser</c> ainda aceita a URI longa como alternativa.
+    /// <para>
+    /// <b>O claim de papel é <c>roles</c> plano, não aninhado.</b> A §12.1 documenta que <c>RequireRole</c>
+    /// falha com o Keycloak porque o papel chega dentro de <c>realm_access.roles</c> — e chama isso de "o ponto
+    /// que mais gera erro nessa integração". A policy exige o claim plano, e é ele que este método emite: o
+    /// token de teste tem a mesma forma que o do Keycloak terá, com o client scope configurado.
+    /// </para>
     /// </remarks>
-    public string Emitir(Guid usuarioId, string nome)
+    public string Emitir(Guid usuarioId, string nome, params string[] roles)
     {
         DateTime agora = clock.UtcNow.UtcDateTime;
 
-        Claim[] claims =
+        List<Claim> claims =
         [
             new(JwtRegisteredClaimNames.Sub, usuarioId.ToString()),
             new(JwtRegisteredClaimNames.Name, nome),
@@ -54,6 +62,13 @@ internal sealed class JwtTokenService(IOptions<JwtOptions> options, IDateTimePro
             // invalidar um token específico antes de ele expirar.
             new(JwtRegisteredClaimNames.Jti, Guid.CreateVersion7().ToString()),
         ];
+
+        // Um claim por papel, e não um único claim com lista separada por vírgula: é assim que o
+        // RequireClaim da policy compara.
+        foreach (string role in roles)
+        {
+            claims.Add(new Claim("roles", role));
+        }
 
         SymmetricSecurityKey chave = new(Encoding.UTF8.GetBytes(_options.SigningKey));
 

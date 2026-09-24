@@ -26,6 +26,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 {
 
     /// <summary>
+    /// Tenants registrados.
+    /// </summary>
+    /// <remarks>
+    /// <c>internal</c> como os demais: quem consulta são os repositórios, que vivem neste assembly. Público,
+    /// convidaria a Api a consultar direto e a fronteira deixaria de existir.
+    /// </remarks>
+    internal DbSet<Domain.Tenants.Tenant> Tenants => Set<Domain.Tenants.Tenant>();
+
+    /// <summary>
     /// Mensagens de domain event aguardando despacho.
     /// </summary>
     /// <remarks>
