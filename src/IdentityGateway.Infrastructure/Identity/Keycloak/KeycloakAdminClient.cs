@@ -31,8 +31,10 @@ internal sealed class KeycloakAdminClient(HttpClient http, IOptions<KeycloakAdmi
     public async Task<string> CreateOrganizationAsync(
         OrganizationRepresentation organizacao, CancellationToken cancellationToken)
     {
-        // StringContent, e não JsonContent: num 401 o handler do token reenvia o MESMO request, e o corpo precisa
-        // poder ser lido de novo.
+        // Num 401 o handler do token reenvia o MESMO request, e o corpo precisa poder ser serializado de novo.
+        // StringContent garante isso por contrato (guarda os bytes prontos); JsonContent também reenviaria aqui,
+        // por reserializar o objeto a cada envio, mas isso é comportamento observado, não garantia documentada —
+        // por isso StringContent continua sendo a escolha explícita.
         using StringContent corpo = new(
             JsonSerializer.Serialize(organizacao, Json), Encoding.UTF8, "application/json");
 

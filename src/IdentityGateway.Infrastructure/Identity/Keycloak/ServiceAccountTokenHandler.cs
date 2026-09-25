@@ -17,8 +17,8 @@ namespace IdentityGateway.Infrastructure.Identity.Keycloak;
 /// token se preciso, e a repetição após 401 acontece dentro de uma tentativa, contida no timeout total.
 /// </para>
 /// <para>
-/// O mesmo <see cref="HttpRequestMessage"/> é reenviado: por isso o <c>KeycloakAdminClient</c> usa corpo em
-/// <c>StringContent</c>, que pode ser lido de novo.
+/// O mesmo <see cref="HttpRequestMessage"/> é reenviado, e o corpo precisa poder ser serializado de novo: por isso
+/// o <c>KeycloakAdminClient</c> usa <c>StringContent</c>, que garante isso por contrato (guarda os bytes prontos).
 /// </para>
 /// </remarks>
 internal sealed class ServiceAccountTokenHandler(ServiceAccountTokenCache cache) : DelegatingHandler
