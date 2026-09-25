@@ -13,15 +13,15 @@
 
 | O quê | Estado |
 |---|---|
-| Branch | `feat/fundacao-keycloak`, HEAD nesta entrega, **24 commits** sobre `main` (`64af7fc`) |
+| Branch | `feat/fundacao-keycloak`, **23 commits** de implementação (Tasks 1–13) sobre `main` (`64af7fc`), mais os commits de documentação desta própria Task 14 |
 | `main` | Não tocada — só recebe o merge quando autorizado |
-| Working tree | Limpa após o commit desta task |
+| Working tree | Limpa após cada commit desta task |
 | Docker | Rodando; usado nas Tasks 7 (funcional), 9–11 (Keycloak real) e 13 (compose na CI) |
 | Push / PR | **Não feitos.** Decisão do usuário (Step 6 do plano) |
 
-Das 24: 9 `feat`, 1 `fix`, 5 `test` (Tasks 1–13, produção e teste) e 2 `ci`; os 7 `docs` restantes são o design/spec
-v2.4, o plano, o handoff planejado, os três comentários corrigidos nos fix rounds das Tasks 2, 4 e 11, e este
-handoff.
+Os 23 commits das Tasks 1–13 se dividem em 9 `feat`, 1 `fix`, 5 `test`, 2 `ci` e 6 `docs` (design/spec v2.4, plano,
+handoff planejado, e os três comentários corrigidos nos fix rounds das Tasks 2, 4 e 11). A Task 14 acrescenta só
+`docs`: o handoff e as correções de revisão sobre ele.
 
 ## O que a fatia entregou
 
