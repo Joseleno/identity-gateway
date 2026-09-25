@@ -113,4 +113,33 @@ public sealed class ClientAssertionFactoryTests
 
         resultado.IsValid.Should().BeTrue(resultado.Exception?.Message);
     }
+
+    [Fact]
+    public void Criar_DepoisDeOutraInstanciaDaChaveSerDescartada_Assina()
+    {
+        // O CryptoProviderFactory.Default cacheia o SignatureProvider pelo material da chave, não pela instância
+        // do RSA: sem uma fábrica própria sem cache em ClientAssertionFactory, a segunda instância da MESMA chave
+        // (aqui simulando outro host, uma recarga ou uma rotação no mesmo processo) assinaria usando o
+        // SignatureProvider cacheado da primeira — e o RSA por trás dele já foi descartado junto com ela.
+        IOptions<KeycloakAdminOptions> opcoes =
+            OpcoesDeTeste.Keycloak("http://keycloak.test:8080/", _chaves.PemPrivado);
+        IDateTimeProvider relogio = Substitute.For<IDateTimeProvider>();
+        relogio.UtcNow.Returns(Agora);
+
+        GatewaySigningKey chaveA = new(opcoes);
+        new ClientAssertionFactory(chaveA, opcoes, relogio).Criar();
+        chaveA.Dispose();
+
+        GatewaySigningKey chaveB = new(opcoes);
+        try
+        {
+            Action assinarComB = () => new ClientAssertionFactory(chaveB, opcoes, relogio).Criar();
+
+            assinarComB.Should().NotThrow();
+        }
+        finally
+        {
+            chaveB.Dispose();
+        }
+    }
 }

@@ -4,7 +4,6 @@ using System.Text.Json;
 using IdentityGateway.Domain.Tenants;
 using IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.IdentityModel.Tokens;
 using Testcontainers.Keycloak;
 
 [assembly: AssemblyFixture(typeof(KeycloakFixture))]
@@ -33,18 +32,6 @@ public sealed class KeycloakFixture : IAsyncLifetime
     public const string Realm = "identity-gateway";
 
     private readonly KeycloakContainer _container;
-
-    static KeycloakFixture()
-    {
-        // Sem isso, dois testes que assinam com a MESMA chave (o Pem padrão de ChavesDeTeste) colidem no cache
-        // estático de SignatureProvider do Microsoft.IdentityModel.Tokens: a chave não tem KeyId (exigência da
-        // Task 2), então o cache identifica pelo material da chave, não pelo objeto RSA. Quando o primeiro teste
-        // termina e descarta o próprio ServiceProvider — e com ele o RSA que assinou —, o cache continua
-        // apontando para aquele RSA já descartado, e o próximo teste com a mesma chave recebe
-        // ObjectDisposedException ao assinar. Em produção isso nunca ocorre: há um único ServiceProvider vivo
-        // por todo o processo, então a chave cacheada nunca é descartada enquanto em uso.
-        CryptoProviderFactory.Default.CacheSignatureProviders = false;
-    }
 
     public KeycloakFixture()
     {

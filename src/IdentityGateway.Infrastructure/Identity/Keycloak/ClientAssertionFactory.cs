@@ -32,6 +32,14 @@ internal sealed class ClientAssertionFactory(
     // Thread-safe e sem estado por token: uma instância serve a todos.
     private static readonly JsonWebTokenHandler Emissor = new();
 
+    // O CryptoProviderFactory.Default cacheia o SignatureProvider — e com ele o RSA — por processo, indexado pelo
+    // material da chave. Esse cache sobrevive à vida do GatewaySigningKey que o DI descarta: uma segunda instância
+    // da MESMA chave no mesmo processo (outro host, uma recarga, uma rotação) assinaria com um RSA já descartado,
+    // e o sintoma é um ObjectDisposedException sem relação aparente com o request que falhou. Uma fábrica própria,
+    // sem cache, custa um SignatureProvider por assertion — ou seja, por renovação de token, não por request — e
+    // evita depender da vida do processo bater com a vida de cada instância de chave.
+    private static readonly CryptoProviderFactory Assinadores = new() { CacheSignatureProviders = false };
+
     /// <summary>Um assertion novo, com <c>jti</c> próprio.</summary>
     public string Criar()
     {
@@ -55,7 +63,10 @@ internal sealed class ClientAssertionFactory(
             NotBefore = agora,
             Expires = agora + Vida,
             SigningCredentials = new SigningCredentials(
-                new RsaSecurityKey(chave.Rsa), SecurityAlgorithms.RsaSsaPssSha256),
+                new RsaSecurityKey(chave.Rsa), SecurityAlgorithms.RsaSsaPssSha256)
+            {
+                CryptoProviderFactory = Assinadores,
+            },
         };
 
         return Emissor.CreateToken(descritor);
