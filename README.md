@@ -53,9 +53,38 @@ Com o compose de pé: a API responde em `http://localhost:8080`, `/health/live` 
 respondem `200`, os logs estruturados vão para o Seq em `http://localhost:5341` e os traces para o Jaeger
 em `http://localhost:16686`.
 
+### Keycloak
+
+O compose sobe o Keycloak 26.7.4 com o realm `identity-gateway` importado de `keycloak/bootstrap/`.
+
+| O quê | Onde |
+|---|---|
+| Console | http://localhost:8081 (só no localhost) |
+| Usuário | `admin` |
+| Senha | gerada na primeira subida: `docker compose logs gateway-keys` |
+
+Nenhuma credencial fica no repositório: a chave da Gateway e a senha do admin são geradas pelo serviço
+`gateway-keys` num volume, na primeira subida.
+
+**Chave e realm andam juntos.** O realm é importado só na primeira subida. Se só o volume `gateway-keys` for apagado,
+a chave nova não bate com o certificado registrado, e o `/health/ready` da API responde 503 com `invalid_client` no
+log. Para recomeçar do zero: `docker compose down -v`.
+
+### Rodar a API pela IDE
+
+A API exige a configuração do Keycloak para subir. Com o compose rodando só as dependências:
+
+```powershell
+docker compose up -d postgres redis keycloak
+$pem = docker run --rm -v identitygateway_gateway-keys:/k alpine cat /k/api/private.pem | Out-String
+dotnet user-secrets set "Keycloak:Admin:PrivateKeyPem" $pem --project src/IdentityGateway.Api
+```
+
+O `appsettings.Development.json` já aponta `Keycloak:Admin:BaseUrl` para `http://localhost:8081`. O nome do volume
+leva o prefixo do projeto do compose (o nome da pasta); confira com `docker volume ls`.
+
 Rodando pela IDE ou com `dotnet run --project src/IdentityGateway.Api`, a API sobe em
-`https://localhost:7206` e a raiz redireciona para a documentação Scalar. Nesse caminho as dependências
-ainda vêm do compose: `docker compose up -d postgres redis`.
+`https://localhost:7206` e a raiz redireciona para a documentação Scalar.
 
 **Os 6 testes em skip são deliberados**, não dívida: quatro regras de arquitetura usam uma guarda
 `NotBeEmpty` que dispara enquanto não houver agregado nem handler para inspecionar — uma regra que varre
