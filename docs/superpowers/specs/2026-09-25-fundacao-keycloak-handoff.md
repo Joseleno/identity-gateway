@@ -16,7 +16,7 @@
 | Branch | `feat/fundacao-keycloak`, 3 commits de planejamento + **20 commits** das Tasks 1–13 sobre `main` (`64af7fc`), mais os commits de documentação desta própria Task 14 |
 | `main` | Não tocada — só recebe o merge quando autorizado |
 | Working tree | Limpa após cada commit desta task |
-| Docker | Rodando; usado nas Tasks 7 (funcional), 9–11 (Keycloak real) e 13 (compose na CI) |
+| Docker | Rodando; usado nas Tasks 7 (funcional), 9–11 (Keycloak real) e 12 (compose verificado ao vivo, localmente). O job de compose da Task 13 foi validado com `actionlint`, mas nunca rodou no GitHub — roda pela primeira vez nesta PR |
 | Push / PR | **Não feitos.** Decisão do usuário (Step 6 do plano) |
 
 Três frentes de commits compõem a branch: **planejamento** (`docs`, 3 — design/spec v2.4, plano, handoff planejado);

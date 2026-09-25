@@ -6,7 +6,13 @@ namespace IdentityGateway.Infrastructure.Identity.Keycloak;
 internal interface ITokenEndpoint
 {
     /// <summary>Pede um token novo ao Keycloak. Cada chamada é uma tentativa, com assertion próprio.</summary>
-    /// <exception cref="HttpRequestException">O Keycloak recusou ou não respondeu.</exception>
+    /// <exception cref="HttpRequestException">O Keycloak recusou (4xx/5xx) ou a conexão falhou.</exception>
+    /// <exception cref="TaskCanceledException">
+    /// O timeout do cliente do token (<c>AttemptTimeoutSeconds</c>, sem resiliência aqui — ver
+    /// <c>AddKeycloakIdentity</c>) estourou antes de o Keycloak responder. Não é
+    /// <see cref="HttpRequestException"/>: desde o .NET 5, o cancelamento por <c>HttpClient.Timeout</c> chega como
+    /// <see cref="TaskCanceledException"/> com <see cref="TimeoutException"/> como <c>InnerException</c>.
+    /// </exception>
     Task<TokenObtido> ObterAsync(CancellationToken cancellationToken);
 }
 

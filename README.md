@@ -14,14 +14,19 @@ nenhum login e de nenhuma requisição de negócio.**
 
 ## Estado do projeto
 
-**Especificação concluída. Fundação no lugar. M0 em andamento.**
+**M0 em andamento — vertical de registro entregue, fundação Keycloak entregue nesta branch.**
 
 O repositório parte do template [CleanStart](https://github.com/Joseleno/CleanStart) e já traz a fundação
 funcionando — Clean Architecture em quatro camadas, Outbox transacional, cache de dois níveis, middlewares
-de correlação e segurança, testes de arquitetura e CI. **O que ainda não existe é o domínio do
-IdentityGateway:** nenhum agregado, endpoint ou realm Keycloak. O roadmap está em
-[`docs/especificacao-arquitetural-v2.3.md`](docs/especificacao-arquitetural-v2.3.md) §16, e o estado
-detalhado em [`docs/handoff-revisao.md`](docs/handoff-revisao.md).
+de correlação e segurança, testes de arquitetura e CI. **O domínio do IdentityGateway já existe:** o
+agregado `Tenant` e `POST /api/v1/tenants` (PR #1) gravam o tenant e publicam `tenant-registered` no
+Outbox; esta branch acrescenta a fundação Keycloak — realm `identity-gateway` com Organizations,
+autenticação `private_key_jwt` do service account e a porta `IIdentityProvider.EnsureOrganizationAsync`
+provada ponta a ponta contra um Keycloak real, ainda sem consumidor em produção. **Próximo passo: a fatia
+B**, o consumidor do provisionamento que lê a mensagem do Outbox e chama `EnsureOrganizationAsync`. O
+roadmap está em [`docs/especificacao-arquitetural-v2.4.md`](docs/especificacao-arquitetural-v2.4.md) §16
+(referência normativa atual — a v2.3 é uma versão anterior, mantida só como registro histórico), e o estado
+detalhado no [handoff da fundação Keycloak](docs/superpowers/specs/2026-09-25-fundacao-keycloak-handoff.md).
 
 | Marco | Entrega | Estado |
 |---|---|---|
@@ -38,11 +43,11 @@ detalhado em [`docs/handoff-revisao.md`](docs/handoff-revisao.md).
 
 ## Rodando local
 
-Precisa de .NET 10 e Docker. O Docker não é opcional: os testes de integração sobem Postgres por
-Testcontainers.
+Precisa de .NET 10 e Docker. O Docker não é opcional: os testes de integração sobem Postgres e um Keycloak
+26.7.4 (um contêiner por assembly) por Testcontainers.
 
 ```bash
-# Toda a suíte — 113 testes, 107 passam e 6 ficam em skip (ver abaixo)
+# Toda a suíte — 280 testes, 0 skips (109 domínio, 35 application, 28 arquitetura, 89 integração, 19 funcional)
 dotnet test
 
 # As dependências, e a API junto
@@ -64,7 +69,13 @@ O compose sobe o Keycloak 26.7.4 com o realm `identity-gateway` importado de `ke
 | Senha | gerada na primeira subida: `docker compose logs gateway-keys` |
 
 Nenhuma credencial fica no repositório: a chave da Gateway e a senha do admin são geradas pelo serviço
-`gateway-keys` num volume, na primeira subida.
+`gateway-keys` num volume, na primeira subida. O log só mostra a senha nessa primeira subida; depois,
+recupere do volume — o nome leva o prefixo do projeto do compose (o nome da pasta), como no `private.pem`
+abaixo:
+
+```bash
+docker run --rm -v identitygateway_gateway-keys:/k alpine cat /k/keycloak/admin-password
+```
 
 **Chave e realm andam juntos.** O realm é importado só na primeira subida. Se só o volume `gateway-keys` for apagado,
 a chave nova não bate com o certificado registrado, e o `/health/ready` da API responde 503 com `invalid_client` no
@@ -86,11 +97,8 @@ leva o prefixo do projeto do compose (o nome da pasta); confira com `docker volu
 Rodando pela IDE ou com `dotnet run --project src/IdentityGateway.Api`, a API sobe em
 `https://localhost:7206` e a raiz redireciona para a documentação Scalar.
 
-**Os 6 testes em skip são deliberados**, não dívida: quatro regras de arquitetura usam uma guarda
-`NotBeEmpty` que dispara enquanto não houver agregado nem handler para inspecionar — uma regra que varre
-zero tipos passaria sem verificar nada — e dois testes de `401` dependem de um endpoint protegido existir,
-já que sem rota registrada o roteamento responde `404` antes de a autorização ser consultada. Os seis
-reativam com o primeiro módulo do M0.
+**Zero skips.** Os 6 que a fundação herdava do esqueleto (guardas de arquitetura sem tipo para inspecionar,
+e testes de `401` sem endpoint protegido) fecharam com a vertical de registro (PR #1) e com esta fatia.
 
 ---
 
@@ -99,7 +107,7 @@ reativam com o primeiro módulo do M0.
 | Documento | O que responde |
 |---|---|
 | [**Documentação de negócio**](docs/documentacao-negocio.md) | **Comece aqui.** O que a solução faz, para quem e como funciona — com 16 diagramas |
-| [**Especificação arquitetural v2.3**](docs/especificacao-arquitetural-v2.3.md) | A referência de implementação: domínio, endpoints, ADRs, código de referência |
+| [**Especificação arquitetural v2.4**](docs/especificacao-arquitetural-v2.4.md) | A referência de implementação: domínio, endpoints, ADRs, código de referência |
 | [**Revisão crítica**](docs/revisao-critica.md) | Os 33 achados que produziram as correções |
 
 ---
@@ -127,7 +135,7 @@ resiliente à queda do Keycloak. Registrar isso faz parte do projeto.
 
 ## Decisões arquiteturais
 
-Dez ADRs, com o texto completo na [especificação §4](docs/especificacao-arquitetural-v2.3.md#4-decisões-arquiteturais-adrs).
+Dez ADRs, com o texto completo na [especificação §4](docs/especificacao-arquitetural-v2.4.md#4-decisões-arquiteturais-adrs).
 
 | ADR | Decisão |
 |---|---|

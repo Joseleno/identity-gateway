@@ -51,8 +51,9 @@ internal static class KeycloakServiceCollectionExtensions
         {
             http.BaseAddress = provider.GetRequiredService<IOptions<KeycloakAdminOptions>>().Value.AdminBaseAddress;
 
-            // O timeout é da resiliência (por tentativa e total). Este cancelaria no meio do pipeline, com um
-            // cancelamento indistinguível do que parte de quem chamou.
+            // O timeout é da resiliência (por tentativa e total). Um HttpClient.Timeout finito envolveria o
+            // pipeline inteiro — todas as tentativas somadas — e cancelaria antes do TotalRequestTimeout, que é
+            // quem deveria decidir isso.
             http.Timeout = Timeout.InfiniteTimeSpan;
         });
 
@@ -95,9 +96,11 @@ internal static class KeycloakServiceCollectionExtensions
             timeout: TimeSpan.FromSeconds(5));
 
         // Token endpoint: cliente próprio, SEM resiliência. O jti é de uso único, e uma política de retry reenviaria
-        // o mesmo assertion. Timeout curto, igual ao de uma tentativa da Admin API: sem ele, valeria o padrão de 100s
-        // do HttpClient, e um Keycloak pendurado seguraria a sonda de health e a chamada de negócio por quase dois
-        // minutos.
+        // o mesmo assertion. Timeout curto, igual ao de uma tentativa da Admin API: sem ele, valeria o padrão de
+        // 100s do HttpClient. Isso não é o que protege a sonda de health nem a chamada de negócio contra um
+        // Keycloak pendurado — a sonda já é cortada pelo timeout de 5s do registro do health check, e a chamada de
+        // negócio pelo AttemptTimeout da resiliência (a busca do token roda dentro do CancellationToken da
+        // tentativa). Este timeout é o backstop para quem chama o token endpoint direto, sem nenhum dos dois.
         services.AddHttpClient(KeycloakTokenClient.NomeDoCliente, (provider, http) =>
             http.Timeout = TimeSpan.FromSeconds(
                 provider.GetRequiredService<IOptions<HttpResilienceOptions>>().Value.AttemptTimeoutSeconds));

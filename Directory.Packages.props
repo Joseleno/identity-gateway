@@ -112,8 +112,8 @@
 
     <!--
       Resiliência de chamada HTTP externa: retry, circuit breaker e timeout (Polly v8 por baixo).
-      Sem PackageReference hoje — o consumidor saiu com a feature de exemplo do template. A versão fica
-      fixada porque o cliente do Keycloak entra no M0; ver HttpResilienceOptions para o que cabear.
+      Referenciado pela Infrastructure no cliente da Admin API do Keycloak (fundação do M0); ver
+      HttpResilienceOptions para o que é cabeado.
     -->
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
 

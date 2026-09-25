@@ -21,15 +21,27 @@ public interface IIdentityProvider
     /// <summary>
     /// Garante que existe a Organization do tenant, e devolve o id dela no provedor.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Qualquer exceção que não seja <see cref="IdentityProviderInconsistencyException"/> é falha de
+    /// infraestrutura</b>, e o consumidor deve tratá-la assim: retry por <i>exclusão</i> — ignora só o tipo de
+    /// inconsistência e trata o resto como transiente — nunca por lista branca de tipo. Uma lista branca baseada só
+    /// em <c>HttpRequestException</c> erra dos dois lados (spec §4.1): um timeout de tentativa ou um circuito
+    /// aberto na Admin API chegam aqui como <c>TaskCanceledException</c> ou como o tipo de timeout/circuito da
+    /// resiliência (Polly por baixo do <c>Microsoft.Extensions.Http.Resilience</c>), não como
+    /// <c>HttpRequestException</c>; e nem todo <c>HttpRequestException</c> é transiente — um 403, um
+    /// <c>invalid_client</c> ou um 404 de "Organizations not enabled" são erro de configuração, que repetir não
+    /// corrige, mas que também não deve virar falha de negócio silenciosa.
+    /// </para>
+    /// </remarks>
     /// <param name="tenantId">Correlaciona a Organization ao tenant; é a chave da idempotência.</param>
     /// <param name="slug">Identificador único e imutável do tenant.</param>
     /// <param name="name">Nome de exibição.</param>
     /// <param name="cancellationToken">Cancelamento.</param>
     /// <exception cref="IdentityProviderInconsistencyException">
-    /// Estado que repetir não resolve: o slug está em uso por outra Organization, ou há mais de uma correlacionada ao
-    /// mesmo tenant.
+    /// Único erro <b>permanente</b>: o slug está em uso por outra Organization, ou há mais de uma correlacionada ao
+    /// mesmo tenant. Repetir a mensagem não resolve (spec §4.3).
     /// </exception>
-    /// <exception cref="HttpRequestException">Falha transiente de comunicação com o provedor.</exception>
     Task<string> EnsureOrganizationAsync(
         TenantId tenantId, TenantSlug slug, string name, CancellationToken cancellationToken);
 }

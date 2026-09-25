@@ -18,8 +18,9 @@ namespace IdentityGateway.Infrastructure.Configuration;
 /// <para>
 /// <b>Consumida pelo cliente da Admin API do Keycloak</b> (<c>Identity/Keycloak</c>). A ordem do pipeline importa:
 /// timeout total por fora, retry dentro dele, circuit breaker dentro do retry, timeout por tentativa no centro — é a
-/// ordem do <c>AddStandardResilienceHandler</c>. O <c>HttpClient.Timeout</c> fica em <c>InfiniteTimeSpan</c>: ele
-/// cancelaria no meio do pipeline, com um cancelamento indistinguível do que parte do usuário.
+/// ordem do <c>AddStandardResilienceHandler</c>. O <c>HttpClient.Timeout</c> fica em <c>InfiniteTimeSpan</c>: um
+/// valor finito envolveria o pipeline inteiro — todas as tentativas somadas — e cancelaria antes do
+/// <see cref="TotalTimeoutSeconds"/>, que é quem deveria decidir isso.
 /// </para>
 /// </remarks>
 public sealed class HttpResilienceOptions

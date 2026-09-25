@@ -67,8 +67,8 @@ services:
       gateway-keys:
         condition: service_completed_successfully
     healthcheck:
-      # O /health/ready de verdade: Postgres, Redis e o token do service account no Keycloak. A imagem aspnet é
-      # Debian e tem bash; sem curl, a requisição sai por /dev/tcp.
+      # O /health/ready de verdade: Postgres, Redis e o token do service account no Keycloak. A imagem
+      # mcr.microsoft.com/dotnet/aspnet:10.0 é Ubuntu 24.04 e tem bash; sem curl, a requisição sai por /dev/tcp.
       test: ["CMD", "bash", "-c", "{ printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&0; grep -q ' 200 '; } 0<>/dev/tcp/127.0.0.1/8080"]
       interval: 15s
       timeout: 5s
