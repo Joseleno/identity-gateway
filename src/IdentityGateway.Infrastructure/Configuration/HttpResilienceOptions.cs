@@ -16,20 +16,11 @@ namespace IdentityGateway.Infrastructure.Configuration;
 /// cliente, não esta configuração.
 /// </para>
 /// <para>
-/// <b>Ainda não está registrada no contêiner.</b> O consumidor que a justificava saiu com a feature de
-/// exemplo do template, e options validada com <c>ValidateOnStart</c> governando seção que ninguém lê
-/// derruba a aplicação por configuração que não faz nada. A classe fica porque o M0 chama o Keycloak por
-/// HTTP e vai precisar destas políticas — a ordem do pipeline importa: timeout total por fora, retry dentro
-/// dele, circuit breaker dentro do retry, timeout por tentativa no centro. Assim cada tentativa tem prazo
-/// próprio, o conjunto tem prazo máximo, e o breaker conta falhas de tentativas, não do conjunto. O
-/// <c>HttpClient.Timeout</c> fica em <c>InfiniteTimeSpan</c>: ele cancelaria no meio do pipeline, com um
-/// cancelamento indistinguível do que parte do usuário.
-/// </para>
-/// <para>
-/// <b>Ao cabear o cliente</b>, três passos: devolver o <c>PackageReference</c> de
-/// <c>Microsoft.Extensions.Http.Resilience</c> ao <c>.csproj</c> (removido junto com o consumidor),
-/// registrar estas options em <c>AddOptionsValidadas</c>, e montar o pipeline no <c>AddResilienceHandler</c>
-/// do cliente tipado.
+/// <b>Consumida pelo cliente da Admin API do Keycloak</b> (<c>Identity/Keycloak</c>). A ordem do pipeline importa:
+/// timeout total por fora, retry dentro dele, circuit breaker dentro do retry, timeout por tentativa no centro — é a
+/// ordem do <c>AddStandardResilienceHandler</c>. O <c>HttpClient.Timeout</c> fica em <c>InfiniteTimeSpan</c>: um
+/// valor finito envolveria o pipeline inteiro — todas as tentativas somadas — e cancelaria antes do
+/// <see cref="TotalTimeoutSeconds"/>, que é quem deveria decidir isso.
 /// </para>
 /// </remarks>
 public sealed class HttpResilienceOptions
@@ -41,9 +32,10 @@ public sealed class HttpResilienceOptions
     /// <remarks>
     /// Poucas, de propósito. Cada tentativa segura uma conexão e adia a resposta de erro a quem chamou; se três
     /// tentativas não resolveram, o problema não é transiente e insistir só transforma indisponibilidade do
-    /// parceiro em indisponibilidade nossa.
+    /// parceiro em indisponibilidade nossa. O mínimo é 1 porque o pipeline padrão recusa zero; para não repetir, o
+    /// lugar é desligar o retry no cliente, não zerar a política de todos.
     /// </remarks>
-    [Range(0, 10, ErrorMessage = "O número de tentativas deve estar entre 0 e 10.")]
+    [Range(1, 10, ErrorMessage = "O número de tentativas deve estar entre 1 e 10.")]
     public int MaxRetryAttempts { get; init; } = 3;
 
     /// <summary>Atraso da primeira retentativa, em segundos.</summary>

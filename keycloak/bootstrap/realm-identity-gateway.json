@@ -1,0 +1,37 @@
+{
+  "realm": "identity-gateway",
+  "enabled": true,
+  "organizationsEnabled": true,
+  "clients": [
+    {
+      "clientId": "identity-gateway",
+      "name": "IdentityGateway (service account)",
+      "description": "Client confidencial da Gateway. Só client_credentials, autenticado por private_key_jwt.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "clientAuthenticatorType": "client-jwt",
+      "attributes": {
+        "jwt.credential.certificate": "${GATEWAY_CLIENT_CERT}",
+        "token.endpoint.auth.signing.alg": "PS256"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-identity-gateway",
+      "enabled": true,
+      "serviceAccountClientId": "identity-gateway",
+      "clientRoles": {
+        "realm-management": [
+          "manage-organizations"
+        ]
+      }
+    }
+  ]
+}

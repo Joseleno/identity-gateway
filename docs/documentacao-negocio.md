@@ -1,15 +1,20 @@
 # IdentityGateway — Documentação de Negócio
 
-> **Versão:** 1.1 · **Data:** 2026-09-20
-> **Fonte da verdade:** [`especificacao-arquitetural-v2.2.md`](especificacao-arquitetural-v2.2.md)
-> **Estado do projeto:** especificação concluída, implementação não iniciada.
+> **Versão:** 1.2 · **Data:** 2026-09-24
+> **Fonte da verdade:** [`especificacao-arquitetural-v2.4.md`](especificacao-arquitetural-v2.4.md)
+> **Estado do projeto:** implementação em andamento — registro de tenant entregue; fundação Keycloak em curso.
+>
+> **Nota da versão 1.2.** Este documento foi derivado da v2.2. A v1.2 alinha à v2.4 os trechos que repetiam
+> premissas sobre o Keycloak que a implementação verificou serem falsas (feature flag de Organizations, `aud`
+> do client assertion, busca por atributo, JWKS). As citações `§N` continuam válidas: a numeração das seções
+> não mudou. O que a v2.3 e a v2.4 acrescentaram está na seção "O que mudou" de cada uma.
 
 Este documento explica **o que o IdentityGateway faz, para quem, como funciona e por que foi
 desenhado assim**. Ele é derivado da especificação arquitetural v2.2 e não a substitui: onde a
 spec fixa contratos, assinaturas e código de referência, aqui a linguagem é de negócio, com
 âncoras técnicas para quem quiser descer ao detalhe.
 
-**Rastreabilidade.** Toda afirmação relevante cita sua origem: `§N` remete a uma seção da v2.2,
+**Rastreabilidade.** Toda afirmação relevante cita sua origem: `§N` remete a uma seção da spec vigente (v2.4),
 `ADR-00N` a uma decisão arquitetural, e `C*`, `A*`, `N*`, `X*` e `CI-*` aos achados da
 [`revisao-critica.md`](revisao-critica.md). Essa rastreabilidade é deliberada — a linha evolutiva
 dos documentos (ideia → v2.0 → revisão → v2.1 → v2.2) é parte do que o projeto demonstra.
@@ -461,7 +466,7 @@ As sete decisões abaixo foram fechadas no brainstorm que sucedeu a revisão cr�
 | **Por quê** | `curl` é verificável por quem lê, sem depender do autor estar presente. Vídeo e conversa não são auditáveis |
 | **Consequência de negócio** | **Promove o M0 a peça crítica.** O README é o primeiro contato do avaliador, e uma falha ali encerra a leitura antes dos ADRs. O critério vira `git clone` + `docker compose up` + primeiro `curl` funcionando **na primeira tentativa** (§16) |
 | **O que o README precisa provar** | Duas demonstrações, porque provam competências difíceis em poucos comandos: (1) **consistência sem transação distribuída** — `docker compose stop keycloak` → `POST /tenants` responde `202` normalmente → `docker compose start keycloak` → o tenant vira `Active` sozinho; (2) **isolamento multi-tenant** — com token do tenant A, rota do tenant B responde 403, e um `memberId` do tenant B dentro da rota do tenant A responde 404 (§16) |
-| **Consequência de engenharia** | Justifica investimentos que sem isso pareceriam exagero: o *smoke test* da feature flag `organization` no M0 — sem `KC_FEATURES=organization` o Keycloak sobe normalmente, o import passa sem erro, e o primeiro provisionamento falha com **404 silencioso** (§15, achado A3) |
+| **Consequência de engenharia** | Justifica investimentos que sem isso pareceriam exagero: o *smoke test* de Organizations no M0 — sem `organizationsEnabled` no realm o Keycloak sobe normalmente, o import passa sem erro, e o primeiro provisionamento falha com **404 silencioso** (§15, achado A3, corrigido na v2.4); e o **compose verificado na CI** a cada PR (§15) |
 
 #### 7.8. Leitura conjunta: o que as sete decisões têm em comum
 
@@ -1253,7 +1258,7 @@ reproduzível** (decisão 7 do brainstorm). Isso muda o peso do M0: ele deixa de
 terreno" e passa a ser **o primeiro contato do avaliador**. Uma falha ali — um `docker compose
 up` que não sobe, um primeiro `curl` que retorna erro — encerra a leitura antes dos ADRs, antes
 dos testes de isolamento, antes de qualquer coisa que o projeto queira demonstrar. Um exemplo
-concreto do risco: sem a feature flag `organization` no container, o Keycloak sobe normalmente,
+concreto do risco: sem `organizationsEnabled` no realm, o Keycloak sobe normalmente,
 o import do realm passa sem erro e o endpoint de Organizations responde `404` — falha silenciosa
 que só apareceria na primeira demonstração. Por isso o M0 inclui um *smoke test* que falha
 explicitamente nesse caso, na subida (§15).
@@ -2502,15 +2507,19 @@ reapresentação.
 
 O mecanismo está especificado na §10.2 e usa o mesmo stack .NET já empregado na validação de tokens
 (`JsonWebTokenHandler`), sem dependência adicional. Do lado do Keycloak, o client é configurado com **Signed
-JWT** e a chave pública chega por JWKS publicado pela Gateway — o que permite **rotacionar a chave sem
-downtime**, expondo as duas durante a janela de transição.
+JWT** e a chave pública registrada como certificado no client. Rotacionar a chave, hoje, causa
+indisponibilidade; a evolução é publicar a chave por JWKS, expondo as duas durante a janela de transição
+(§19).
 
-> **O erro mais comum tem nome e endereço.** O campo de destinatário da prova (`aud`) precisa apontar para o
-> **token endpoint** do realm, **não para o issuer**. Trocar um pelo outro é o engano mais frequente nesta
-> integração, e o Keycloak responde apenas `invalid_client`, sem dizer o que está errado — uma tarde inteira
-> de depuração por um caractere de caminho. Por isso a §10.2 registra o ponto explicitamente e um teste de
-> integração contra o Keycloak real cobre a obtenção de token por este caminho (§13). É o mesmo padrão de
-> valor da §12.1: a armadilha de integração é resolvida uma vez, documentada, e protegida por teste.
+> **O erro mais comum tem nome e endereço — e não era o que a spec dizia.** Até a v2.3, este parágrafo
+> afirmava que o destinatário da prova (`aud`) precisava ser o token endpoint, e que o issuer produziria
+> `invalid_client`. A implementação leu o código do Keycloak e achou o contrário: o issuer é aceito, e é o
+> recomendado. As armadilhas reais são outras duas. O **identificador da chave** (`kid`) que o .NET põe na
+> prova não bate com o que o Keycloak calcula, e a resposta é o mesmo `invalid_client` mudo; a correção é
+> não enviá-lo. E a **validade** da prova, que parecia vir curta da biblioteca, vem de 60 minutos; agora é
+> fixada em 60 segundos no código. Ambas estão na §10.2, cada uma protegida por teste. É o mesmo padrão de
+> valor da §12.1 — a armadilha de integração é resolvida uma vez, documentada e protegida por teste —, com
+> um acréscimo: a documentação também erra, e só a execução a corrige.
 
 ---
 
@@ -2584,7 +2593,7 @@ Cinco afirmações da spec foram checadas contra documentação oficial e códig
 
 | Afirmação verificada | Veredito |
 |---|---|
-| Organizations é GA no Keycloak 26 | ✅ Confirmado — mas exige a feature flag de build (virou o achado A3) |
+| Organizations é GA no Keycloak 26 | ✅ Confirmado — a revisão concluiu que exigia a feature flag de build (achado A3); a v2.4 corrigiu: desde a 26.0 o obrigatório é `organizationsEnabled` no realm |
 | O mapper de organização emite id ou alias | ✅ **Nenhum dos dois** — objeto aninhado → **virou C1** |
 | É possível buscar Organization por alias | ✅ Confirmado que **não** — a busca exata é por nome ou domínio → **virou C3** |
 | `DisableForUnsafeHttpMethods()` provavelmente não existe | ❌ **Existe, e o código da spec está correto** — o problema é um bug aberto do pacote |
@@ -2609,13 +2618,16 @@ flowchart LR
     B --> R["Revisão crítica<br/>3 frentes independentes<br/>33 achados · 8 contradições"]
     R --> C["Especificação v2.1"]
     C --> N["Documentacao de negocio<br/>v1.0"]
-    N --> D["Especificação v2.2<br/>VIGENTE"]
+    N --> D["Especificação v2.2"]
+    D --> E["Especificação v2.3<br/>reconcilia com o CleanStart"]
+    E --> F["Especificação v2.4<br/>VIGENTE"]
 
     A -.->|"deixa em aberto:<br/>realm vs. Organizations,<br/>mappers vs. enriquecimento"| B
     B -.->|"deixa em aberto:<br/>claim tenant_id, IDOR de<br/>sub-recurso, gate estreito"| R
     R -.->|"nenhum ADR revogado"| C
     C -.->|"deixa em aberto:<br/>clients na suspensao, ciclo do<br/>convite, suspensao parcial"| N
     N -.->|"nenhum ADR revogado"| D
+    E -.->|"a implementacao le o codigo<br/>do Keycloak e corrige premissas"| F
 ```
 
 #### O que mudou em cada salto
@@ -2639,7 +2651,9 @@ O último grupo merece atenção: **a v2.0 afirmava uma invariante que o própri
 **v2.1 → v2.2: a documentação de negócio devolve à spec o que a leitura de ponta a ponta expôs.**
 Este documento não foi apenas derivado da spec — ao percorrê-la inteira em busca de coerência, ele encontrou três lacunas (L-1, L-2, L-3) e quatro pontos que admitiam mais de uma leitura (I-1 a I-4). Em vez de preenchê-los por suposição, registrou-os, e a v2.2 os fechou: clients OIDC alcançados pela suspensão e pelo encerramento (§9.7.1, §9.8), ciclo de vida do convite especificado (§9.9), suspensão em massa idempotente e retomável com marca por membro (§9.7), `Suspending` e `Terminating` como estados reais (§6.2), cancelamento de convite para `Revoked` (§9.9), override do `platform-admin` restrito e auditado (§10.1), `MaxClients` aplicado no registro de client e downgrade de plano recusado com `409` (§6.1, §8), e o mecanismo .NET do client assertion (§10.2). **Nenhum ADR foi revogado.** Que a documentação de negócio tenha produzido correções na especificação é, em si, parte do argumento: escrever para outro público é uma forma de revisão.
 
-**Como ler os documentos.** A **v2.2 é a fonte da verdade** — é a única aprovada para implementação. A v2.0 e a v2.1 são preservadas como estavam, **intocadas**, porque o valor delas agora é mostrar a evolução; e a revisão crítica é o registro do que produziu a v2.1. O documento de origem mostra de onde tudo partiu.
+**v2.3 → v2.4: a implementação devolve à spec o que o código do Keycloak desmentiu.** Ao construir a fundação Keycloak, a leitura do código-fonte da versão fixada (26.7.4) mostrou que quatro premissas da spec estavam erradas — a feature flag de Organizations, o parâmetro de busca, o destinatário do client assertion e a validade dele — e duas armadilhas que a spec nem mencionava (o identificador da chave e o reuso da prova). A v2.4 corrige todas; **nenhum ADR foi revogado**. É o mesmo movimento da v2.2, um nível abaixo: lá, escrever para outro público revisou a spec; aqui, executar a revisou.
+
+**Como ler os documentos.** A **v2.4 é a fonte da verdade** — é a única aprovada para implementação. Da v2.0 à v2.3, as versões são preservadas como estavam, **intocadas**, porque o valor delas agora é mostrar a evolução; e a revisão crítica é o registro do que produziu a v2.1. O documento de origem mostra de onde tudo partiu.
 
 ---
 
@@ -2675,11 +2689,11 @@ A revisão recomendou **mover auditoria e observabilidade de M7 para M0/M1**, po
 
 #### Ambiente como código (§15)
 
-Um `docker compose up` sobe o ambiente inteiro: Keycloak com a feature de Organizations habilitada, PostgreSQL com os dois bancos, RabbitMQ, um capturador de e-mails, a API e a API de exemplo. O realm é importado de arquivo versionado; a evolução da configuração usa Terraform, **porque arquivos de export não produzem diffs revisáveis nem aplicam mudanças incrementais**.
+Um `docker compose up` sobe o ambiente inteiro: Keycloak com Organizations habilitado no realm, PostgreSQL com os dois bancos, RabbitMQ, um capturador de e-mails, a API e a API de exemplo. O realm é importado de arquivo versionado; a evolução da configuração usa Terraform, **porque arquivos de export não produzem diffs revisáveis nem aplicam mudanças incrementais**.
 
 Três detalhes que mostram cuidado operacional real:
 
-1. **A feature `organization` é flag de build, não toggle de realm.** Sem ela, o Keycloak sobe normalmente, o import passa sem erro, e o endpoint de Organizations responde 404 — falha silenciosa que só apareceria no primeiro provisionamento. O M0 inclui um *smoke test* que falha explicitamente nesse 404 (achado A3).
+1. **Organizations precisa estar ligado no realm.** Sem `organizationsEnabled`, o Keycloak sobe normalmente, o import passa sem erro, e o endpoint de Organizations responde 404 — falha silenciosa que só apareceria no primeiro provisionamento. O M0 inclui um *smoke test* que falha explicitamente nesse 404 (achado A3; a v2.4 corrigiu o motivo, que a v2.3 atribuía a uma feature flag de build extinta na 26.0).
 2. **`offline_access` é removido do realm.** O papel vem ligado por padrão, e sessões offline **não** são encerradas pelo logout — um usuário desativado continuaria renovando acesso depois da "revogação". É hardening de uma linha, com teste de integração garantindo que não voltou (achado C8).
 3. **Nenhuma credencial literal no repositório.** O primeiro `platform-admin` precisa nascer no bootstrap, mas o arquivo é versionado publicamente: a senha é **gerada aleatoriamente** no `docker compose up`, exibida uma única vez no log, e o usuário nasce obrigado a trocá-la. Um teste de CI falha se o arquivo contiver qualquer credencial literal (achado C13).
 
@@ -2721,14 +2735,16 @@ reais do diagrama (§6.2), o cancelamento de convite leva a `Revoked` (§9.9) e 
 `platform-admin` está restrito à leitura de tenant e auditado (§10.1). O achado **A9** também
 fechou: o mecanismo .NET do client assertion está especificado na §10.2.
 
-Restam **duas verificações** que nenhum documento pode fechar sozinho, porque dependem do
-comportamento do Keycloak em execução. **Decidir no M1, por teste de integração** — não vale
-especular antes.
+Restavam **duas verificações** que nenhum documento podia fechar sozinho, porque dependiam do
+comportamento do Keycloak em execução. **As duas foram fechadas em 2026-09-24**, lendo o código-fonte do
+Keycloak 26.7.4, e a v2.4 registra as respostas — que os testes de integração da fatia A provam contra o
+Keycloak real:
 
-1. **`searchQuery` filtra atributos de Organization?** É a base da correção de **C3** (correlação
-   idempotente por `gateway_tenant_id`, Fluxo 9.1). A §11.6 já documenta o plano B: manter o
-   mapeamento só no banco da Gateway e tratar o `409` como sinal de reconciliação pendente.
-2. **O toggle de Organizations por realm é necessário além da feature flag de build?** (**A3**)
-   Sem `KC_FEATURES=organization` — no singular — o Keycloak sobe, o import passa e
-   `POST .../organizations` devolve **404 silencioso**. É falha que não se anuncia, e por isso
-   consta do M0.
+1. **A busca filtra atributos de Organization?** Sim, desde a 25.0 — mas pelo parâmetro `q`, e não por
+   `searchQuery`, que era só o nome da variável no código Java; e os atributos só voltam na resposta com
+   `briefRepresentation=false`. A correção de **C3** (correlação idempotente por `gateway_tenant_id`, Fluxo
+   9.1) se sustenta, e o plano B da §11.6 não é necessário.
+2. **O toggle de Organizations por realm é necessário além da feature flag de build?** (**A3**) A pergunta
+   estava invertida: a feature flag deixou de existir na 26.0, quando Organizations virou recurso padrão, e
+   o que é obrigatório é justamente o toggle do realm (`organizationsEnabled`). Sem ele, o 404 silencioso
+   continua — e o *smoke test* do M0 continua pegando.

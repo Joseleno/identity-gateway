@@ -61,14 +61,15 @@ public sealed class SegurancaTests(IdentityGatewayApiFactory factory) : IClassFi
     {
         // Exigir token no health check quebraria o orquestrador: o Kubernetes não se autentica, e a instância
         // saudável seria marcada como morta e reiniciada em laço.
+        //
+        // Só o live: o ready passou a exigir o Keycloak, que a suíte funcional não sobe. O ready é coberto pelos
+        // testes de integração (Unhealthy com Keycloak fora, Healthy contra o container) e pelo job de compose da CI.
         CancellationToken ct = TestContext.Current.CancellationToken;
         using HttpClient client = factory.CreateClient();
 
         HttpResponseMessage live = await client.GetAsync("/health/live", ct);
-        HttpResponseMessage ready = await client.GetAsync("/health/ready", ct);
 
         live.StatusCode.Should().Be(HttpStatusCode.OK);
-        ready.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]

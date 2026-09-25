@@ -27,6 +27,17 @@
   </ItemGroup>
 
   <!--
+    Keycloak (Identity/Keycloak): o client assertion do private_key_jwt é montado com o mesmo stack de JWT que a
+    Api usa para validar tokens; a resiliência é a do .NET 10 (Polly v8 por baixo); o health check do Keycloak
+    mora aqui porque depende do cache do token, que é interno a esta camada.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
+  </ItemGroup>
+
+  <!--
     Ferramenta de linha de comando (dotnet ef), com PrivateAssets: é usada para gerar migration em
     desenvolvimento e não deve vazar como dependência para quem consumir este assembly.
   -->

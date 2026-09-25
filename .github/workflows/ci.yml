@@ -125,3 +125,43 @@ jobs:
           # Cache de camadas entre execuções: sem ele, todo build refaz o restore do zero dentro do contêiner.
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ─────────────────────────── compose ───────────────────────────
+  #
+  # A promessa do M0 é "git clone + docker compose up funcionam na primeira tentativa". Verificada à mão, ela vale só
+  # no dia em que alguém testou; aqui vale a cada PR. E o /health/ready da Api obtém o token do service account: um
+  # verde aqui prova a geração das chaves, o import do realm, o banco do Keycloak e o private_key_jwt juntos.
+  #
+  # `up ... api`, com o nome do serviço: o --wait espera a api ficar saudável e não tropeça nos one-shots, que
+  # terminam de propósito. Seq e Jaeger não sobem aqui — a api não depende deles.
+  compose:
+    name: Compose
+    runs-on: ubuntu-latest
+    needs: build
+    # Dois up --wait de até 5 min cada mais build; um travamento não deve prender o runner por horas.
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Subir até a API ficar pronta
+        run: docker compose up -d --build --wait --wait-timeout 300 api
+
+      - name: Conferir o ready
+        run: curl --fail --silent --show-error --max-time 10 http://localhost:8080/health/ready
+
+      # Derruba SEM apagar volumes e sobe de novo: prova que os one-shots são idempotentes e que o realm já
+      # importado continua casando com a chave que ficou no volume.
+      - name: Subir de novo sobre os mesmos volumes
+        run: |
+          docker compose down
+          docker compose up -d --wait --wait-timeout 300 api
+          curl --fail --silent --show-error --max-time 10 http://localhost:8080/health/ready
+
+      - name: Logs em caso de falha
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Limpar
+        if: always()
+        run: docker compose down -v

@@ -13,8 +13,10 @@ namespace IdentityGateway.Application.Tenants.RegisterTenant;
 /// exige <c>tenant-admin</c> daquele tenant, que ainda não existiria.
 /// </para>
 /// <para>
-/// Nesta fatia o campo é validado e carregado, mas nada cria o convite — isso é trabalho do consumidor do
-/// provisionamento. Sem carregá-lo, o endpoint aceitaria um campo obrigatório e o descartaria em silêncio.
+/// <b>Nesta versão o campo é validado e descartado</b>: o handler não o repassa ao <c>Tenant</c> nem ao evento
+/// <c>TenantRegistered</c>, e nada o persiste. Onde ele deve viver entre o <c>POST</c> e o convite é decisão pendente
+/// da fatia C (spec v2.4, §9.1): pô-lo no evento o levaria ao Outbox e ao RabbitMQ, contra a regra de dados pessoais
+/// só no Keycloak. A versão anterior deste comentário afirmava que o campo era "carregado" — não era.
 /// </para>
 /// </remarks>
 public sealed record RegisterTenantCommand(

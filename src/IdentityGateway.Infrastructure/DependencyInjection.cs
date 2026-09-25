@@ -1,5 +1,6 @@
 using IdentityGateway.Application.Common.Abstractions;
 using IdentityGateway.Infrastructure.Configuration;
+using IdentityGateway.Infrastructure.Identity.Keycloak;
 using IdentityGateway.Infrastructure.Persistence;
 using IdentityGateway.Infrastructure.Persistence.Interceptors;
 using IdentityGateway.Infrastructure.Persistence.Outbox;
@@ -37,7 +38,8 @@ public static class DependencyInjection
             .AddPersistencia()
             .AddCache(configuration)
             .AddServicos()
-            .AddOutbox(configuration);
+            .AddOutbox(configuration)
+            .AddKeycloakIdentity(configuration);
 
         return services;
     }
@@ -89,6 +91,12 @@ public static class DependencyInjection
             .Validate(
                 planos => planos.Values.All(plano => plano.MaxUsers >= 0 && plano.MaxClients >= 0),
                 "Plans: nenhum plano pode ter maxUsers ou maxClients negativo.")
+            .ValidateOnStart();
+
+        // Política do cliente da Admin API do Keycloak — o consumidor que o comentário da classe esperava.
+        services.AddOptions<HttpResilienceOptions>()
+            .Bind(configuration.GetSection(HttpResilienceOptions.SectionName))
+            .ValidateDataAnnotations()
             .ValidateOnStart();
 
         return services;
