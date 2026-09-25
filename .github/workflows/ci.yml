@@ -138,6 +138,8 @@ jobs:
     name: Compose
     runs-on: ubuntu-latest
     needs: build
+    # Dois up --wait de até 5 min cada mais build; um travamento não deve prender o runner por horas.
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -146,7 +148,7 @@ jobs:
         run: docker compose up -d --build --wait --wait-timeout 300 api
 
       - name: Conferir o ready
-        run: curl --fail --silent --show-error http://localhost:8080/health/ready
+        run: curl --fail --silent --show-error --max-time 10 http://localhost:8080/health/ready
 
       # Derruba SEM apagar volumes e sobe de novo: prova que os one-shots são idempotentes e que o realm já
       # importado continua casando com a chave que ficou no volume.
@@ -154,7 +156,7 @@ jobs:
         run: |
           docker compose down
           docker compose up -d --wait --wait-timeout 300 api
-          curl --fail --silent --show-error http://localhost:8080/health/ready
+          curl --fail --silent --show-error --max-time 10 http://localhost:8080/health/ready
 
       - name: Logs em caso de falha
         if: failure()
