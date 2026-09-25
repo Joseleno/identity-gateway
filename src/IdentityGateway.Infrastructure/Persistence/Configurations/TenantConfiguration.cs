@@ -87,6 +87,12 @@ internal sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
             .HasConversion<string>()
             .IsRequired();
 
+        // Sem default no banco: o domínio sempre informa o instante (Tenant.Register exige), e um default esconderia
+        // um caminho de criação que esquecesse. timestamptz, porque é um instante, não uma hora de parede.
+        builder.Property(tenant => tenant.RegisteredAt)
+            .HasColumnName("registered_at")
+            .IsRequired();
+
         builder.Property(tenant => tenant.ExternalOrganizationId)
             .HasColumnName("external_organization_id");
 

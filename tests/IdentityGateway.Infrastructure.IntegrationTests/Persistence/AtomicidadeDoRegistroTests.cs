@@ -31,13 +31,13 @@ public sealed class AtomicidadeDoRegistroTests(PostgresFixture postgres) : IClas
 
         await using (AppDbContext primeiro = postgres.CriarContexto())
         {
-            primeiro.Tenants.Add(Tenant.Register("Primeiro", slug, new Plan(PlanTier.Free, 5, 1)));
+            primeiro.Tenants.Add(Tenant.Register("Primeiro", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora));
             await primeiro.SaveChangesAsync(ct);
         }
 
         await using (AppDbContext segundo = postgres.CriarContexto())
         {
-            segundo.Tenants.Add(Tenant.Register("Segundo", slug, new Plan(PlanTier.Free, 5, 1)));
+            segundo.Tenants.Add(Tenant.Register("Segundo", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora));
 
             Func<Task> gravar = async () => await segundo.SaveChangesAsync(ct);
 
@@ -70,7 +70,7 @@ public sealed class AtomicidadeDoRegistroTests(PostgresFixture postgres) : IClas
         TenantSlug slug = TenantSlug.Create(valor).Value;
 
         await using AppDbContext contexto = postgres.CriarContexto();
-        contexto.Tenants.Add(Tenant.Register("Ok", slug, new Plan(PlanTier.Free, 5, 1)));
+        contexto.Tenants.Add(Tenant.Register("Ok", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora));
         await contexto.SaveChangesAsync(ct);
 
         // Filtro em memória pelo mesmo motivo do teste acima: `Content` é `jsonb` e não aceita `LIKE`.

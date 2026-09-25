@@ -54,13 +54,14 @@ public sealed class Tenant : AggregateRoot<TenantId>
     /// É o que <see cref="Register"/> usa. Ter o plano como parâmetro obrigatório é o que faz o compilador
     /// recusar um caminho de criação que o esqueça.
     /// </remarks>
-    private Tenant(TenantId id, string name, TenantSlug slug, Plan plan)
+    private Tenant(TenantId id, string name, TenantSlug slug, Plan plan, DateTimeOffset registeredAt)
         : base(id)
     {
         Name = name;
         Slug = slug;
         Plan = plan;
         Status = TenantStatus.Pending;
+        RegisteredAt = registeredAt;
     }
 
     /// <summary>Nome de exibição.</summary>
@@ -74,6 +75,13 @@ public sealed class Tenant : AggregateRoot<TenantId>
 
     /// <summary>Estado no ciclo de vida.</summary>
     public TenantStatus Status { get; private set; }
+
+    /// <summary>Quando o tenant foi registrado, em UTC.</summary>
+    /// <remarks>
+    /// É daqui que o provisionamento conta a janela de retry: a regra é "pendente há tempo demais", e isso é fato do
+    /// tenant, não da mensagem que o transporta.
+    /// </remarks>
+    public DateTimeOffset RegisteredAt { get; private set; }
 
     /// <summary>Id da Organization no Keycloak; nulo até o provisionamento concluir.</summary>
     public string? ExternalOrganizationId { get; private set; }
@@ -103,8 +111,9 @@ public sealed class Tenant : AggregateRoot<TenantId>
     /// <param name="name">Nome de exibição.</param>
     /// <param name="slug">Slug já validado.</param>
     /// <param name="plan">Plano vindo do catálogo.</param>
+    /// <param name="registeredAt">Instante do registro; normalizado para UTC.</param>
     /// <returns>O tenant em <see cref="TenantStatus.Pending"/>.</returns>
-    public static Tenant Register(string name, TenantSlug slug, Plan plan)
+    public static Tenant Register(string name, TenantSlug slug, Plan plan, DateTimeOffset registeredAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(slug);
@@ -114,7 +123,7 @@ public sealed class Tenant : AggregateRoot<TenantId>
         // o slug é identificador — `Acme` e `acme` seriam o mesmo tenant e precisam colidir —, enquanto o
         // nome é texto de exibição, e "IBM" não pode virar "ibm". Aparar o entorno resolve o espaço colado
         // sem tocar no que o cliente escolheu se chamar.
-        Tenant tenant = new(TenantId.New(), name.Trim(), slug, plan);
+        Tenant tenant = new(TenantId.New(), name.Trim(), slug, plan, registeredAt.ToUniversalTime());
 
         tenant.RaiseDomainEvent(new TenantRegistered(tenant.Id, slug.Value));
 
