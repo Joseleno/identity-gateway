@@ -38,21 +38,32 @@ public sealed class EnsureOrganizationContraKeycloakTests(KeycloakFixture keyclo
     [Fact]
     public async Task BuscaComDistrator_DevolveSoAOrganizacaoDoTenant()
     {
-        // Se o q fosse ignorado, a busca devolveria as Organizations do realm; com UMA só no realm, o teste de
-        // idempotência passaria sem provar nada. Aqui há duas, e a busca precisa separar.
+        // Se o q fosse ignorado, a busca devolveria a primeira Organization do realm (a de X), não a de Y — e o
+        // id devolvido teria vindo do MESMO defeito que se quer provar, então comparar com "o id que o Ensure(y)
+        // devolveu" não provaria nada (os dois lados vêm da busca quebrada). A prova precisa de uma referência
+        // independente: idX (para negar) e uma leitura crua pelo master (para confirmar alias e atributo de Y).
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using ServiceProvider provider = keycloak.CriarProvider();
         IIdentityProvider identidade = provider.GetRequiredService<IIdentityProvider>();
 
         var x = TenantId.New();
         var y = TenantId.New();
-        await identidade.EnsureOrganizationAsync(x, KeycloakFixture.SlugUnico(), "X", ct);
-        string idY = await identidade.EnsureOrganizationAsync(y, KeycloakFixture.SlugUnico(), "Y", ct);
+        TenantSlug slugY = KeycloakFixture.SlugUnico();
+        string idX = await identidade.EnsureOrganizationAsync(x, KeycloakFixture.SlugUnico(), "X", ct);
+        string idY = await identidade.EnsureOrganizationAsync(y, slugY, "Y", ct);
+
+        idY.Should().NotBe(idX);
 
         OrganizationRepresentation? achada = await provider.GetRequiredService<KeycloakAdminClient>()
             .FindOrganizationByAttributeAsync(KeycloakIdentityProvider.AtributoDoTenant, y.Value.ToString(), ct);
 
         achada!.Id.Should().Be(idY);
+
+        // Confirmação independente do adaptador sob teste: lida pelo master, direto do Keycloak.
+        JsonElement crua = await keycloak.LerOrganizacaoCruaAsync(achada.Id!, ct);
+        crua.GetProperty("alias").GetString().Should().Be(slugY.Value);
+        crua.GetProperty("attributes").GetProperty("gateway_tenant_id")[0].GetString()
+            .Should().Be(y.Value.ToString());
     }
 
     [Fact]
