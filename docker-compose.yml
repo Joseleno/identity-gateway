@@ -4,6 +4,13 @@
 # NÃO É PRODUÇÃO. As senhas estão em texto aberto porque são de um banco descartável em máquina local; a chave
 # JWT é fixa pelo mesmo motivo. Em produção, tudo isto vem do cofre do provedor.
 #
+# O Keycloak também não: `start-dev`, http e chave gerada em volume são de desenvolvimento. Em produção, o BaseUrl da
+# Gateway precisa ser igual ao KC_HOSTNAME (o issuer é calculado da URL), a chave vem do cofre como arquivo montado, e
+# a Api recusa BaseUrl sem https (AllowInsecureHttp só existe no appsettings.Development.json).
+#
+# Chave e realm andam juntos: o realm é importado só na primeira subida. Apagar SÓ o volume gateway-keys gera uma
+# chave que o realm não conhece, e o /health/ready da Api acusa invalid_client. Para recomeçar: docker compose down -v.
+#
 # Nota: a suíte de testes NÃO depende deste arquivo. Os testes sobem os próprios containers via Testcontainers —
 # é o que permite rodar `dotnet test` num clone novo sem subir nada antes.
 
@@ -34,6 +41,18 @@ services:
       # Sobrescreve o endereço do Seq definido no appsettings.Development.json: dentro da rede do compose o
       # serviço é alcançado pelo nome, e "localhost" apontaria para o próprio contêiner da API.
       Serilog__WriteTo__1__Args__serverUrl: "http://seq:80"
+
+      # A Api alcança o Keycloak pelo nome do serviço. O issuer que o Keycloak calcula vem desta mesma URL, então o
+      # aud do assertion confere sem fixar KC_HOSTNAME.
+      Keycloak__Admin__BaseUrl: "http://keycloak:8080"
+      Keycloak__Admin__PrivateKeyPath: "/keys/private.pem"
+    volumes:
+      - type: volume
+        source: gateway-keys
+        target: /keys
+        read_only: true
+        volume:
+          subpath: api
     depends_on:
       # `service_healthy` e não apenas `service_started`: o contêiner do Postgres aceita conexão segundos depois
       # de iniciar, e sem esperar o health check a API sobe, tenta migrar e falha antes de o banco responder.
@@ -41,13 +60,114 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # Conveniência de desenvolvimento, para o primeiro curl funcionar. Não é garantia: a Api responde com o
+      # Keycloak parado, e é o provisionamento que espera por ele.
+      keycloak:
+        condition: service_healthy
+      gateway-keys:
+        condition: service_completed_successfully
     healthcheck:
-      # Sem curl nem wget na imagem do .NET (é enxuta, e é bom que seja). O próprio runtime faz a requisição.
-      test: ["CMD", "dotnet", "--info"]
-      interval: 30s
+      # O /health/ready de verdade: Postgres, Redis e o token do service account no Keycloak. A imagem aspnet é
+      # Debian e tem bash; sem curl, a requisição sai por /dev/tcp.
+      test: ["CMD", "bash", "-c", "{ printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&0; grep -q ' 200 '; } 0<>/dev/tcp/127.0.0.1/8080"]
+      interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 20s
+      retries: 10
+      start_period: 30s
+
+  # One-shot: gera, só na primeira subida, o par de chaves da Gateway e a senha do admin master do Keycloak.
+  #
+  # Script INLINE, e não um .sh montado: o .editorconfig deste repositório define CRLF, e um script montado por bind
+  # mount chegaria ao contêiner com \r. `$$` é o `$` literal para o compose.
+  #
+  # Geração atômica: tudo nasce em .tmp e é movido no fim; o marcador .complete é gravado por último. Sem ele, a
+  # geração recomeça do zero — nunca fica meio par.
+  gateway-keys:
+    image: alpine:3.22
+    volumes:
+      - gateway-keys:/keys
+    entrypoint: ["/bin/sh", "-euc"]
+    command:
+      - |
+        if [ -f /keys/.complete ]; then echo "gateway-keys: chaves já existem"; exit 0; fi
+        apk add --no-cache openssl > /dev/null
+        rm -rf /keys/.tmp /keys/api /keys/keycloak
+        mkdir -p /keys/.tmp/api /keys/.tmp/keycloak
+        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /keys/.tmp/api/private.pem
+        openssl req -new -x509 -key /keys/.tmp/api/private.pem -subj "/CN=identity-gateway" -days 3650 -outform DER -out /keys/.tmp/cert.der
+        openssl base64 -A -in /keys/.tmp/cert.der > /keys/.tmp/keycloak/cert.b64
+        openssl rand -base64 24 | tr -d '\n' > /keys/.tmp/keycloak/admin-password
+        # 1654 é o usuário "app" da imagem aspnet (Dockerfile); 1000, o do Keycloak. Cada um lê só a sua pasta.
+        chown -R 1654:1654 /keys/.tmp/api && chmod 0500 /keys/.tmp/api && chmod 0400 /keys/.tmp/api/private.pem
+        chown -R 1000:1000 /keys/.tmp/keycloak && chmod 0500 /keys/.tmp/keycloak
+        chmod 0444 /keys/.tmp/keycloak/cert.b64 && chmod 0400 /keys/.tmp/keycloak/admin-password
+        mv /keys/.tmp/api /keys/api && mv /keys/.tmp/keycloak /keys/keycloak && rm -rf /keys/.tmp
+        touch /keys/.complete
+        echo "gateway-keys: senha do admin master do Keycloak (exibida só nesta subida): $$(cat /keys/keycloak/admin-password)"
+
+  # One-shot: cria o banco do Keycloak se ele não existir. Não é script de initdb porque o initdb só roda com o
+  # volume vazio — e quebraria quem já tem o postgres-data.
+  keycloak-db:
+    image: postgres:17-alpine
+    environment:
+      PGPASSWORD: postgres
+    entrypoint: ["/bin/sh", "-euc"]
+    command:
+      - |
+        if psql -h postgres -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'keycloak'" | grep -q 1; then
+          echo "keycloak-db: banco já existe"
+        else
+          psql -h postgres -U postgres -c "CREATE DATABASE keycloak"
+        fi
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Console em http://localhost:8081 (usuário admin; senha no log do gateway-keys). Publicado só em 127.0.0.1: o
+  # admin master manda no Keycloak inteiro, e não fica exposto à rede local.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.4
+    # O ENTRYPOINT da imagem é o kc.sh, então a troca vai em `entrypoint`, não em `command`. `test -s` falha cedo se o
+    # arquivo não existir: um placeholder sem variável seria gravado como texto literal, sem erro, e só falharia na
+    # autenticação. `exec` para o kc.sh receber o SIGTERM.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        test -s /keys/cert.b64 && test -s /keys/admin-password &&
+        export GATEWAY_CLIENT_CERT="$$(cat /keys/cert.b64)" KC_BOOTSTRAP_ADMIN_PASSWORD="$$(cat /keys/admin-password)" &&
+        exec /opt/keycloak/bin/kc.sh start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: postgres
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: postgres
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - type: volume
+        source: gateway-keys
+        target: /keys
+        read_only: true
+        volume:
+          subpath: keycloak
+      - ./keycloak/bootstrap:/opt/keycloak/data/import:ro
+    healthcheck:
+      # Sem curl na imagem: o comando é o do guia oficial de health do Keycloak, na porta de gestão 9000. Testa o
+      # /health/ready e não só a porta — com health ligado, as portas abrem antes de o servidor estar pronto.
+      test: ["CMD", "bash", "-c", "{ printf 'HEAD /health/ready HTTP/1.0\\r\\n\\r\\n' >&0; grep -q 'HTTP/1.0 200'; } 0<>/dev/tcp/127.0.0.1/9000"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+    depends_on:
+      gateway-keys:
+        condition: service_completed_successfully
+      keycloak-db:
+        condition: service_completed_successfully
 
   postgres:
     image: postgres:17-alpine
@@ -81,9 +201,14 @@ services:
   #
   # Filtrar por CorrelationId aqui é o que liga uma reclamação de usuário à requisição exata que falhou.
   seq:
-    image: datalust/seq:latest
+    # Fixado na versão que "latest" resolvia em 2026-09-24 (label org.opencontainers.image.version do próprio
+    # datalust/seq:latest — a listagem de tags do Docker Hub confirma que é este o número, não "24.04", que o
+    # label também imprime mas não corresponde a nenhuma tag publicada).
+    image: datalust/seq:2026.1.17182
     environment:
       ACCEPT_EULA: "Y"
+      # Versões recentes do Seq exigem senha de admin (ou esta opção) para subir. Ambiente local, sem autenticação.
+      SEQ_FIRSTRUN_NOAUTHENTICATION: "true"
     ports:
       - "5341:80"
     volumes:
@@ -92,7 +217,9 @@ services:
   # Traces. A interface fica em http://localhost:16686 — é onde se vê a requisição, os comandos SQL dentro dela
   # e quanto tempo cada um levou.
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    # Fixado por digest, e não por tag: jaegertracing/all-in-one:latest não carrega o label de versão (a imagem não
+    # tem nenhum label OCI), então não há tag textual confiável para fixar. Digest resolvido em 2026-09-24.
+    image: jaegertracing/all-in-one@sha256:ab6f1a1f0fb49ea08bcd19f6b84f6081d0d44b364b6de148e1798eb5816bacac
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
@@ -104,3 +231,5 @@ volumes:
   # dados, e uma montagem de pasta no Windows ou no macOS falha ou fica lenta por causa disso.
   postgres-data:
   seq-data:
+  # Chaves da Gateway e senha do admin do Keycloak. Anda junto com o banco do Keycloak: ver o cabeçalho.
+  gateway-keys:
