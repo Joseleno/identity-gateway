@@ -9,5 +9,10 @@ namespace IdentityGateway.Domain.Tenants.Events;
 public sealed record TenantActivated(TenantId TenantId) : IDomainEvent
 {
     /// <inheritdoc />
-    public DateTimeOffset OccurredOn { get; } = DateTimeOffset.UtcNow;
+    /// <remarks>
+    /// <c>init</c> e não só <c>get</c>: o Outbox relê o evento do JSON, e sem setter o System.Text.Json deixava o
+    /// inicializador valer — o evento voltava com o instante da desserialização. O inicializador continua dando o
+    /// valor na criação.
+    /// </remarks>
+    public DateTimeOffset OccurredOn { get; init; } = DateTimeOffset.UtcNow;
 }
