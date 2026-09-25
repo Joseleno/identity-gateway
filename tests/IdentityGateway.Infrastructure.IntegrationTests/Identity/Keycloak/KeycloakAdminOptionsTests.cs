@@ -115,6 +115,22 @@ public sealed class KeycloakAdminOptionsTests
     }
 
     [Fact]
+    public void PemDeChavePublica_FalhaAoValidarSemExporOValor()
+    {
+        // RSA.ImportFromPem aceita "PUBLIC KEY" sem reclamar — sem a checagem de partes privadas, isto passaria
+        // aqui e só quebraria na primeira assinatura, com o ValidateOnStart já tendo deixado a aplicação subir.
+        string pemPublico = ChavesDeTeste.Gerar().Rsa.ExportSubjectPublicKeyInfoPem();
+        Dictionary<string, string?> valores = Validos();
+        valores["Keycloak:Admin:PrivateKeyPem"] = pemPublico;
+
+        Action resolver = () => Resolver(valores);
+
+        resolver.Should().Throw<OptionsValidationException>()
+            .WithMessage("*chave privada*")
+            .Which.Message.Should().NotContain(pemPublico);
+    }
+
+    [Fact]
     public void PemComQuebrasDeLinhaDoWindows_Carrega()
     {
         // Chave colada nos user-secrets no Windows chega com CRLF. Precisa carregar igual.

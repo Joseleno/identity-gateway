@@ -62,7 +62,12 @@ internal sealed class GatewaySigningKey(IOptions<KeycloakAdminOptions> options) 
 
         try
         {
-            using RSA _ = Carregar(opcoes);
+            using RSA rsa = Carregar(opcoes);
+
+            // RSA.ImportFromPem aceita tanto "PUBLIC KEY"/"RSA PUBLIC KEY" quanto a chave privada: sem esta
+            // checagem, uma chave pública passaria aqui e só falharia na primeira assinatura, depois do
+            // ValidateOnStart já ter deixado a aplicação subir.
+            _ = rsa.ExportParameters(includePrivateParameters: true);
             return true;
         }
         catch (Exception excecao) when (excecao is IOException or UnauthorizedAccessException
