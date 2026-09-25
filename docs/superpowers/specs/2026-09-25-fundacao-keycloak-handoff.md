@@ -19,8 +19,9 @@
 | Docker | Rodando; usado nas Tasks 7 (funcional), 9–11 (Keycloak real) e 13 (compose na CI) |
 | Push / PR | **Não feitos.** Decisão do usuário (Step 6 do plano) |
 
-Das 24, 20 são `feat`/`fix`/`test` de produção e teste (Tasks 1–13) e 4 são `docs` (spec, plano, handoff planejado,
-este handoff).
+Das 24: 9 `feat`, 1 `fix`, 5 `test` (Tasks 1–13, produção e teste) e 2 `ci`; os 7 `docs` restantes são o design/spec
+v2.4, o plano, o handoff planejado, os três comentários corrigidos nos fix rounds das Tasks 2, 4 e 11, e este
+handoff.
 
 ## O que a fatia entregou
 
@@ -137,8 +138,10 @@ fatia; onde ele deve viver é decisão pendente da fatia C (spec v2.4, §9.1).
 
 **Comentários e nomes desatualizados**
 - `Directory.Packages.props`: comentário do `Http.Resilience` ainda diz "sem `PackageReference` hoje" (Task 1).
+- Comentário do teste "5s de vida" quer dizer 5s restantes; o skew de relógio também justifica a margem, e o
+  comentário não diz isso (Task 4).
 - Nomes de teste `Cenario_Resultado`, sem prefixo de método, conforme o próprio plano pediu (Task 5).
-- Comentários que citam testes que só nasceriam nas Tasks 10/11; justificativa do `HttpClient.Timeout` "indistinguível" é mais forte do que o motivo real (retries sobrepondo o `TotalRequestTimeout`) (Task 6).
+- Comentários que citam testes que só nasceriam nas Tasks 10/11; justificativa do `HttpClient.Timeout` "indistinguível" é mais forte do que o motivo real (retries sobrepondo o `TotalRequestTimeout`); `BuscaUsaQComBriefRepresentationFalse` fora do padrão `Metodo_Cenario_Resultado` (Task 6).
 - `<remarks>` do `KeycloakHealthCheck` não diz que o caso "pendura" depende do timeout do `HealthCheckService`, não de um catch próprio (Task 7).
 
 **Recursos não descartados em teste**
