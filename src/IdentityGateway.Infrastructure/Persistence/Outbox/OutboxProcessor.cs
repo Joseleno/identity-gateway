@@ -90,8 +90,16 @@ internal sealed class OutboxProcessor(
                 await publisher.PublishAsync(evento, cancellationToken);
                 entregues.Add(mensagem.Id);
             }
-            catch (Exception excecao) when (excecao is not OperationCanceledException)
+            catch (Exception excecao) when (excecao is not OperationCanceledException
+                                             || !cancellationToken.IsCancellationRequested)
             {
+                // O filtro olha o token, não o tipo da exceção: um timeout de HttpClient.Timeout chega como
+                // TaskCanceledException — um OperationCanceledException — sem que o cancellationToken deste lote
+                // tenha sido cancelado. Um filtro só por tipo deixaria essa falha escapar do foreach e abortar o
+                // RegistrarResultadoAsync do lote inteiro: as mensagens já entregues não seriam marcadas, e o
+                // resto do lote já teria a tentativa contabilizada na reserva sem nunca ter sido tentado. Só o
+                // desligamento do host (cancellationToken de fato cancelado) continua escapando: a mensagem volta
+                // no próximo ciclo, como o OutboxWorker já trata em StoppingToken.
                 OutboxLogs.FalhaAoDespachar(
                     logger, mensagem.Id, mensagem.Type, mensagem.Attempts, _options.MaxAttempts, excecao);
 

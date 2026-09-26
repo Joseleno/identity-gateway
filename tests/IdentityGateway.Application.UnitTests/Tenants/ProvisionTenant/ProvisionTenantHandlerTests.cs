@@ -164,8 +164,12 @@ public sealed class ProvisionTenantHandlerTests
     [Fact]
     public async Task TimeoutDaResilienciaDepoisDaJanela_MarcaFailed()
     {
-        // O timeout da resiliência chega como TaskCanceledException, que É um OperationCanceledException. Um filtro
-        // por tipo tiraria da janela justamente o sintoma mais comum de Keycloak lento.
+        // TaskCanceledException é o que o timeout cru do HttpClient.Timeout produz (ex.: o cliente do token
+        // endpoint, sem resiliência) — e É um OperationCanceledException. Já o timeout do
+        // AddStandardResilienceHandler que envolve a Admin API chega como TimeoutRejectedException, que não deriva
+        // de OperationCanceledException. O handler não distingue: o filtro olha o CancellationToken, e qualquer um
+        // dos dois é tratado igual. Um filtro por tipo tiraria da janela justamente o sintoma mais comum de
+        // Keycloak lento.
         CancellationToken ct = TestContext.Current.CancellationToken;
         Tenant tenant = TenantPendente();
         RelogioEm(Registro + Janela + TimeSpan.FromMinutes(1));

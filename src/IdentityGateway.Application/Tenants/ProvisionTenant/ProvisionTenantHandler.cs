@@ -64,9 +64,12 @@ public sealed class ProvisionTenantHandler(
         }
         catch (Exception excecao) when (!cancellationToken.IsCancellationRequested && JanelaEsgotada(tenant))
         {
-            // O filtro olha o token, e não o tipo da exceção: o timeout da resiliência chega como
-            // TaskCanceledException — um OperationCanceledException — e um filtro por tipo o tiraria da janela. Só o
-            // desligamento do host fica de fora: a mensagem volta no próximo ciclo.
+            // O filtro olha o token, e não o tipo da exceção — e as duas famílias que podem chegar aqui provam por
+            // quê. O timeout do AddStandardResilienceHandler que envolve a Admin API chega como
+            // TimeoutRejectedException, que não deriva de OperationCanceledException; o timeout cru de
+            // HttpClient.Timeout do cliente do token endpoint (sem resiliência) chega como TaskCanceledException,
+            // que É um OperationCanceledException. Um filtro por tipo teria que acompanhar as duas, e ainda erraria
+            // a próxima. Só o desligamento do host fica de fora: a mensagem volta no próximo ciclo.
             ProvisioningLogs.JanelaEsgotada(logger, tenant.Id.Value, politica.MaxPendingDuration.TotalHours, excecao);
             tenant.MarkProvisioningFailed();
             return Result.Success();
