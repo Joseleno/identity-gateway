@@ -16,6 +16,11 @@ public static class TenantErrors
         "Tenant.NaoAtivo",
         $"O tenant '{tenantId.Value}' não está ativo.");
 
+    /// <summary>Não existe tenant com o id informado.</summary>
+    public static Error NotFound(TenantId tenantId) => Error.NotFound(
+        "Tenant.NaoEncontrado",
+        $"O tenant '{tenantId.Value}' não existe.");
+
     /// <summary>Todas as vagas do plano já estão ocupadas.</summary>
     public static Error SeatLimitReached(int maxUsers) => Error.Conflict(
         "Tenant.LimiteDeVagasAtingido",

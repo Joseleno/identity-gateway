@@ -4,6 +4,7 @@ using IdentityGateway.Infrastructure.Identity.Keycloak;
 using IdentityGateway.Infrastructure.Persistence;
 using IdentityGateway.Infrastructure.Persistence.Interceptors;
 using IdentityGateway.Infrastructure.Persistence.Outbox;
+using IdentityGateway.Infrastructure.Persistence.Queries;
 using IdentityGateway.Infrastructure.Persistence.Repositories;
 using IdentityGateway.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -150,6 +151,7 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<AppDbContext>());
 
         services.AddScoped<ITenantRepository, TenantRepository>();
+        services.AddScoped<ITenantQueries, TenantQueries>();
 
         return services;
     }

@@ -1,6 +1,7 @@
 using Carter;
 using IdentityGateway.Api.Extensions;
 using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Application.Tenants.GetTenantProvisioning;
 using IdentityGateway.Application.Tenants.RegisterTenant;
 using IdentityGateway.Domain.Common;
 using IdentityGateway.Domain.Tenants;
@@ -39,6 +40,13 @@ public sealed class TenantsModule : ICarterModule
             .Produces<TenantAcceptedResponse>(StatusCodes.Status202Accepted)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status409Conflict);
+
+        app.MapGet("/api/v1/tenants/{tenantId:guid}/provisioning", ConsultarProvisionamentoAsync)
+            .RequireAuthorization("PlatformAdmin")
+            .WithName("ConsultarProvisionamento")
+            .WithSummary("Estado do provisionamento de um tenant.")
+            .Produces<TenantProvisioningResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound);
     }
 
     /// <remarks>
@@ -67,5 +75,19 @@ public sealed class TenantsModule : ICarterModule
             localizacao: id => $"/api/v1/tenants/{id.Value}/provisioning",
             corpo: id => new TenantAcceptedResponse(id.Value, nameof(TenantStatus.Pending)),
             correlationId: correlationId.CorrelationId);
+    }
+
+    // Sempre 200 com o status, também quando Active: um 303 para o recurso do tenant pressupõe GET /tenants/{id}, que
+    // ainda não existe. A restrição :guid na rota faz um id malformado responder 404 sem chegar ao handler.
+    private static async Task<IResult> ConsultarProvisionamentoAsync(
+        Guid tenantId,
+        ISender sender,
+        ICorrelationIdProvider correlationId,
+        CancellationToken cancellationToken)
+    {
+        Result<TenantProvisioningResponse> resultado = await sender.Send(
+            new GetTenantProvisioningQuery(new TenantId(tenantId)), cancellationToken);
+
+        return resultado.ParaOk(correlationId.CorrelationId);
     }
 }
