@@ -24,4 +24,11 @@ public interface ITenantRepository
     /// esta consulta e o <c>INSERT</c> há uma janela em que outra requisição grava o mesmo slug.
     /// </remarks>
     Task<bool> SlugExistsAsync(TenantSlug slug, CancellationToken cancellationToken = default);
+
+    /// <summary>Carrega o tenant para alteração, ou nulo se não existir.</summary>
+    /// <remarks>
+    /// Devolve o agregado <b>rastreado</b>: quem altera o estado não chama <c>Update</c> — o commit do
+    /// <c>TransactionBehavior</c> grava o que mudou.
+    /// </remarks>
+    Task<Tenant?> GetAsync(TenantId tenantId, CancellationToken cancellationToken = default);
 }

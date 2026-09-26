@@ -4,6 +4,7 @@ using IdentityGateway.Infrastructure.Identity.Keycloak;
 using IdentityGateway.Infrastructure.Persistence;
 using IdentityGateway.Infrastructure.Persistence.Interceptors;
 using IdentityGateway.Infrastructure.Persistence.Outbox;
+using IdentityGateway.Infrastructure.Persistence.Queries;
 using IdentityGateway.Infrastructure.Persistence.Repositories;
 using IdentityGateway.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -76,6 +77,15 @@ public static class DependencyInjection
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<ProvisioningOptions>()
+            .Bind(configuration.GetSection(ProvisioningOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        // A rede do Outbox precisa ser maior que a janela do provisionamento. É um IValidateOptions, e não um
+        // Validate(...) em linha, para a mensagem poder nomear os dois valores — o que torna o erro de subida acionável.
+        services.AddSingleton<IValidateOptions<OutboxOptions>, OutboxCobreAJanelaDeProvisionamento>();
+
         // Catálogo inválido derruba a aplicação na subida, não na primeira requisição.
         //
         // A validação é escrita à mão, e não por `ValidateDataAnnotations`: `PlanOptions` herda de
@@ -141,6 +151,7 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<AppDbContext>());
 
         services.AddScoped<ITenantRepository, TenantRepository>();
+        services.AddScoped<ITenantQueries, TenantQueries>();
 
         return services;
     }
@@ -186,6 +197,8 @@ public static class DependencyInjection
         // Singleton: é configuração imutável, e uma instância por requisição só produziria lixo.
         services.AddSingleton<IPlanCatalog, PlanCatalog>();
 
+        services.AddSingleton<IProvisioningPolicy, ProvisioningPolicy>();
+
         return services;
     }
 
@@ -205,15 +218,11 @@ public static class DependencyInjection
     /// </remarks>
     private static IServiceCollection AddOutbox(this IServiceCollection services, IConfiguration configuration)
     {
-        // Troque esta linha pela sua implementação para ligar um broker de verdade; nada mais muda.
-        services.AddScoped<IOutboxPublisher, LoggingOutboxPublisher>();
+        // O despacho é em processo (fatia B): cada evento vira command do Mediator. Scoped porque é resolvido no
+        // escopo do processador — e ele abre o próprio escopo por mensagem, ver DispatchingOutboxPublisher. Quando o
+        // broker chegar, a troca é nesta linha.
+        services.AddScoped<IOutboxPublisher, DispatchingOutboxPublisher>();
         services.AddScoped<OutboxProcessor>();
-
-        // Singleton porque a memória do que já foi notificado precisa atravessar os escopos — um por ciclo do
-        // despachante. Scoped faria cada ciclo esquecer tudo, e a proteção contra entrega repetida sumiria
-        // justamente no caso que ela existe para cobrir. Num sistema real esse estado é uma tabela, e aí o
-        // tempo de vida do serviço deixa de importar.
-
 
         // Lido direto da configuração, e não por IOptions: a decisão é sobre o que REGISTRAR, e acontece antes
         // de existir um provider de onde resolver options.

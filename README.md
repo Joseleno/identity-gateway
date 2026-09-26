@@ -14,24 +14,27 @@ nenhum login e de nenhuma requisição de negócio.**
 
 ## Estado do projeto
 
-**M0 em andamento — vertical de registro entregue, fundação Keycloak entregue nesta branch.**
+**M0/M1 em andamento — vertical de registro, fundação Keycloak e consumidor do provisionamento entregues
+nesta branch.**
 
 O repositório parte do template [CleanStart](https://github.com/Joseleno/CleanStart) e já traz a fundação
 funcionando — Clean Architecture em quatro camadas, Outbox transacional, cache de dois níveis, middlewares
 de correlação e segurança, testes de arquitetura e CI. **O domínio do IdentityGateway já existe:** o
-agregado `Tenant` e `POST /api/v1/tenants` (PR #1) gravam o tenant e publicam `tenant-registered` no
-Outbox; esta branch acrescenta a fundação Keycloak — realm `identity-gateway` com Organizations,
-autenticação `private_key_jwt` do service account e a porta `IIdentityProvider.EnsureOrganizationAsync`
-provada ponta a ponta contra um Keycloak real, ainda sem consumidor em produção. **Próximo passo: a fatia
-B**, o consumidor do provisionamento que lê a mensagem do Outbox e chama `EnsureOrganizationAsync`. O
-roadmap está em [`docs/especificacao-arquitetural-v2.4.md`](docs/especificacao-arquitetural-v2.4.md) §16
-(referência normativa atual — a v2.3 é uma versão anterior, mantida só como registro histórico), e o estado
-detalhado no [handoff da fundação Keycloak](docs/superpowers/specs/2026-09-25-fundacao-keycloak-handoff.md).
+agregado `Tenant` e `POST /api/v1/tenants` (PR #1) gravam o tenant e publicam `TenantRegistered` no
+Outbox; a fundação Keycloak (PR #2) acrescentou o realm `identity-gateway` com Organizations, autenticação
+`private_key_jwt` do service account e a porta `IIdentityProvider.EnsureOrganizationAsync` provada ponta a
+ponta contra um Keycloak real; esta branch fecha o ciclo — o `ProvisionTenantHandler` consome o evento pelo
+próprio Outbox (transporte em processo até a fatia do broker), decide entre repetir e desistir pela janela
+de provisionamento, e `GET /api/v1/tenants/{tenantId}/provisioning` deixa o estado consultável. **Próximo
+passo: a fatia C**, o convite do admin inicial. O roadmap está em
+[`docs/especificacao-arquitetural-v2.5.md`](docs/especificacao-arquitetural-v2.5.md) §16 (referência
+normativa atual — as anteriores ficam como registro histórico), e o estado detalhado no
+[handoff do consumidor do provisionamento](docs/superpowers/specs/2026-09-26-consumidor-provisionamento-handoff.md).
 
 | Marco | Entrega | Estado |
 |---|---|---|
 | **M0** · Fundação | Compose, bootstrap do realm, health checks, CI | 🔨 em andamento |
-| **M1** · Tenants | Registro, provisionamento via Outbox, suspensão, encerramento | ⬜ |
+| **M1** · Tenants | Registro, provisionamento via Outbox, suspensão, encerramento | 🔨 em andamento |
 | **M2** · Membros e papéis | Convite, desativação, exclusão LGPD, `RoleAssignmentPolicy` | ⬜ |
 | **M3** · Data Plane | `Client.AspNetCore` e o conteúdo do `SampleResourceApi`, que hoje é só esqueleto | ⬜ |
 | **M4** · Federação | Domínios, IdP por tenant, discovery | ⬜ |
@@ -47,11 +50,15 @@ Precisa de .NET 10 e Docker. O Docker não é opcional: os testes de integraçã
 26.7.4 (um contêiner por assembly) por Testcontainers.
 
 ```bash
-# Toda a suíte — 280 testes, 0 skips (109 domínio, 35 application, 28 arquitetura, 89 integração, 19 funcional)
+# Toda a suíte — 331 testes, 0 skips (113 domínio, 49 application, 29 arquitetura, 114 integração, 26 funcional)
 dotnet test
 
 # As dependências, e a API junto
 docker compose up -d
+
+# Só na primeira subida (volume novo): a API migra sob pedido, nunca sozinha — StartupTasks só aplica
+# migrations com --migrate, porque migrar automaticamente é perigoso com várias réplicas no ar ao mesmo tempo.
+docker compose run --rm api --migrate
 ```
 
 Com o compose de pé: a API responde em `http://localhost:8080`, `/health/live` e `/health/ready`
@@ -100,6 +107,37 @@ Rodando pela IDE ou com `dotnet run --project src/IdentityGateway.Api`, a API so
 **Zero skips.** Os 6 que a fundação herdava do esqueleto (guardas de arquitetura sem tipo para inspecionar,
 e testes de `401` sem endpoint protegido) fecharam com a vertical de registro (PR #1) e com esta fatia.
 
+### Demonstração: o tenant é provisionado quando o Keycloak volta
+
+A API aceita o tenant com o Keycloak fora do ar e o provisiona sozinha quando ele volta (spec §16). Pressupõe o
+compose de pé e as migrations já aplicadas (`docker compose up -d` + `docker compose run --rm api --migrate`,
+acima). O token é de platform-admin, assinado com a chave de desenvolvimento do compose — o mesmo formato que a
+API valida hoje:
+
+```bash
+b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+agora=$(date +%s)
+cabecalho=$(printf '{"alg":"HS256","typ":"JWT"}' | b64url)
+corpo=$(printf '{"sub":"0199a000-0000-7000-8000-000000000001","roles":"platform-admin","iss":"identitygateway","aud":"identitygateway-api","nbf":%d,"exp":%d}' "$agora" "$((agora + 3600))" | b64url)
+assinatura=$(printf '%s.%s' "$cabecalho" "$corpo" | openssl dgst -sha256 -hmac "chave-de-desenvolvimento-nao-use-em-producao" -binary | b64url)
+TOKEN="$cabecalho.$corpo.$assinatura"
+
+docker compose stop keycloak
+
+curl -si -X POST http://localhost:8080/api/v1/tenants \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"Acme","slug":"acme-demo","planCode":"free","initialAdminEmail":"admin@acme.com"}'
+# 202 Accepted, com Location: /api/v1/tenants/{id}/provisioning
+
+curl -s http://localhost:8080/api/v1/tenants/{id}/provisioning -H "Authorization: Bearer $TOKEN"
+# {"tenantId":"…","status":"Pending",…}
+
+docker compose start keycloak
+# em cerca de um minuto — o teto do backoff do Outbox:
+curl -s http://localhost:8080/api/v1/tenants/{id}/provisioning -H "Authorization: Bearer $TOKEN"
+# {"tenantId":"…","status":"Active",…}
+```
+
 ---
 
 ## Por onde começar a ler
@@ -107,7 +145,7 @@ e testes de `401` sem endpoint protegido) fecharam com a vertical de registro (P
 | Documento | O que responde |
 |---|---|
 | [**Documentação de negócio**](docs/documentacao-negocio.md) | **Comece aqui.** O que a solução faz, para quem e como funciona — com 16 diagramas |
-| [**Especificação arquitetural v2.4**](docs/especificacao-arquitetural-v2.4.md) | A referência de implementação: domínio, endpoints, ADRs, código de referência |
+| [**Especificação arquitetural v2.5**](docs/especificacao-arquitetural-v2.5.md) | A referência de implementação: domínio, endpoints, ADRs, código de referência |
 | [**Revisão crítica**](docs/revisao-critica.md) | Os 33 achados que produziram as correções |
 
 ---
@@ -135,7 +173,7 @@ resiliente à queda do Keycloak. Registrar isso faz parte do projeto.
 
 ## Decisões arquiteturais
 
-Dez ADRs, com o texto completo na [especificação §4](docs/especificacao-arquitetural-v2.4.md#4-decisões-arquiteturais-adrs).
+Dez ADRs, com o texto completo na [especificação §4](docs/especificacao-arquitetural-v2.5.md#4-decisões-arquiteturais-adrs).
 
 | ADR | Decisão |
 |---|---|
@@ -159,7 +197,7 @@ competem** — cada versão fecha pontos que a anterior deixou em aberto, e **ne
 em nenhum dos saltos**.
 
 ```
-ideia → v2.0 → [revisão crítica: 33 achados] → v2.1 → [documentação de negócio] → v2.2 → v2.3
+ideia → v2.0 → [revisão crítica: 33 achados] → v2.1 → [documentação de negócio] → v2.2 → v2.3 → v2.4 → v2.5
 ```
 
 - **v2.1** incorporou a revisão crítica — três frentes independentes, 33 achados e 8 contradições.
@@ -170,6 +208,9 @@ ideia → v2.0 → [revisão crítica: 33 achados] → v2.1 → [documentação 
   nove lacunas — entre elas um limite de plano declarado que nenhuma operação verificava.
 - **v2.3** fechou as lacunas de arquitetura e reconciliou a spec com o template
   [CleanStart](https://github.com/Joseleno/CleanStart), base de todos os projetos.
+- **v2.4** corrigiu premissas erradas sobre o Keycloak, verificadas contra o código-fonte da versão
+  26.7.4, na fatia da fundação Keycloak.
+- **v2.5** registrou a fatia B: transporte em processo até o broker e a decisão de desistir no handler.
 
 Vale registrar o que a revisão **não** conseguiu derrubar: dos oito alvos examinados, sete
 resistiram inteiros. E das cinco afirmações verificadas contra documentação oficial, duas
