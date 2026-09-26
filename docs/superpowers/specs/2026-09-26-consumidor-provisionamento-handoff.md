@@ -1,9 +1,10 @@
 # Handoff — consumidor do provisionamento entregue
 
 > **Data:** 2026-09-26 · **Marco:** M1 (fatia B de 3) · **Status:** implementada, build e suíte completa verdes,
-> verificação ao vivo confirmada, **sem push** — fica para autorização do usuário.
-> **Onde parou:** as 7 tarefas do plano estão commitadas em `feat/consumidor-provisionamento`; falta só decidir
-> push e PR.
+> verificação ao vivo confirmada, revisão da branch inteira aplicada, **PR #3 aberto** contra `main` em 2026-09-26
+> (https://github.com/Joseleno/identity-gateway/pull/3).
+> **Onde parou:** as 8 tarefas do plano e a onda de correção da revisão final estão commitadas e enviadas; falta
+> acompanhar a CI do PR #3, revisar e mesclar.
 >
 > Sucede o [handoff da fundação Keycloak](2026-09-25-fundacao-keycloak-handoff.md). Referência normativa:
 > [`especificacao-arquitetural-v2.5.md`](../../especificacao-arquitetural-v2.5.md).
@@ -15,10 +16,10 @@
 | O quê | Estado |
 |---|---|
 | Branch | `feat/consumidor-provisionamento`, 2 commits de planejamento (design `ef11a18`, plano `a24e7b7`) + **7 commits** das Tasks 1–7 sobre `main` (`3f85462`), mais os 2 commits de documentação da Task 8 (`fd30d02`, `3a8c980`) e a onda de correção final (revisão do branch completo, abaixo) |
-| `main` | Não tocada — só recebe o merge quando autorizado |
-| Working tree | Limpa após o commit desta task |
+| `main` | Não tocada — recebe o merge pelo PR #3 |
+| Working tree | Limpa |
 | Docker | Rodando; usado nas Tasks 2, 6 (Testcontainers: PostgreSQL e Keycloak reais), na Task 8 (compose verificado ao vivo, localmente) e na onda de correção final (novo teste de integração do `OutboxProcessor`) |
-| Push / PR | **Não feitos.** Decisão do usuário (Step 7 do plano) |
+| Push / PR | **Feitos em 2026-09-26:** branch enviada e [PR #3](https://github.com/Joseleno/identity-gateway/pull/3) aberto contra `main`. CI do PR ainda não acompanhada no momento deste registro |
 
 Três frentes de commits compõem a branch: **planejamento** (`docs`, 2 — design/plano da fatia B), **Tasks 1–7**
 (7 — **5** `feat`, 1 `fix`, 1 `test`, e a marca `test:` da Task 6 para o E2E), a **Task 8** (**2** `docs`: `fd30d02`
@@ -209,8 +210,13 @@ Keycloak; (2) a tensão entre `ReserveSeat` exigir o tenant `Active` e o fluxo d
 
 ## Como retomar
 
-1. Decidir push e PR de `feat/consumidor-provisionamento` para `main` — não feito nesta sessão, por instrução
-   explícita.
-2. Decidir o que fazer com o achado da migration ausente no compose (pendências menores, acima) antes ou depois
-   do merge.
-3. Depois do merge, abrir o brainstorming da fatia C.
+1. Conferir a CI do [PR #3](https://github.com/Joseleno/identity-gateway/pull/3) (`gh pr checks 3`) — os jobs
+   `Build`, `Testes`, `Imagem Docker` e `Compose`. Se algo falhar, corrigir na mesma branch.
+2. Revisar e mesclar o PR #3. Depois do merge: `git checkout main && git pull --ff-only`, apagar a branch local
+   `feat/consumidor-provisionamento` e a remota.
+3. Decidir o que fazer com o achado da migration ausente no compose (pendências menores, acima) — serviço
+   `migrate` one-shot ou manter o passo manual documentado no README.
+4. Abrir o brainstorming da fatia C.
+
+Docker Desktop costuma estar desligado ao abrir a sessão: sem ele, os testes de integração e funcionais falham
+com `DockerUnavailableException` (ambiente, não regressão).

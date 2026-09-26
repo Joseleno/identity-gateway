@@ -1798,7 +1798,7 @@ Cada marco termina com algo demonstrável e testado.
 |---|---|---|
 | Registro de tenant (`POST /tenants` → `Pending` + Outbox) | M1 | Entregue (PR #1) |
 | **A · Fundação Keycloak**: Keycloak no compose e na CI, lado administrativo do realm, service account com `private_key_jwt`, `EnsureOrganizationAsync` | M0 + M1 | Entregue (PR #2) |
-| **B · Consumidor**: transporte, provisionamento, `ProvisioningFailed` | M1 | Entregue |
+| **B · Consumidor**: transporte, provisionamento, `ProvisioningFailed` | M1 | Entregue (PR #3) |
 | **C · Convite do admin inicial** | M1 | Próxima |
 
 **Pendente do M0 depois da fatia A:** client scopes `gateway-roles` e `gateway-tenant`, Audience Mapper, catálogo de papéis, armazenamento de eventos do realm, remoção do `offline_access`, platform-admin com senha gerada, a API validando tokens do Keycloak e o RabbitMQ. Enquanto a API usar o JWT simétrico do template, o critério "primeiro `curl`" do M0 **com token do Keycloak** segue em aberto.
