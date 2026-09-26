@@ -192,7 +192,8 @@ serialização —, mas o primeiro consumidor que o lesse receberia um dado fals
 
 - **`ExternalOrganizationId`** — detalhe interno do Keycloak que ninguém consome.
 - **O motivo da falha** — guardar mensagem de exceção no banco arrisca expor detalhes internos pela API. O motivo
-  fica no log `Error`, com `tenantId` e `correlationId`. Se houver demanda, entra depois como código fechado
+  fica no log `Error`, com `tenantId` — que já basta para juntar os registros; o despacho em background tem
+  `correlationId` próprio por escopo, não o do `POST`. Se houver demanda, entra depois como código fechado
   (`inconsistencia`, `janela-esgotada`), nunca como texto de exceção.
 - **`303 See Other` quando `Active`** — o recurso `GET /tenants/{id}` ainda não existe; sempre `200` com o status
   mantém o contrato simples até lá.

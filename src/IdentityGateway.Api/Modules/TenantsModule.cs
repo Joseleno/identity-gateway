@@ -51,9 +51,9 @@ public sealed class TenantsModule : ICarterModule
 
     /// <remarks>
     /// Responde <c>202</c>, não <c>201</c>: o registro foi aceito e o provisionamento no Keycloak acontece
-    /// depois, a partir da mensagem do Outbox. O <c>Location</c> aponta para o acompanhamento do processamento
-    /// — rota que ainda não existe nesta fatia, e é limitação conhecida: num <c>202</c>, omitir o cabeçalho ou
-    /// apontar para um recurso que minta sobre estar pronto seria pior.
+    /// depois, a partir da mensagem do Outbox. O <c>Location</c> aponta para <c>ConsultarProvisionamentoAsync</c>,
+    /// o acompanhamento do processamento: num <c>202</c>, omitir o cabeçalho ou apontar para um recurso que minta
+    /// sobre estar pronto seria pior.
     /// </remarks>
     private static async Task<IResult> RegistrarAsync(
         RegisterTenantRequest request,

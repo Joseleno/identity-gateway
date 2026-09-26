@@ -282,7 +282,9 @@ Resumo das decisões. O texto completo de cada uma fica em `docs/adr/`.
 - **Contexto:** a Admin API do Keycloak não é transacional, e a criação de um tenant envolve o banco da Gateway e o Keycloak.
 - **Decisão:** o comando grava o aggregate em estado `Pending` e o evento no **Outbox** na mesma transação. Um consumidor executa o provisionamento em passos idempotentes ("garanta que existe"). Um job periódico reconcilia divergências entre os dois lados.
 - **Mecanismo:** o do CleanStart — um interceptor de `SaveChanges` coleta os domain events antes do commit e os grava na tabela de outbox, e um `OutboxWorker` publica depois, de forma assíncrona. O **transporte é RabbitMQ**. O worker é um job de fundo e portanto está sujeito ao ADR-010 (um só executor por vez). **Até a fatia do broker (v2.5), o transporte é em
-   processo:** o `OutboxWorker` despacha cada evento como command do Mediator, e o retry é o do próprio Outbox.
+   processo:** o `OutboxWorker` chama o `OutboxProcessor` a cada ciclo, e é o `DispatchingOutboxPublisher` — que o
+   `OutboxProcessor` invoca por mensagem — quem despacha cada evento como command do Mediator; o retry é o do
+   próprio Outbox.
 - **Correlação idempotente:** cada Organization criada recebe o atributo `gateway_tenant_id` com o `TenantId` da Gateway, e é por ele que o "consultar antes de criar" localiza recursos preexistentes (§11.6). A busca é `GET .../organizations?q=gateway_tenant_id:{id}&briefRepresentation=false` (§11.6). O `alias` **não** serve para isso, embora também seja buscável (`q=alias:...`): uma Organization criada fora da Gateway com o mesmo alias seria confundida com a nossa, enquanto o atributo é escolhido por nós e distingue o que é nosso do que não é.
 - **Consequências:** o endpoint de criação responde `202 Accepted` com o recurso de status do provisionamento. Nenhuma falha do Keycloak deixa estado órfão sem ser detectada — **desde que a reconciliação varra todos os estados não terminais**, e não apenas `Active`: o órfão típico nasce justamente antes da ativação, com a Organization criada e a gravação do id falhando (§9.1).
 
@@ -986,12 +988,24 @@ public sealed class ProvisionTenantHandler(
 // sem ele, o SaveChanges que registra o resultado do lote gravaria o que um handler que falhou deixou rastreado.
 internal sealed class DispatchingOutboxPublisher(IServiceScopeFactory scopeFactory) : IOutboxPublisher
 {
+    // Nulo = "sem consumidor nesta versão", dado como entregue. Fora do mapa: lança — nunca entrega em
+    // silêncio um evento que ninguém decidiu o que fazer (§4.2).
+    private static readonly Dictionary<Type, Func<IDomainEvent, ICommand?>> Destinos = new()
+    {
+        [typeof(TenantRegistered)] = e => new ProvisionTenantCommand(((TenantRegistered)e).TenantId),
+        [typeof(TenantActivated)] = _ => null,
+    };
+
     public async Task PublishAsync(IDomainEvent domainEvent, CancellationToken ct)
     {
-        if (domainEvent is not TenantRegistered registrado) return;   // simplificado; ver o código real
+        if (!Destinos.TryGetValue(domainEvent.GetType(), out var destino))
+            throw new InvalidOperationException($"'{domainEvent.GetType().Name}' sem destino no mapa.");
+
+        ICommand? comando = destino(domainEvent);
+        if (comando is null) return;   // sem consumidor nesta versão
+
         await using AsyncServiceScope escopo = scopeFactory.CreateAsyncScope();
-        Result resultado = await escopo.ServiceProvider.GetRequiredService<ISender>()
-            .Send(new ProvisionTenantCommand(registrado.TenantId), ct);
+        Result resultado = await escopo.ServiceProvider.GetRequiredService<ISender>().Send(comando, ct);
         if (resultado.IsFailure) throw new InvalidOperationException(resultado.Error.Code);
     }
 }
@@ -1852,4 +1866,12 @@ Registrar os limites faz parte do projeto: eles mostram onde a arquitetura escol
 - **Rotacionar a chave da Gateway causa indisponibilidade** (v2.4). Com o certificado registrado no atributo do client, trocar a chave invalida o anterior no mesmo instante. A evolução é o client ler a chave de um JWKS (`use.jwks.url`) que exponha as duas chaves durante a janela de transição (§10.2).
 - **O `depends_on` do Keycloak na API é conveniência do ambiente local**, para que o primeiro `curl` funcione. Ele não é garantia de disponibilidade: a demonstração do M1 exige que a API responda com o Keycloak parado, e o provisionamento é que espera por ele (§9.1).
 - **`ProvisioningFailed` não tem saída automática** até existirem o retry manual e a reconciliação (v2.5); até lá, sair dele exige intervenção no banco.
+- **Com N réplicas e Keycloak lento, duas réplicas podem processar a mesma mensagem do Outbox em paralelo.** O
+  atraso da tentativa (o lease implícito da reserva) vai de 10 a 72s, e a publicação de uma mensagem pode levar
+  até o teto de 30s da resiliência multiplicado pelo `BatchSize` (20) se o lote inteiro travar no Keycloak — o
+  lease pode expirar, e outra réplica reservar e reprocessar a mesma mensagem antes da primeira terminar. O
+  resultado converge (o segundo `EnsureOrganizationAsync` acha a Organization que o primeiro criou; o segundo
+  `SaveChanges` do tenant recebe `409`/`DbUpdateConcurrencyException` pelo `xmin` e é reprocessado), mas o log
+  fica ruidoso com o conflito de concorrência. Fica sem correção dedicada até o ADR-010 cobrir o `OutboxWorker`
+  (v2.5).
 - **Os números do Outbox estão dimensionados para o provisionamento em processo** (teto de 60s, 1500 tentativas): uma mensagem envenenada de outro tipo repetiria por ~25h. A revisar quando o broker chegar (v2.5).

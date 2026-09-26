@@ -14,15 +14,17 @@
 
 | O quê | Estado |
 |---|---|
-| Branch | `feat/consumidor-provisionamento`, 2 commits de planejamento (design `ef11a18`, plano `a24e7b7`) + **7 commits** das Tasks 1–7 sobre `main` (`3f85462`), mais o commit de documentação desta Task 8 |
+| Branch | `feat/consumidor-provisionamento`, 2 commits de planejamento (design `ef11a18`, plano `a24e7b7`) + **7 commits** das Tasks 1–7 sobre `main` (`3f85462`), mais os 2 commits de documentação da Task 8 (`fd30d02`, `3a8c980`) e a onda de correção final (revisão do branch completo, abaixo) |
 | `main` | Não tocada — só recebe o merge quando autorizado |
 | Working tree | Limpa após o commit desta task |
-| Docker | Rodando; usado nas Tasks 2, 6 (Testcontainers: PostgreSQL e Keycloak reais) e nesta Task 8 (compose verificado ao vivo, localmente) |
+| Docker | Rodando; usado nas Tasks 2, 6 (Testcontainers: PostgreSQL e Keycloak reais), na Task 8 (compose verificado ao vivo, localmente) e na onda de correção final (novo teste de integração do `OutboxProcessor`) |
 | Push / PR | **Não feitos.** Decisão do usuário (Step 7 do plano) |
 
-Duas frentes de commits compõem a branch: **planejamento** (`docs`, 2 — design/plano da fatia B) e **Tasks 1–7**
-(7 — 4 `feat`, 1 `fix`, 1 `test`, e a marca `test:` da Task 6 para o E2E), mais a **Task 8**, que acrescenta só
-`docs`: a especificação v2.5, a demonstração no README e este handoff.
+Três frentes de commits compõem a branch: **planejamento** (`docs`, 2 — design/plano da fatia B), **Tasks 1–7**
+(7 — **5** `feat`, 1 `fix`, 1 `test`, e a marca `test:` da Task 6 para o E2E), a **Task 8** (**2** `docs`: `fd30d02`
+especificação v2.5/demonstração/handoff, `3a8c980` passo de migration no README e marca de versão), e a **onda de
+correção final** pós-revisão do branch completo (`c4ed858` `fix` + 1 `docs` que acrescenta este próprio commit,
+abaixo).
 
 ## O que a fatia entregou
 
@@ -44,16 +46,17 @@ decide entre repetir a chamada ao Keycloak e desistir pela janela de provisionam
 
 `dotnet build IdentityGateway.slnx`: **0 avisos, 0 erros.**
 
-`dotnet test` (solução inteira, Docker rodando): **331 total, 0 falhas, 0 skips.**
+`dotnet test` (solução inteira, Docker rodando): **332 total, 0 falhas, 0 skips** — os 331 da Task 8 mais
+`OutboxProcessorTests.TaskCanceledSemCancelamentoDoLote_MarcaErroEEntregaAsDemais`, da onda de correção final.
 
 | Projeto | Total | Falhas | Skips |
 |---|---|---|---|
 | `IdentityGateway.Domain.UnitTests` | 113 | 0 | 0 |
 | `IdentityGateway.Application.UnitTests` | 49 | 0 | 0 |
 | `IdentityGateway.ArchitectureTests` | 29 | 0 | 0 |
-| `IdentityGateway.Infrastructure.IntegrationTests` | 114 | 0 | 0 |
+| `IdentityGateway.Infrastructure.IntegrationTests` | 115 | 0 | 0 |
 | `IdentityGateway.Api.FunctionalTests` | 26 | 0 | 0 |
-| **Total** | **331** | **0** | **0** |
+| **Total** | **332** | **0** | **0** |
 
 ## Prova por mutação
 
@@ -68,10 +71,49 @@ Toda mutação foi aplicada, confirmada vermelha, revertida byte-a-byte e reconf
 | 4 | `>` no lugar de `>=` na fronteira da janela | Vermelho (`FalhaNaFronteiraExataDaJanela_MarcaFailed`) |
 | 5 | Removida a entrada `[typeof(TenantActivated)] = _ => null` do mapa `Destinos` (sem `TenantActivated` no mapa) | Vermelho (`TodoEventoDoOutbox_TemDestinoNoPublisher` e `TenantActivated_EEntregueSemResolverNada`) |
 | 6 | `DispatchingOutboxPublisher` recebendo `ISender` pelo construtor (do escopo do processador) em vez de abrir um `AsyncServiceScope` novo por mensagem | Vermelho (`CommitPerdidoDepoisDeCriarAOrganizacao_ProximoCicloReencontraSemDuplicar` — status ficou `Active` em vez de `Pending`; o `SaveChanges` do lote persistiu o que o handler do escopo compartilhado havia deixado rastreado) |
+| Onda de correção final | Filtro por tipo de exceção (`excecao is not OperationCanceledException`) no catch por mensagem do `OutboxProcessor` (sem olhar o `cancellationToken`) | Vermelho (`TaskCanceledSemCancelamentoDoLote_MarcaErroEEntregaAsDemais` — a `TaskCanceledException` escapava do `foreach` sem passar por `RegistrarResultadoAsync`) |
 
 **Nenhum defeito de produção apareceu na Task 6** — primeiro teste a exercitar `OutboxProcessor.ProcessarLoteAsync`
 de ponta a ponta contra banco e Keycloak reais, e ele se comportou conforme a documentação nos três cenários
 (reserva com `SKIP LOCKED` e backoff, isolamento de escopo do publisher, idempotência `EnsureOrganizationAsync`).
+
+## Onda de correção final (revisão do branch completo)
+
+Revisão do branch inteiro (`3f85462..3a8c980`) contra a spec e as convenções do repositório, com uma onda única
+de correção sobre os achados.
+
+**Achado importante, corrigido por TDD.** `OutboxProcessor.ProcessarLoteAsync` filtrava o catch por mensagem por
+**tipo** de exceção (`excecao is not OperationCanceledException`) — o mesmo padrão que a própria fatia B havia
+rejeitado no `ProvisionTenantHandler`, em favor de filtrar pelo `CancellationToken`. Um `TaskCanceledException`
+que não fosse desligamento do host (por exemplo, o timeout cru do `HttpClient.Timeout`, sem relação com o
+cancelamento do lote) escapava do `foreach` e abortava o `RegistrarResultadoAsync` do lote inteiro: mensagens já
+entregues ficariam sem `ProcessedOn` (redelivery inofensiva), e o resto do lote já teria a tentativa contabilizada
+na reserva sem nunca ter sido tentado — se fosse a tentativa 1500, o tenant ficaria `Pending` para sempre.
+Corrigido para `excecao is not OperationCanceledException || !cancellationToken.IsCancellationRequested`, que
+deixa escapar só o desligamento real do host — o mesmo filtro do `OutboxWorker`.
+
+**Premissa verificada antes de tocar em comentário ou spec.** A revisão levantou a hipótese de que o timeout do
+`AddStandardResilienceHandler` (Polly v8) chega como `TimeoutRejectedException`, e que `TaskCanceledException` vem
+do `HttpClient.Timeout` cru (ex.: o cliente do token endpoint, sem resiliência). Confirmado por reflexão sobre
+`Polly.Core 8.4.2`: `Polly.Timeout.TimeoutRejectedException` deriva de `Polly.ExecutionRejectedException` →
+`System.Exception` — **não** de `OperationCanceledException`. E `KeycloakServiceCollectionExtensions` registra
+`admin.AddStandardResilienceHandler()` no cliente da Admin API (o que `EnsureOrganizationAsync` usa). Ou seja, a
+premissa da revisão era exatamente o contrário do que os comentários antigos afirmavam ("o timeout da resiliência
+chega como `TaskCanceledException`"). Corrigidos: o comentário do `ProvisionTenantHandler`, o comentário do teste
+`TimeoutDaResilienciaDepoisDaJanela_MarcaFailed` (sem renomear o teste). A v2.5 §11.5/§0 (B3) já não continha essa
+premissa — a tabela de classes de erro (§11.5) já listava `TimeoutRejectedException` corretamente; nenhuma
+alteração foi necessária ali.
+
+**Demais achados (minor), aplicados na mesma onda:** comentário desatualizado do `Location` em `TenantsModule`
+(§2 dos achados); atribuição do despacho corrigida na ADR-006 (`DispatchingOutboxPublisher`, chamado pelo
+`OutboxProcessor` — não o `OutboxWorker` diretamente); snippet da §11.5 alinhado à regra "evento fora do mapa
+lança" (§4.2); uma frase do design da fatia B e o texto desta seção corrigidos sobre o `correlationId` do log de
+motivo (o despacho em background tem `correlationId` próprio por escopo, não o do `POST`; `tenantId` já basta
+para correlacionar); caminho de upgrade das mensagens `tenant-registered` órfãs documentado acima, com o SQL de
+rearme; limite novo na §19 sobre processamento concorrente da mesma mensagem por réplicas diferentes sob Keycloak
+lento.
+
+Build: `dotnet build IdentityGateway.slnx` — 0 avisos, 0 erros. Suíte completa ao final desta onda, abaixo.
 
 ## Verificação ao vivo (Step 4)
 
@@ -126,6 +168,26 @@ do compose, bem dentro do teto de 60s do backoff.
 - `ThrowIfNull(command)` no `ProvisionTenantHandler` sem teste (padrão do repo); log `{Horas}` como `double` (Task 4).
 - Logs `2100`/`2101` do `DispatchingOutboxPublisher` não levam `tenantId`; conferir que `Error.Message` do `Result.IsFailure` nunca carrega PII antes de logar (Task 5).
 - Os 3 testes E2E da Task 6 dividem a tabela `outbox_messages` — cabem no `BatchSize=20` hoje, mas a folga é implícita; `LiberarAsync` usa SQL cru acoplado a nomes de coluna do Outbox (helper de teste).
+
+**Caminho de upgrade não documentado (achado da revisão final)**
+- Antes desta fatia, o `LoggingOutboxPublisher` marcava **todo** `tenant-registered` como processado, sem
+  provisionar nada. Tenants que ficaram `Pending` em ambientes de dev anteriores a esta fatia têm a mensagem já
+  com `processed_on` preenchido — nunca serão reprocessados pelo `OutboxProcessor` (que só lê `processed_on IS
+  NULL`), então nunca virão a `Active` nem a `ProvisioningFailed`. Para rearmar essas mensagens, se desejado:
+  ```sql
+  UPDATE outbox_messages om
+     SET processed_on = NULL, attempts = 0, next_attempt_on = now(), error = NULL
+   WHERE om.type = 'tenant-registered'
+     AND EXISTS (
+           SELECT 1
+             FROM tenants t
+            WHERE t.id = (om.content ->> 'tenantId')::uuid
+              AND t.status = 'Pending'
+         );
+  ```
+  Nomes de coluna conferidos em `OutboxMessageConfiguration`/`TenantConfiguration`. Sem consumidor real em
+  produção ainda (fatia B só tem transporte em processo), o impacto prático hoje é zero — registrado para quando
+  houver ambiente com dados reais para migrar.
 
 **Achado desta task (corrigido parcialmente no fix round)**
 - `docker compose up -d` **não aplica migrations automaticamente** em volumes novos — é desenho deliberado
