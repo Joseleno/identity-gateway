@@ -78,12 +78,15 @@ de ponta a ponta contra banco e Keycloak reais, e ele se comportou conforme a do
 `docker compose up -d --build`: os seis serviços de dependência ficaram `healthy`/`started`, e `api` subiu
 `(healthy)`. `curl -s http://localhost:8080/health/ready` respondeu `Healthy`.
 
-**Achado durante a verificação, corrigido só para rodar a demonstração (não editei compose nem API):** com
-volumes novos, `docker compose up` não aplica as migrations — `StartupTasks` só migra sob a flag `--migrate`,
-deliberadamente (comentário do próprio código: migrar automaticamente a cada arranque é perigoso com várias
-réplicas subindo ao mesmo tempo). O primeiro `POST /tenants` falhou com `500` (`relation "tenants" does not
-exist`). Contornado com `docker compose run --rm api --migrate` antes de repetir o roteiro — não é o cenário
-"token recusado" que o brief previa, então registrei em vez de alterar README ou API; ver "Pendências menores".
+**Achado durante a verificação, corrigido no fix round desta task:** com volumes novos, `docker compose up` não
+aplica as migrations — `StartupTasks` só migra sob a flag `--migrate`, deliberadamente (comentário do próprio
+código: migrar automaticamente a cada arranque é perigoso com várias réplicas subindo ao mesmo tempo). O
+primeiro `POST /tenants` falhou com `500` (`relation "tenants" does not exist`). Contornado, na primeira
+passada, com `docker compose run --rm api --migrate` antes de repetir o roteiro; não era o cenário "token
+recusado" que o brief original previa, então o passo ficou registrado sem tocar em README ou API. No fix
+round, o mesmo comando entrou no README ("Rodando local", logo depois de `docker compose up -d`), então o
+roteiro abaixo agora é reproduzível por qualquer clone novo sem esse tropeço — ver "Pendências menores" para o
+que ainda falta (automatizar via compose, se algum dia se quiser).
 
 Roteiro do README, executado exatamente, com um tenant novo (o primeiro `POST`, feito antes de o Keycloak ser
 parado, não conta — foi refeito na ordem certa):
@@ -112,7 +115,7 @@ do compose, bem dentro do teto de 60s do backoff.
 | Task 3: o snippet do plano para a mensagem de erro (`string.Create` com interpolações concatenadas por `+`) não compila (`CS1620`); reescrito como duas chamadas `string.Create` separadas, concatenadas depois como strings já materializadas — mesmo conteúdo e cultura | Nenhum comportamental, só forma da mensagem |
 | Tasks 4/5: ajustes pedidos pelos analisadores do repositório sob `TreatWarningsAsErrors` — `TestContext.Current.CancellationToken` no lugar de `default` (`xUnit1051`), `var` em vez de tipo explícito (`IDE0007`), e `#pragma warning disable/restore CA2012` escopado às duas linhas de `Send(...).Returns(ValueTask...)` do NSubstitute (falso positivo documentado) | Nenhum comportamental |
 | Task 6: nenhum defeito de produção encontrado no `OutboxProcessor` — primeiro teste a exercitá-lo de ponta a ponta contra banco e Keycloak reais | — |
-| Task 8: `docker compose up -d --build` com volumes novos não aplica migrations (por desenho — `StartupTasks` exige `--migrate`); rodei `docker compose run --rm api --migrate` uma vez para destravar a demonstração, sem editar compose, `Dockerfile` ou README | Sem o passo, o primeiro `curl` do M0 falha com `500` em qualquer clone novo — ver pendências |
+| Task 8: `docker compose up -d --build` com volumes novos não aplica migrations (por desenho — `StartupTasks` exige `--migrate`); rodei `docker compose run --rm api --migrate` uma vez para destravar a demonstração. No fix round, documentei o mesmo comando no README ("Rodando local") em vez de mexer em compose/`Dockerfile`/API | Sem o passo documentado, o primeiro `curl` do M0 falharia com `500` em qualquer clone novo |
 
 ## Pendências menores
 
@@ -124,8 +127,15 @@ do compose, bem dentro do teto de 60s do backoff.
 - Logs `2100`/`2101` do `DispatchingOutboxPublisher` não levam `tenantId`; conferir que `Error.Message` do `Result.IsFailure` nunca carrega PII antes de logar (Task 5).
 - Os 3 testes E2E da Task 6 dividem a tabela `outbox_messages` — cabem no `BatchSize=20` hoje, mas a folga é implícita; `LiberarAsync` usa SQL cru acoplado a nomes de coluna do Outbox (helper de teste).
 
-**Achado desta task**
-- `docker compose up -d --build` **não aplica migrations automaticamente** em volumes novos — é desenho deliberado (`StartupTasks`, flag `--migrate`), mas o README não documenta o passo, e a promessa do M0 ("`git clone` + `docker compose up` + primeiro `curl` funcionam na primeira tentativa", spec §16) está quebrada para quem clona e sobe pela primeira vez. Não corrigi README nem compose porque o brief desta task só autorizava ajustar o snippet em caso de token recusado — registrando para decisão explícita: ou um serviço `migrate` one-shot no compose (padrão dos outros one-shots do arquivo), ou uma linha no README antes da demonstração.
+**Achado desta task (corrigido parcialmente no fix round)**
+- `docker compose up -d` **não aplica migrations automaticamente** em volumes novos — é desenho deliberado
+  (`StartupTasks`, flag `--migrate`). O README agora documenta o passo manual (`docker compose run --rm api
+  --migrate`, logo depois de `docker compose up -d` em "Rodando local", com a explicação do porquê), então o
+  primeiro `curl` de um clone novo volta a funcionar seguindo o README à letra. **Ainda em aberto:** automatizar
+  esse passo — por exemplo, um serviço `migrate` one-shot no `docker-compose.yml`, no padrão dos outros
+  one-shots do arquivo (`gateway-keys`, `keycloak-db`) — para que a promessa do M0 ("`git clone` + `docker
+  compose up` + primeiro `curl` funcionam na primeira tentativa", spec §16) valha sem um passo manual extra.
+  Decisão de infraestrutura fora do escopo desta fatia, deixada para quem tocar o compose de novo.
 
 ## Próximo passo
 

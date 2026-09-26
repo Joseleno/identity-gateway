@@ -55,6 +55,10 @@ dotnet test
 
 # As dependências, e a API junto
 docker compose up -d
+
+# Só na primeira subida (volume novo): a API migra sob pedido, nunca sozinha — StartupTasks só aplica
+# migrations com --migrate, porque migrar automaticamente é perigoso com várias réplicas no ar ao mesmo tempo.
+docker compose run --rm api --migrate
 ```
 
 Com o compose de pé: a API responde em `http://localhost:8080`, `/health/live` e `/health/ready`
@@ -105,8 +109,10 @@ e testes de `401` sem endpoint protegido) fecharam com a vertical de registro (P
 
 ### Demonstração: o tenant é provisionado quando o Keycloak volta
 
-A API aceita o tenant com o Keycloak fora do ar e o provisiona sozinha quando ele volta (spec §16). O token é de
-platform-admin, assinado com a chave de desenvolvimento do compose — o mesmo formato que a API valida hoje:
+A API aceita o tenant com o Keycloak fora do ar e o provisiona sozinha quando ele volta (spec §16). Pressupõe o
+compose de pé e as migrations já aplicadas (`docker compose up -d` + `docker compose run --rm api --migrate`,
+acima). O token é de platform-admin, assinado com a chave de desenvolvimento do compose — o mesmo formato que a
+API valida hoje:
 
 ```bash
 b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }

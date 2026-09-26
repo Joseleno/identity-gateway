@@ -1778,7 +1778,7 @@ Cada marco termina com algo demonstrável e testado.
 | **M6 · M2M** | Clients com `private_key_jwt` (§10.2), rotação de credenciais, **limite `MaxClients`**, clients desabilitados na suspensão do tenant | Serviço parceiro chamando a Sample API com Client Credentials; tenant suspenso derruba também o M2M |
 | **M7 · Hardening** | Step-up com `StepUpRequirement` e resposta `insufficient_user_authentication`, rate limiting, README detalhado com `curl` reproduzível | Repositório pronto para apresentação |
 
-**Andamento do M0 e do M1 (v2.4).** A implementação avança em fatias verticais, e uma fatia pode cruzar marcos:
+**Andamento do M0 e do M1 (v2.5).** A implementação avança em fatias verticais, e uma fatia pode cruzar marcos:
 
 | Fatia | Marco | Estado |
 |---|---|---|
