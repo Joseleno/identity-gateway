@@ -76,6 +76,15 @@ public static class DependencyInjection
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<ProvisioningOptions>()
+            .Bind(configuration.GetSection(ProvisioningOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        // A rede do Outbox precisa ser maior que a janela do provisionamento. É um IValidateOptions, e não um
+        // Validate(...) em linha, para a mensagem poder nomear os dois valores — o que torna o erro de subida acionável.
+        services.AddSingleton<IValidateOptions<OutboxOptions>, OutboxCobreAJanelaDeProvisionamento>();
+
         // Catálogo inválido derruba a aplicação na subida, não na primeira requisição.
         //
         // A validação é escrita à mão, e não por `ValidateDataAnnotations`: `PlanOptions` herda de
@@ -185,6 +194,8 @@ public static class DependencyInjection
 
         // Singleton: é configuração imutável, e uma instância por requisição só produziria lixo.
         services.AddSingleton<IPlanCatalog, PlanCatalog>();
+
+        services.AddSingleton<IProvisioningPolicy, ProvisioningPolicy>();
 
         return services;
     }

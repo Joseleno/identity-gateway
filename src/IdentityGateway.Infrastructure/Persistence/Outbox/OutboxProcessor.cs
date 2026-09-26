@@ -293,7 +293,8 @@ internal sealed class OutboxProcessor(
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Dobra a cada tentativa até um teto: dar o mesmo intervalo sempre martela um destino que já está em
+    /// A base — dobrar a cada tentativa até um teto — vem de <see cref="OutboxBackoff.AtrasoSemVariacao"/>,
+    /// compartilhada com a validação da subida: dar o mesmo intervalo sempre martela um destino que já está em
     /// dificuldade, e crescer sem limite transformaria a oitava tentativa em dias.
     /// </para>
     /// <para>
@@ -304,8 +305,7 @@ internal sealed class OutboxProcessor(
     /// </remarks>
     private TimeSpan AtrasoDe(int tentativa)
     {
-        double baseSegundos = _options.BaseRetryDelaySeconds * Math.Pow(2, Math.Max(0, tentativa - 1));
-        double limitado = Math.Min(baseSegundos, _options.MaxRetryDelaySeconds);
+        double limitado = OutboxBackoff.AtrasoSemVariacao(tentativa, _options).TotalSeconds;
         double variacao = Random.Shared.NextDouble() * limitado * 0.2;
 
         return TimeSpan.FromSeconds(limitado + variacao);

@@ -62,6 +62,7 @@ public sealed class DependencyInjectionTests
     [InlineData(typeof(ITenantRepository))]
     [InlineData(typeof(IPlanCatalog))]
     [InlineData(typeof(IIdentityProvider))]
+    [InlineData(typeof(IProvisioningPolicy))]
     public void TodasAsAbstracoesDaApplication_SaoResolviveis(Type servico)
     {
         // Se a Application declara uma interface que ninguém registrou, o erro aparece aqui — não na primeira
@@ -196,7 +197,8 @@ public sealed class DependencyInjectionTests
 
         outbox.Enabled.Should().BeTrue("um outbox que ninguém despacha acumula eventos em silêncio");
         outbox.BatchSize.Should().Be(20);
-        outbox.MaxAttempts.Should().Be(5);
+        outbox.MaxAttempts.Should().Be(1500);
+        outbox.MaxRetryDelaySeconds.Should().Be(60);
     }
 
     [Fact]
@@ -249,5 +251,53 @@ public sealed class DependencyInjectionTests
         IIdentityProvider segundo = scope.ServiceProvider.GetRequiredService<IIdentityProvider>();
 
         primeiro.Should().NotBeSameAs(segundo);
+    }
+
+    private static IConfiguration ConfiguracaoValidaCom(params (string Chave, string? Valor)[] extras)
+    {
+        var valores = ConfiguracaoValida()
+            .AsEnumerable()
+            .Where(par => par.Value is not null)
+            .ToDictionary(par => par.Key, par => par.Value);
+
+        foreach ((string chave, string? valor) in extras)
+        {
+            valores[chave] = valor;
+        }
+
+        return new ConfigurationBuilder().AddInMemoryCollection(valores).Build();
+    }
+
+    [Fact]
+    public void ProvisioningSemConfiguracao_UsaAJanelaDe24Horas()
+    {
+        using ServiceProvider provider = Construir(ConfiguracaoValida());
+
+        provider.GetRequiredService<IProvisioningPolicy>().MaxPendingDuration.Should().Be(TimeSpan.FromHours(24));
+    }
+
+    [Fact]
+    public void JanelaForaDaFaixa_FalhaAoValidar()
+    {
+        using ServiceProvider provider = Construir(ConfiguracaoValidaCom(("Provisioning:MaxPendingHours", "0")));
+
+        Action validar = () => _ = provider.GetRequiredService<IOptions<ProvisioningOptions>>().Value;
+
+        validar.Should().Throw<OptionsValidationException>().WithMessage("*janela*");
+    }
+
+    [Fact]
+    public void OutboxComOsNumerosAntigos_FalhaAoValidarNomeandoTentativasEJanela()
+    {
+        // É a configuração que qualquer ambiente com o appsettings anterior à fatia B tem: cinco tentativas somam
+        // 150s de retry, e o tenant ficaria em Pending para sempre depois que o Outbox desistisse — sem ninguém para
+        // marcá-lo ProvisioningFailed. Falhar na subida, dizendo por quê, é o que torna isso visível.
+        using ServiceProvider provider = Construir(ConfiguracaoValidaCom(
+            ("Outbox:MaxAttempts", "5"),
+            ("Outbox:MaxRetryDelaySeconds", "300")));
+
+        Action validar = () => _ = provider.GetRequiredService<IOptions<OutboxOptions>>().Value;
+
+        validar.Should().Throw<OptionsValidationException>().WithMessage("*5 tentativas*24h*");
     }
 }
