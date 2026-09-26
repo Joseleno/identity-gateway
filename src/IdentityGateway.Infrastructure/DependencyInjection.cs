@@ -216,15 +216,11 @@ public static class DependencyInjection
     /// </remarks>
     private static IServiceCollection AddOutbox(this IServiceCollection services, IConfiguration configuration)
     {
-        // Troque esta linha pela sua implementação para ligar um broker de verdade; nada mais muda.
-        services.AddScoped<IOutboxPublisher, LoggingOutboxPublisher>();
+        // O despacho é em processo (fatia B): cada evento vira command do Mediator. Scoped porque é resolvido no
+        // escopo do processador — e ele abre o próprio escopo por mensagem, ver DispatchingOutboxPublisher. Quando o
+        // broker chegar, a troca é nesta linha.
+        services.AddScoped<IOutboxPublisher, DispatchingOutboxPublisher>();
         services.AddScoped<OutboxProcessor>();
-
-        // Singleton porque a memória do que já foi notificado precisa atravessar os escopos — um por ciclo do
-        // despachante. Scoped faria cada ciclo esquecer tudo, e a proteção contra entrega repetida sumiria
-        // justamente no caso que ela existe para cobrir. Num sistema real esse estado é uma tabela, e aí o
-        // tempo de vida do serviço deixa de importar.
-
 
         // Lido direto da configuração, e não por IOptions: a decisão é sobre o que REGISTRAR, e acontece antes
         // de existir um provider de onde resolver options.
