@@ -130,7 +130,8 @@ jobs:
   #
   # A promessa do M0 é "git clone + docker compose up funcionam na primeira tentativa". Verificada à mão, ela vale só
   # no dia em que alguém testou; aqui vale a cada PR. E o /health/ready da Api obtém o token do service account: um
-  # verde aqui prova a geração das chaves, o import do realm, o banco do Keycloak e o private_key_jwt juntos.
+  # verde aqui prova a geração das chaves, o import do realm, o banco do Keycloak e o private_key_jwt juntos — e o
+  # registro com provisionamento prova as migrations e o Outbox.
   #
   # `up ... api`, com o nome do serviço: o --wait espera a api ficar saudável e não tropeça nos one-shots, que
   # terminam de propósito. Seq e Jaeger não sobem aqui — a api não depende deles.
@@ -150,8 +151,43 @@ jobs:
       - name: Conferir o ready
         run: curl --fail --silent --show-error --max-time 10 http://localhost:8080/health/ready
 
-      # Derruba SEM apagar volumes e sobe de novo: prova que os one-shots são idempotentes e que o realm já
-      # importado continua casando com a chave que ficou no volume.
+      # O ready NÃO olha o schema: sem as migrations, a api fica saudável e o primeiro POST responde 500 (relation
+      # "tenants" does not exist) — foi exatamente o que este job deixou passar até o serviço migrate existir. Aqui,
+      # o caminho do M1 inteiro: registrar (202) e esperar o Outbox provisionar a Organization no Keycloak (Active).
+      # Token de platform-admin assinado com a chave de desenvolvimento do compose, como na demonstração do README.
+      - name: Registrar um tenant e esperar o provisionamento
+        run: |
+          b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          agora=$(date +%s)
+          cabecalho=$(printf '{"alg":"HS256","typ":"JWT"}' | b64url)
+          corpo=$(printf '{"sub":"0199a000-0000-7000-8000-000000000001","roles":"platform-admin","iss":"identitygateway","aud":"identitygateway-api","nbf":%d,"exp":%d}' "$agora" "$((agora + 3600))" | b64url)
+          assinatura=$(printf '%s.%s' "$cabecalho" "$corpo" | openssl dgst -sha256 -hmac "chave-de-desenvolvimento-nao-use-em-producao" -binary | b64url)
+          token="$cabecalho.$corpo.$assinatura"
+
+          resposta="$RUNNER_TEMP/resposta.json"
+          cabecalhos="$RUNNER_TEMP/cabecalhos.txt"
+          status=$(curl --silent --show-error --max-time 10 --output "$resposta" --dump-header "$cabecalhos" \
+            --write-out '%{http_code}' -X POST http://localhost:8080/api/v1/tenants \
+            -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+            -d '{"name":"Acme","slug":"acme-ci","planCode":"free","initialAdminEmail":"admin@acme.com"}')
+          if [ "$status" != "202" ]; then
+            echo "POST /api/v1/tenants respondeu $status, esperado 202:"; cat "$resposta"; exit 1
+          fi
+
+          location=$(grep -i '^location:' "$cabecalhos" | cut -d' ' -f2 | tr -d '\r')
+          case "$location" in http*) ;; *) location="http://localhost:8080$location" ;; esac
+
+          # Com o Keycloak de pé, o provisionamento leva segundos; 90 s é folga para runner lento, não backoff.
+          for _ in $(seq 1 30); do
+            provisionamento=$(curl --fail --silent --show-error --max-time 10 "$location" -H "Authorization: Bearer $token")
+            echo "$provisionamento"
+            if echo "$provisionamento" | grep -q '"status":"Active"'; then exit 0; fi
+            sleep 3
+          done
+          echo "O tenant não chegou a Active em 90 s."; exit 1
+
+      # Derruba SEM apagar volumes e sobe de novo: prova que os one-shots são idempotentes — o migrate inclusive, sobre
+      # um banco já migrado e com dados — e que o realm já importado continua casando com a chave que ficou no volume.
       - name: Subir de novo sobre os mesmos volumes
         run: |
           docker compose down

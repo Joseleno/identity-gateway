@@ -22,8 +22,8 @@ namespace IdentityGateway.Infrastructure.Persistence;
 /// vivo onde se esperava uma tarefa concluída.
 /// </para>
 /// <para>
-/// Em desenvolvimento, <c>dotnet run -- --migrate</c> prepara o banco; o compose faz o mesmo por um
-/// serviço à parte, se se quiser.
+/// Em desenvolvimento, <c>dotnet run -- --migrate</c> prepara o banco; no compose, é o serviço
+/// <c>migrate</c> que faz o mesmo, antes de a api subir.
 /// </para>
 /// </remarks>
 public static partial class StartupTasks

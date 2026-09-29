@@ -53,13 +53,13 @@ Precisa de .NET 10 e Docker. O Docker não é opcional: os testes de integraçã
 # Toda a suíte — 331 testes, 0 skips (113 domínio, 49 application, 29 arquitetura, 114 integração, 26 funcional)
 dotnet test
 
-# As dependências, e a API junto
+# As dependências, as migrations e a API junto
 docker compose up -d
-
-# Só na primeira subida (volume novo): a API migra sob pedido, nunca sozinha — StartupTasks só aplica
-# migrations com --migrate, porque migrar automaticamente é perigoso com várias réplicas no ar ao mesmo tempo.
-docker compose run --rm api --migrate
 ```
+
+A API nunca migra sozinha ao subir — com várias réplicas, todas tentariam migrar o mesmo banco ao mesmo tempo.
+Quem aplica as migrations é o serviço `migrate` do compose: a mesma imagem com a flag `--migrate`, que roda uma
+vez, encerra, e só então libera a API. É o mesmo passo que, em produção, roda no deploy.
 
 Com o compose de pé: a API responde em `http://localhost:8080`, `/health/live` e `/health/ready`
 respondem `200`, os logs estruturados vão para o Seq em `http://localhost:5341` e os traces para o Jaeger
@@ -110,8 +110,7 @@ e testes de `401` sem endpoint protegido) fecharam com a vertical de registro (P
 ### Demonstração: o tenant é provisionado quando o Keycloak volta
 
 A API aceita o tenant com o Keycloak fora do ar e o provisiona sozinha quando ele volta (spec §16). Pressupõe o
-compose de pé e as migrations já aplicadas (`docker compose up -d` + `docker compose run --rm api --migrate`,
-acima). O token é de platform-admin, assinado com a chave de desenvolvimento do compose — o mesmo formato que a
+compose de pé (`docker compose up -d`, acima). O token é de platform-admin, assinado com a chave de desenvolvimento do compose — o mesmo formato que a
 API valida hoje:
 
 ```bash
