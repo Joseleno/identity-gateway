@@ -18,14 +18,16 @@ public sealed class RegisterTenantHandlerTests
 {
     private readonly ITenantRepository _repositorio = Substitute.For<ITenantRepository>();
     private readonly IPlanCatalog _catalogo = Substitute.For<IPlanCatalog>();
+    private readonly IDateTimeProvider _relogio = Substitute.For<IDateTimeProvider>();
     private readonly RegisterTenantHandler _handler;
 
     public RegisterTenantHandlerTests()
     {
         _catalogo.Find("free").Returns(new Plan(PlanTier.Free, 5, 1));
         _repositorio.SlugExistsAsync(Arg.Any<TenantSlug>(), Arg.Any<CancellationToken>()).Returns(false);
+        _relogio.UtcNow.Returns(new DateTimeOffset(2026, 9, 25, 12, 0, 0, TimeSpan.Zero));
 
-        _handler = new RegisterTenantHandler(_repositorio, _catalogo);
+        _handler = new RegisterTenantHandler(_repositorio, _catalogo, _relogio);
     }
 
     private static RegisterTenantCommand Comando(string slug = "acme", string plano = "free") =>
@@ -55,6 +57,20 @@ public sealed class RegisterTenantHandlerTests
 
         capturado.Should().NotBeNull();
         capturado!.DomainEvents.Should().ContainSingle(evento => evento is Events.TenantRegistered);
+    }
+
+    [Fact]
+    public async Task ComandoValido_RegistraComOInstanteDoRelogio()
+    {
+        // É deste instante que o provisionamento conta a janela de retry: vindo de outro relógio, a janela
+        // deixaria de ser testável.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        Tenant? capturado = null;
+        _repositorio.Add(Arg.Do<Tenant>(tenant => capturado = tenant));
+
+        await _handler.Handle(Comando(), ct);
+
+        capturado!.RegisteredAt.Should().Be(new DateTimeOffset(2026, 9, 25, 12, 0, 0, TimeSpan.Zero));
     }
 
     [Fact]

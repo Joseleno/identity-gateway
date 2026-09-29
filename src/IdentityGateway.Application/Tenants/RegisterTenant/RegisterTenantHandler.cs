@@ -21,7 +21,8 @@ namespace IdentityGateway.Application.Tenants.RegisterTenant;
 /// </remarks>
 public sealed class RegisterTenantHandler(
     ITenantRepository repositorio,
-    IPlanCatalog catalogo)
+    IPlanCatalog catalogo,
+    IDateTimeProvider relogio)
     : ICommandHandler<RegisterTenantCommand, TenantId>
 {
     public async ValueTask<Result<TenantId>> Handle(
@@ -49,7 +50,7 @@ public sealed class RegisterTenantHandler(
             return Result.Failure<TenantId>(TenantErrors.UnknownPlan(command.PlanCode));
         }
 
-        var tenant = Tenant.Register(command.Name, slug.Value, plano);
+        var tenant = Tenant.Register(command.Name, slug.Value, plano, relogio.UtcNow);
 
         repositorio.Add(tenant);
 

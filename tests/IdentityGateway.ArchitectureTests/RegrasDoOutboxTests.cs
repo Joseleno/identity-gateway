@@ -96,6 +96,23 @@ public sealed class RegrasDoOutboxTests
             + "voltam: " + string.Join(" | ", quebrados));
     }
 
+    [Fact]
+    public void TodoEventoRegistrado_TemOccurredOnRestauravel()
+    {
+        // O OutboxProcessor relê o evento com JsonSerializer.Deserialize, e o System.Text.Json não atribui
+        // propriedade só com get: o OccurredOn voltava com o instante da desserialização, não o da ocorrência. Nada
+        // o lia quando o defeito foi achado (fatia B), e por isso mesmo nenhum teste de comportamento o pegaria — o
+        // primeiro consumidor a ler receberia um dado falso sem erro nenhum. A regra olha a forma do contrato.
+        var semSetter = EventosRegistrados()
+            .Where(evento => evento.GetProperty(nameof(IDomainEvent.OccurredOn))?.SetMethod is null)
+            .Select(evento => evento.Name)
+            .ToList();
+
+        semSetter.Should().BeEmpty(
+            "o OccurredOn precisa de setter (init basta) para voltar do JSON com o valor gravado. Sem setter: "
+            + string.Join(" | ", semSetter));
+    }
+
     /// <summary>
     /// Diz se o <c>System.Text.Json</c> consegue reconstruir o tipo sozinho.
     /// </summary>

@@ -6,8 +6,10 @@ namespace IdentityGateway.Domain.UnitTests.Tenants;
 
 public sealed class TenantTests
 {
+    private static readonly DateTimeOffset Instante = new(2026, 9, 25, 12, 0, 0, TimeSpan.Zero);
+
     private static Tenant TenantRegistrado(int maxUsers = 10) =>
-        Tenant.Register("Acme", TenantSlug.Create("acme").Value, new Plan(PlanTier.Standard, maxUsers, 5));
+        Tenant.Register("Acme", TenantSlug.Create("acme").Value, new Plan(PlanTier.Standard, maxUsers, 5), Instante);
 
     private static Tenant TenantAtivo(int maxUsers = 10)
     {
@@ -188,7 +190,7 @@ public sealed class TenantTests
     [InlineData("   ")]
     public void Register_ComNomeVazio_Lanca(string nome)
     {
-        Action registrar = () => Tenant.Register(nome, SlugValido(), PlanoPadrao());
+        Action registrar = () => Tenant.Register(nome, SlugValido(), PlanoPadrao(), Instante);
 
         registrar.Should().Throw<ArgumentException>();
     }
@@ -196,7 +198,7 @@ public sealed class TenantTests
     [Fact]
     public void Register_ComSlugNulo_Lanca()
     {
-        Action registrar = () => Tenant.Register("Acme", null!, PlanoPadrao());
+        Action registrar = () => Tenant.Register("Acme", null!, PlanoPadrao(), Instante);
 
         registrar.Should().Throw<ArgumentNullException>();
     }
@@ -204,7 +206,7 @@ public sealed class TenantTests
     [Fact]
     public void Register_ComPlanoNulo_Lanca()
     {
-        Action registrar = () => Tenant.Register("Acme", SlugValido(), null!);
+        Action registrar = () => Tenant.Register("Acme", SlugValido(), null!, Instante);
 
         registrar.Should().Throw<ArgumentNullException>();
     }
@@ -214,9 +216,30 @@ public sealed class TenantTests
     {
         // O nome é aparado mas mantém a caixa: é texto de exibição, não identificador. O slug, que é
         // identificador, normaliza a caixa — a diferença entre os dois é deliberada.
-        var tenant = Tenant.Register("  Acme Corp  ", SlugValido(), PlanoPadrao());
+        var tenant = Tenant.Register("  Acme Corp  ", SlugValido(), PlanoPadrao(), Instante);
 
         tenant.Name.Should().Be("Acme Corp");
+    }
+
+    [Fact]
+    public void Register_GuardaOInstanteDoRegistro()
+    {
+        var tenant = Tenant.Register("Acme", SlugValido(), PlanoPadrao(), Instante);
+
+        tenant.RegisteredAt.Should().Be(Instante);
+    }
+
+    [Fact]
+    public void Register_NormalizaOInstanteParaUtc()
+    {
+        // O Npgsql recusa gravar DateTimeOffset com offset diferente de zero numa coluna timestamptz. Normalizar
+        // aqui tira do chamador a obrigação de lembrar disso.
+        DateTimeOffset emBrasilia = new(2026, 9, 25, 9, 0, 0, TimeSpan.FromHours(-3));
+
+        var tenant = Tenant.Register("Acme", SlugValido(), PlanoPadrao(), emBrasilia);
+
+        tenant.RegisteredAt.Offset.Should().Be(TimeSpan.Zero);
+        tenant.RegisteredAt.Should().Be(emBrasilia);
     }
 
     [Theory]

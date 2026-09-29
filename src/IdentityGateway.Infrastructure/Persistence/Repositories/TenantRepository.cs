@@ -15,4 +15,8 @@ internal sealed class TenantRepository(AppDbContext context) : ITenantRepository
     /// <inheritdoc />
     public Task<bool> SlugExistsAsync(TenantSlug slug, CancellationToken cancellationToken) =>
         context.Tenants.AnyAsync(tenant => tenant.Slug == slug, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<Tenant?> GetAsync(TenantId tenantId, CancellationToken cancellationToken) =>
+        context.Tenants.SingleOrDefaultAsync(tenant => tenant.Id == tenantId, cancellationToken);
 }

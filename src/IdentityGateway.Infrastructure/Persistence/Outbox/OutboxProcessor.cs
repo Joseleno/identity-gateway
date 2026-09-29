@@ -90,8 +90,16 @@ internal sealed class OutboxProcessor(
                 await publisher.PublishAsync(evento, cancellationToken);
                 entregues.Add(mensagem.Id);
             }
-            catch (Exception excecao) when (excecao is not OperationCanceledException)
+            catch (Exception excecao) when (excecao is not OperationCanceledException
+                                             || !cancellationToken.IsCancellationRequested)
             {
+                // O filtro olha o token, não o tipo da exceção: um timeout de HttpClient.Timeout chega como
+                // TaskCanceledException — um OperationCanceledException — sem que o cancellationToken deste lote
+                // tenha sido cancelado. Um filtro só por tipo deixaria essa falha escapar do foreach e abortar o
+                // RegistrarResultadoAsync do lote inteiro: as mensagens já entregues não seriam marcadas, e o
+                // resto do lote já teria a tentativa contabilizada na reserva sem nunca ter sido tentado. Só o
+                // desligamento do host (cancellationToken de fato cancelado) continua escapando: a mensagem volta
+                // no próximo ciclo, como o OutboxWorker já trata em StoppingToken.
                 OutboxLogs.FalhaAoDespachar(
                     logger, mensagem.Id, mensagem.Type, mensagem.Attempts, _options.MaxAttempts, excecao);
 
@@ -293,7 +301,8 @@ internal sealed class OutboxProcessor(
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Dobra a cada tentativa até um teto: dar o mesmo intervalo sempre martela um destino que já está em
+    /// A base — dobrar a cada tentativa até um teto — vem de <see cref="OutboxBackoff.AtrasoSemVariacao"/>,
+    /// compartilhada com a validação da subida: dar o mesmo intervalo sempre martela um destino que já está em
     /// dificuldade, e crescer sem limite transformaria a oitava tentativa em dias.
     /// </para>
     /// <para>
@@ -304,8 +313,7 @@ internal sealed class OutboxProcessor(
     /// </remarks>
     private TimeSpan AtrasoDe(int tentativa)
     {
-        double baseSegundos = _options.BaseRetryDelaySeconds * Math.Pow(2, Math.Max(0, tentativa - 1));
-        double limitado = Math.Min(baseSegundos, _options.MaxRetryDelaySeconds);
+        double limitado = OutboxBackoff.AtrasoSemVariacao(tentativa, _options).TotalSeconds;
         double variacao = Random.Shared.NextDouble() * limitado * 0.2;
 
         return TimeSpan.FromSeconds(limitado + variacao);

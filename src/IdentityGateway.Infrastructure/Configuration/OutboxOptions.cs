@@ -55,12 +55,20 @@ public sealed class OutboxOptions
 
     /// <summary>Quantas tentativas uma mensagem recebe antes de parar de ser lida.</summary>
     /// <remarks>
+    /// <para>
     /// Alcançado o limite, a mensagem deixa de satisfazer o filtro da consulta e permanece na tabela com o erro
     /// da última tentativa — é o dead-letter deste projeto, e ele é a <i>ausência</i> de uma condição, não uma
     /// estrutura nova.
+    /// </para>
+    /// <para>
+    /// <b>1500 porque o provisionamento de tenant roda dentro do despacho</b> (fatia B, sem broker): com teto de 60s,
+    /// são ~25h de insistência, acima da janela de 24h do provisionamento — e a subida recusa qualquer combinação que
+    /// fique abaixo dela (<see cref="OutboxCobreAJanelaDeProvisionamento"/>). Quando o broker chegar, o Outbox volta a
+    /// só entregar a ele, e este número deve ser revisto.
+    /// </para>
     /// </remarks>
-    [Range(1, 50, ErrorMessage = "O máximo de tentativas deve estar entre 1 e 50.")]
-    public int MaxAttempts { get; init; } = 5;
+    [Range(1, 10_000, ErrorMessage = "O máximo de tentativas deve estar entre 1 e 10000.")]
+    public int MaxAttempts { get; init; } = 1500;
 
     /// <summary>Atraso da primeira retentativa, em segundos; as seguintes dobram a partir dele.</summary>
     /// <remarks>
@@ -74,11 +82,17 @@ public sealed class OutboxOptions
 
     /// <summary>Teto do atraso entre tentativas, em segundos.</summary>
     /// <remarks>
-    /// Com poucas tentativas o teto quase não é alcançado, e ele existe assim mesmo: é o que impede o dobro
-    /// sucessivo de virar dias quando alguém aumentar <see cref="MaxAttempts"/>.
+    /// <para>
+    /// É o que impede o dobro sucessivo de virar dias com muitas tentativas.
+    /// </para>
+    /// <para>
+    /// <b>É também a latência de recuperação:</b> quando o destino volta, a mensagem espera no máximo isto para a
+    /// próxima tentativa. Com 60s, o tenant criado com o Keycloak fora vira <c>Active</c> cerca de um minuto depois de
+    /// o Keycloak voltar — com 300s, até cinco.
+    /// </para>
     /// </remarks>
     [Range(1, 86_400, ErrorMessage = "O teto do atraso deve estar entre 1 segundo e 24 horas.")]
-    public int MaxRetryDelaySeconds { get; init; } = 300;
+    public int MaxRetryDelaySeconds { get; init; } = 60;
 
     /// <summary>Por quantas horas uma mensagem já despachada permanece na tabela.</summary>
     /// <remarks>

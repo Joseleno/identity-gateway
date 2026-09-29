@@ -35,15 +35,34 @@ public sealed class SchemaDeTenantsTests(PostgresFixture postgres) : IClassFixtu
 
         await using (AppDbContext primeiro = postgres.CriarContexto())
         {
-            primeiro.Tenants.Add(Tenant.Register("Primeiro", slug, new Plan(PlanTier.Free, 5, 1)));
+            primeiro.Tenants.Add(Tenant.Register("Primeiro", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora));
             await primeiro.SaveChangesAsync(ct);
         }
 
         await using AppDbContext segundo = postgres.CriarContexto();
-        segundo.Tenants.Add(Tenant.Register("Segundo", slug, new Plan(PlanTier.Free, 5, 1)));
+        segundo.Tenants.Add(Tenant.Register("Segundo", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora));
 
         Func<Task> gravar = async () => await segundo.SaveChangesAsync(ct);
 
         await gravar.Should().ThrowAsync<DbUpdateException>();
+    }
+
+    [Fact]
+    public async Task RegisteredAt_EObrigatorioESemDefault()
+    {
+        // Sem default de propósito: o domínio sempre informa o instante, e um default no banco esconderia um
+        // caminho de criação que esquecesse de informar.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using AppDbContext contexto = postgres.CriarContexto();
+
+        List<string> coluna = await contexto.Database
+            .SqlQuery<string>($"""
+                SELECT is_nullable || '|' || coalesce(column_default, '') AS "Value"
+                  FROM information_schema.columns
+                 WHERE table_name = 'tenants' AND column_name = 'registered_at'
+                """)
+            .ToListAsync(ct);
+
+        coluna.Should().ContainSingle().Which.Should().Be("NO|");
     }
 }

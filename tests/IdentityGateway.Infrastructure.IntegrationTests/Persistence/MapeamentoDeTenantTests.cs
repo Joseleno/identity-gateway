@@ -26,7 +26,7 @@ public sealed class MapeamentoDeTenantTests(PostgresFixture postgres) : IClassFi
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         TenantSlug slug = TenantSlug.Create($"acme-{Guid.NewGuid():N}"[..20]).Value;
-        var original = Tenant.Register("Acme Corp", slug, new Plan(PlanTier.Standard, 50, 5));
+        var original = Tenant.Register("Acme Corp", slug, new Plan(PlanTier.Standard, 50, 5), PostgresFixture.Agora);
 
         await using (AppDbContext escrita = postgres.CriarContexto())
         {
@@ -45,6 +45,7 @@ public sealed class MapeamentoDeTenantTests(PostgresFixture postgres) : IClassFi
         lido.ExternalOrganizationId.Should().BeNull();
         lido.OccupiedSeats.Should().Be(0);
         lido.OverSubscribed.Should().BeFalse();
+        lido.RegisteredAt.Should().Be(PostgresFixture.Agora);
     }
 
     [Fact]
@@ -54,7 +55,7 @@ public sealed class MapeamentoDeTenantTests(PostgresFixture postgres) : IClassFi
         // enum aberto ao lado. E a ordem dos membros deixa de ser dado de schema.
         CancellationToken ct = TestContext.Current.CancellationToken;
         TenantSlug slug = TenantSlug.Create($"enum-{Guid.NewGuid():N}"[..20]).Value;
-        var tenant = Tenant.Register("Enum", slug, new Plan(PlanTier.Enterprise, 500, 50));
+        var tenant = Tenant.Register("Enum", slug, new Plan(PlanTier.Enterprise, 500, 50), PostgresFixture.Agora);
 
         await using AppDbContext contexto = postgres.CriarContexto();
         contexto.Tenants.Add(tenant);

@@ -54,6 +54,9 @@ public sealed class PostgresFixture : IAsyncLifetime
         await _container.DisposeAsync();
     }
 
+    /// <summary>Connection string do contêiner, para testes que montam a composição inteira.</summary>
+    public string ConnectionString => _container.GetConnectionString();
+
     /// <summary>
     /// Cria um contexto novo, com os três interceptors na ordem de produção.
     /// </summary>
