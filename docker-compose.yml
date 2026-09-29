@@ -14,19 +14,24 @@
 # Nota: a suíte de testes NÃO depende deste arquivo. Os testes sobem os próprios containers via Testcontainers —
 # é o que permite rodar `dotnet test` num clone novo sem subir nada antes.
 
+# Compartilhados pela api e pelo migrate, que são a mesma imagem: o que muda entre os dois é só a flag.
+x-api-build: &api-build
+  context: .
+  dockerfile: Dockerfile
+
+# Os nomes dos serviços são resolvidos pelo DNS interno do compose — "postgres" e "redis" só existem nesta
+# rede. Por isso a connection string daqui não vale fora dela.
+x-database: &database
+  Database__ConnectionString: "Host=postgres;Port=5432;Database=identitygateway;Username=postgres;Password=postgres"
+
 services:
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: *api-build
     ports:
       - "8080:8080"
     environment:
+      <<: *database
       ASPNETCORE_ENVIRONMENT: Development
-
-      # Os nomes dos serviços são resolvidos pelo DNS interno do compose — "postgres" e "redis" só existem nesta
-      # rede. Por isso a connection string daqui não vale fora dela.
-      Database__ConnectionString: "Host=postgres;Port=5432;Database=identitygateway;Username=postgres;Password=postgres"
       Redis__ConnectionString: "redis:6379"
 
       # Chave de desenvolvimento. A aplicação recusa subir com menos de 32 caracteres (ValidateOnStart), e é
@@ -54,8 +59,10 @@ services:
         volume:
           subpath: api
     depends_on:
-      # `service_healthy` e não apenas `service_started`: o contêiner do Postgres aceita conexão segundos depois
-      # de iniciar, e sem esperar o health check a API sobe, tenta migrar e falha antes de o banco responder.
+      # A api só sobe sobre o schema migrado. Uma migration que falha segura a api, em vez de deixá-la servir
+      # sobre as tabelas antigas — ou sobre nenhuma, num volume novo.
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -74,6 +81,23 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+  # One-shot: aplica as migrations pendentes e encerra. É a imagem da api com --migrate — o mesmo passo que, em
+  # produção, roda uma vez no deploy (init container ou pipeline) antes das réplicas novas. A api nunca migra ao
+  # subir (ver StartupTasks): com várias réplicas, todas tentariam migrar o mesmo banco ao mesmo tempo.
+  #
+  # Idempotente: sobre um banco já migrado, não há migration pendente e ele sai com 0.
+  migrate:
+    build: *api-build
+    command: ["--migrate"]
+    environment:
+      <<: *database
+      ASPNETCORE_ENVIRONMENT: Development
+    depends_on:
+      # `service_healthy` e não apenas `service_started`: o contêiner do Postgres aceita conexão segundos depois
+      # de iniciar, e sem esperar o health check a migration falharia antes de o banco responder.
+      postgres:
+        condition: service_healthy
 
   # One-shot: gera, só na primeira subida, o par de chaves da Gateway e a senha do admin master do Keycloak.
   #

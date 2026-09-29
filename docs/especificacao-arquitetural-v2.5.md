@@ -20,6 +20,7 @@ Esta versão registra o que a **fatia B (consumidor do provisionamento)** decidi
 | B5 | **A rede do Outbox é validada contra a janela na subida.** Padrões novos: teto de 60s e 1500 tentativas (~25h) | §9.1, §19 |
 | B6 | **`OccurredOn` dos eventos precisa voltar do JSON** (`init`). Com só `get`, o evento relido carregava o instante da desserialização | §14.1 |
 | B7 | `GET /tenants/{tenantId}/provisioning` entregue: `tenantId`, `status`, `registeredAt` | §8, §16 |
+| B8 | **O compose aplica as migrations por um one-shot `migrate`** (a imagem da API com `--migrate`), e a API só sobe depois dele. Achado da fatia B: `docker compose up` num volume novo deixava a API `ready` e o primeiro `POST /tenants` em 500, e o job de compose da CI não via. O job agora registra um tenant e espera `Active` | §15 |
 
 ---
 
@@ -1742,6 +1743,7 @@ O `docker-compose.yml` sobe:
 |---|---|
 | `gateway-keys` | One-shot: gera, na primeira subida, o par de chaves da Gateway e a senha do admin master do Keycloak num volume |
 | `keycloak-db` | One-shot: cria o banco `keycloak` se ele não existir |
+| `migrate` | One-shot: a imagem da API com `--migrate` aplica as migrations pendentes e encerra; a API só sobe depois que ele termina com sucesso. É o mesmo passo que, em produção, roda uma vez no deploy — a API nunca migra ao subir, porque várias réplicas tentariam migrar o mesmo banco ao mesmo tempo |
 | `keycloak` | Versão **26.7.4** fixada; importa `keycloak/bootstrap/realm-identity-gateway.json` na primeira subida; porta publicada só em `127.0.0.1` |
 | `postgres` | Um servidor com dois bancos: `keycloak` e `identitygateway` |
 | `rabbitmq` | Mensageria, com a interface de gerenciamento habilitada |
@@ -1767,7 +1769,7 @@ O arquivo de bootstrap contém o mínimo para o ambiente local: realm com Organi
 - **O banco do Keycloak** é criado por um one-shot idempotente, e não por script de `initdb` — este só roda com volume vazio, e quebraria quem já tem o volume do Postgres.
 - **Nada disto é produção.** `start-dev`, `http://` e chave em volume são de desenvolvimento, e o cabeçalho do compose diz isso (§10.2).
 
-**O compose sobe na CI.** Um job próprio executa `docker compose up --wait` até a API ficar `ready` — o que, pelo health check da §14, prova chave, realm e `private_key_jwt` —, derruba sem apagar volumes e sobe de novo, provando a idempotência dos one-shots. A promessa "funciona na primeira tentativa" do M0 passa a ser verificada a cada PR, não só no dia em que alguém a testou à mão.
+**O compose sobe na CI.** Um job próprio executa `docker compose up --wait` até a API ficar `ready` — o que, pelo health check da §14, prova chave, realm e `private_key_jwt` —, registra um tenant e espera o provisionamento chegar a `Active` — o que prova as migrations e o Outbox, que o `ready` não olha —, derruba sem apagar volumes e sobe de novo, provando a idempotência dos one-shots. A promessa "funciona na primeira tentativa" do M0 passa a ser verificada a cada PR, não só no dia em que alguém a testou à mão.
 
 **`offline_access` é removido do `default-roles` do realm.** O papel vem ligado por padrão para todo usuário, e sessões offline **não** são encerradas por `POST .../users/{id}/logout` — o que permitiria a um usuário desativado continuar renovando acesso depois da revogação (§9.5). O projeto não usa offline tokens; removê-lo é hardening de uma linha, e um teste de integração verifica que ele não voltou.
 
