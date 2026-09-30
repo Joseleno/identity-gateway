@@ -182,9 +182,21 @@ public sealed class EnsureInvitedUserContraKeycloakTests(KeycloakFixture keycloa
     public async Task UsernameIgualAoEmailEmOutroUsuario_LancaInconsistenciaSemLaco()
     {
         // A busca por e-mail não acha ninguém, o POST dá 409 por causa do username, e a reconsulta acha um usuário sem o
-        // nosso tenant_id. Um laço "409 → busca → POST" nunca terminaria aqui.
+        // nosso tenant_id. Um laço "409 → busca → POST" nunca terminaria aqui — e o projeto não tem timeout por teste:
+        // um laço de volta penduraria o job em vez de falhar. Por isso o segundo POST /users responde 500 sem ir ao
+        // Keycloak. Sem laço ele nunca acontece; com laço a chamada sobe como HttpRequestException, e o ThrowAsync
+        // abaixo fica vermelho, com nome e em segundos.
         CancellationToken ct = TestContext.Current.CancellationToken;
-        Interceptacao interceptacao = new();
+        int postsDeUsuario = 0;
+        Interceptacao interceptacao = new()
+        {
+            Responder = (pedido, _) =>
+                pedido.Method == HttpMethod.Post
+                && pedido.RequestUri!.AbsolutePath.EndsWith("/users", StringComparison.Ordinal)
+                && Interlocked.Increment(ref postsDeUsuario) >= 2
+                    ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                    : null,
+        };
         await using Cenario cenario = await PrepararAsync(ct, interceptacao);
         await keycloak.CriarUsuarioComoMasterAsync(
             new { username = cenario.Endereco, email = $"outro+{Guid.NewGuid():N}@acme.test", enabled = true }, ct);
