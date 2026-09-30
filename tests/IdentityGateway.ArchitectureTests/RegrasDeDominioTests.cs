@@ -1,5 +1,6 @@
 using System.Reflection;
 using IdentityGateway.Domain.Common;
+using IdentityGateway.Domain.Members;
 
 namespace IdentityGateway.ArchitectureTests;
 
@@ -85,6 +86,28 @@ public sealed class RegrasDeDominioTests
         violacoes.Should().BeEmpty(
             "expor List ou ICollection deixa qualquer chamador inserir item sem passar pela validação do "
             + "agregado. Use IReadOnlyCollection. Propriedades violadoras: " + string.Join(", ", violacoes));
+    }
+
+    /// <summary>
+    /// Nenhum membro nasce sem a vaga reservada: só o <c>Tenant</c> cria um <see cref="Member"/>.
+    /// </summary>
+    /// <remarks>
+    /// A fábrica é <c>internal</c> e o construtor é privado (spec §4.2). Um construtor ou uma fábrica pública
+    /// permitiriam a um handler criar o membro direto, sem passar pela reserva de vaga do tenant — e a invariante de
+    /// vagas deixaria de ter guardião sem nenhum teste de comportamento perceber.
+    /// </remarks>
+    [Fact]
+    public void Member_NaoTemConstrutorNemFabricaPublicos()
+    {
+        Type member = typeof(Member);
+
+        member.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            .Should().BeEmpty("o Member não pode ser construído fora do domínio");
+
+        member.GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .Where(metodo => metodo.ReturnType == member)
+            .Select(metodo => metodo.Name)
+            .Should().BeEmpty("quem cria o Member é Tenant.CompleteProvisioning, que reserva a vaga antes");
     }
 
     private static bool EhEntidade(Type tipo) =>

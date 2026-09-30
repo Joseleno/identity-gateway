@@ -6,4 +6,13 @@
     travado por teste em IdentityGateway.ArchitectureTests (T0.3).
   -->
 
+  <!--
+    A fábrica do Member é internal: só o Tenant a chama, depois de reservar a vaga (spec da fatia C, §4.2). O teste
+    de domínio precisa exercitá-la sozinha — as validações dela não são alcançáveis pelo Tenant, que nunca passa um
+    TenantId vazio. Tornar a fábrica pública para o teste abriria a porta que ela existe para fechar.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="IdentityGateway.Domain.UnitTests" />
+  </ItemGroup>
+
 </Project>
