@@ -35,6 +35,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     internal DbSet<Domain.Tenants.Tenant> Tenants => Set<Domain.Tenants.Tenant>();
 
     /// <summary>
+    /// Membros dos tenants.
+    /// </summary>
+    /// <remarks>
+    /// <c>internal</c> como os demais: quem consulta é o repositório.
+    /// </remarks>
+    internal DbSet<Domain.Members.Member> Members => Set<Domain.Members.Member>();
+
+    /// <summary>
     /// Mensagens de domain event aguardando despacho.
     /// </summary>
     /// <remarks>

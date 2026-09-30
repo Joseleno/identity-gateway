@@ -65,4 +65,22 @@ public sealed class SchemaDeTenantsTests(PostgresFixture postgres) : IClassFixtu
 
         coluna.Should().ContainSingle().Which.Should().Be("NO|");
     }
+
+    [Fact]
+    public async Task InitialAdminEmail_AnulavelDe254()
+    {
+        // Anulável: nulo em tenant ativo, falhado ou registrado antes da fatia C. 254: o limite do Email.Of.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using AppDbContext contexto = postgres.CriarContexto();
+
+        List<string> coluna = await contexto.Database
+            .SqlQuery<string>($"""
+                SELECT is_nullable || '|' || data_type || '|' || character_maximum_length AS "Value"
+                  FROM information_schema.columns
+                 WHERE table_name = 'tenants' AND column_name = 'initial_admin_email'
+                """)
+            .ToListAsync(ct);
+
+        coluna.Should().ContainSingle().Which.Should().Be("YES|character varying|254");
+    }
 }

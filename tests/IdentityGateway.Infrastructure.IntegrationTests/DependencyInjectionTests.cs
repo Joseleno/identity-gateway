@@ -60,6 +60,7 @@ public sealed class DependencyInjectionTests
     [InlineData(typeof(ICurrentUser))]
     [InlineData(typeof(IOutboxPublisher))]
     [InlineData(typeof(ITenantRepository))]
+    [InlineData(typeof(IMemberRepository))]
     [InlineData(typeof(IPlanCatalog))]
     [InlineData(typeof(IIdentityProvider))]
     [InlineData(typeof(IProvisioningPolicy))]

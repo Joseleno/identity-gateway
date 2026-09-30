@@ -151,6 +151,7 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<AppDbContext>());
 
         services.AddScoped<ITenantRepository, TenantRepository>();
+        services.AddScoped<IMemberRepository, MemberRepository>();
         services.AddScoped<ITenantQueries, TenantQueries>();
 
         return services;

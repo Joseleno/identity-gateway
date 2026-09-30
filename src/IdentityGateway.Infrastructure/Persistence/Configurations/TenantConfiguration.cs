@@ -1,4 +1,5 @@
 using IdentityGateway.Domain.Tenants;
+using IdentityGateway.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -119,9 +120,15 @@ internal sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
             .ValueGeneratedOnAddOrUpdate()
             .IsConcurrencyToken();
 
-        // Transição: a coluna initial_admin_email e a migration chegam na Tarefa 4 do plano da fatia C, que troca
-        // este Ignore pelo mapeamento.
-        builder.Ignore(tenant => tenant.InitialAdminEmail);
+        // Só existe em tenant Pending (D1): anulável, e apagado na ativação ou na falha. 254 é o limite do Email.Of.
+        // A volta usa Of(...).Value pelo mesmo motivo do slug: o valor gravado já foi validado na escrita.
+        builder.Property(tenant => tenant.InitialAdminEmail)
+            .HasColumnName("initial_admin_email")
+            .HasMaxLength(254)
+            .HasConversion(email => email!.Value, valor => Email.Of(valor).Value);
+
+        // Leitura calculada a partir do plano e do contador; não é coluna.
+        builder.Ignore(tenant => tenant.HasSeatAvailable);
 
         // Os domain events são levantados pelo agregado e coletados pelo DomainEventInterceptor; não são
         // estado persistido.
