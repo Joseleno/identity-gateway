@@ -96,4 +96,10 @@ internal static partial class KeycloakLogs
         Level = LogLevel.Error,
         Message = "Keycloak: envio do convite do tenant {TenantId} recusado com 400 (usuário desabilitado ou sem e-mail)")]
     public static partial void EnvioRecusado(ILogger logger, Guid tenantId);
+
+    [LoggerMessage(
+        EventId = 2214,
+        Level = LogLevel.Information,
+        Message = "Keycloak: corrida na atribuição do papel {Papel} ao convidado do tenant {TenantId} resolvida pela releitura")]
+    public static partial void CorridaDoPapelResolvida(ILogger logger, string papel, Guid tenantId);
 }

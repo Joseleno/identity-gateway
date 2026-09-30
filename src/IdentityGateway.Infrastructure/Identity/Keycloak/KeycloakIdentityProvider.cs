@@ -204,6 +204,17 @@ internal sealed class KeycloakIdentityProvider(
 
         if (alvo is null)
         {
+            // "Disponíveis" exclui o que já está atribuído: uma entrega concorrente da mesma mensagem que atribua o
+            // papel entre as duas leituras o tira das duas listas. UMA releitura dos atribuídos separa a corrida da
+            // ausência — nunca em laço, como a reconsulta do 409.
+            IReadOnlyList<RoleRepresentation> releitura = await admin.GetUserRealmRolesAsync(userId, cancellationToken);
+
+            if (releitura.Any(atribuido => atribuido.Name == papel.Value))
+            {
+                KeycloakLogs.CorridaDoPapelResolvida(logger, papel.Value, tenantId.Value);
+                return;
+            }
+
             // Nem atribuído nem disponível: o papel não existe no realm. O realm não é o que a Gateway espera, e
             // repetir não corrige.
             KeycloakLogs.PapelAusente(logger, papel.Value, tenantId.Value);

@@ -230,6 +230,45 @@ public sealed class KeycloakIdentityProviderTests
     }
 
     [Fact]
+    public async Task PapelAtribuidoPorEntregaConcorrenteEntreAsLeituras_ReleituraResolveSemInconsistencia()
+    {
+        // "Disponíveis" exclui o que já está atribuído. Se uma entrega concorrente da mesma mensagem atribui o papel
+        // entre a leitura dos atribuídos e a dos disponíveis, ele some das duas listas — e concluir "não existe no
+        // realm" levaria o tenant a ProvisioningFailed por uma corrida benigna.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        (KeycloakIdentityProvider adaptador, List<HttpMethod> metodos) = Montar(
+            _ => Lista(UsuarioDoTenant("u-1")),
+            _ => Status(HttpStatusCode.Created),
+            _ => Lista("[]"),
+            _ => Lista("""[{"id":"r-2","name":"offline_access"}]"""),
+            _ => Lista("""[{"id":"r-1","name":"tenant-admin"}]"""));
+
+        ExternalUserId sub = await adaptador.EnsureInvitedUserAsync("org-1", Tenant, Convite, ct);
+
+        sub.Value.Should().Be("u-1");
+        metodos.Should().Equal(HttpMethod.Get, HttpMethod.Post, HttpMethod.Get, HttpMethod.Get, HttpMethod.Get);
+    }
+
+    [Fact]
+    public async Task PapelNemAtribuidoNemDisponivel_UmaReleituraELancaInconsistencia()
+    {
+        // Ausência real: o realm não é o que a Gateway espera. Uma releitura só, nunca em laço.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        (KeycloakIdentityProvider adaptador, List<HttpMethod> metodos) = Montar(
+            _ => Lista(UsuarioDoTenant("u-1")),
+            _ => Status(HttpStatusCode.Created),
+            _ => Lista("[]"),
+            _ => Lista("""[{"id":"r-2","name":"offline_access"}]"""),
+            _ => Lista("[]"));
+
+        Func<Task> convidar = () => adaptador.EnsureInvitedUserAsync("org-1", Tenant, Convite, ct);
+
+        (await convidar.Should().ThrowAsync<IdentityProviderInconsistencyException>())
+            .Which.Message.Should().Contain("tenant-admin").And.NotContain("admin+tag");
+        metodos.Should().Equal(HttpMethod.Get, HttpMethod.Post, HttpMethod.Get, HttpMethod.Get, HttpMethod.Get);
+    }
+
+    [Fact]
     public async Task UsuarioDeOutroTenant_LancaInconsistenciaSemOEmail()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
