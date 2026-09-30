@@ -40,6 +40,11 @@ public sealed class KeycloakFixture : IAsyncLifetime
         _container = new KeycloakBuilder("quay.io/keycloak/keycloak:26.7.4")
             .WithRealm(CaminhoDoRealm())
             .WithEnvironment("GATEWAY_CLIENT_CERT", Chaves.CertificadoBase64)
+            // O import do realm recusa placeholder literal no remetente ("Invalid sender address"): o SMTP_* precisa
+            // existir. O mailpit e a rede que o alcanca chegam na Tarefa 7; ate la ninguem envia e-mail.
+            .WithEnvironment("SMTP_HOST", "mailpit")
+            .WithEnvironment("SMTP_PORT", "1025")
+            .WithEnvironment("SMTP_FROM", "convites@identity-gateway.test")
             .Build();
     }
 

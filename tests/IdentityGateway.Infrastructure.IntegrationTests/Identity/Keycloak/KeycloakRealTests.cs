@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using IdentityGateway.Infrastructure.Identity.Keycloak;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,6 +13,14 @@ namespace IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 /// </summary>
 public sealed class KeycloakRealTests(KeycloakFixture keycloak)
 {
+    private static readonly string[] PapeisEsperados = ["manage-organizations", "manage-users"];
+
+    private static readonly string[] PapeisProibidos =
+        ["impersonation", "realm-admin", "manage-realm", "manage-clients", "manage-identity-providers"];
+
+    private static readonly string[] PapeisDeRealmAceitos =
+        ["default-roles-identity-gateway", "offline_access", "uma_authorization"];
+
     [Fact]
     public async Task ComAChaveRegistrada_ObtemToken()
     {
@@ -37,8 +46,10 @@ public sealed class KeycloakRealTests(KeycloakFixture keycloak)
     }
 
     [Fact]
-    public async Task ServiceAccount_RecebeProibidoEmUsuarios()
+    public async Task ServiceAccount_RecebeProibidoEmClientsENaConfiguracaoDoRealm()
     {
+        // Com manage-users (fatia C), GET /users deixou de ser o negativo. O que o service account continua sem poder:
+        // ler clients (view-clients) e alterar o realm (manage-realm).
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using ServiceProvider provider = keycloak.CriarProvider();
         string token = await provider.GetRequiredService<ServiceAccountTokenCache>().ObterAsync(ct);
@@ -46,15 +57,21 @@ public sealed class KeycloakRealTests(KeycloakFixture keycloak)
         using HttpClient http = new() { BaseAddress = new Uri($"{keycloak.BaseUrl}/") };
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        using HttpResponseMessage resposta = await http.GetAsync(
-            new Uri($"admin/realms/{KeycloakFixture.Realm}/users", UriKind.Relative), ct);
+        using HttpResponseMessage clients = await http.GetAsync(
+            new Uri($"admin/realms/{KeycloakFixture.Realm}/clients", UriKind.Relative), ct);
+        using StringContent corpo = new("""{"realm":"identity-gateway"}""", Encoding.UTF8, "application/json");
+        using HttpResponseMessage realm = await http.PutAsync(
+            new Uri($"admin/realms/{KeycloakFixture.Realm}", UriKind.Relative), corpo, ct);
 
-        resposta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        clients.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        realm.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]
-    public async Task ServiceAccount_TemExatamenteManageOrganizations()
+    public async Task ServiceAccount_PapeisEfetivosSaoExatamenteOsDois()
     {
+        // D6: os papéis EFETIVOS, com compostos expandidos (role-mappings/.../composite). Um composto como realm-admin
+        // passaria num teste que olhasse só os papéis atribuídos diretamente.
         CancellationToken ct = TestContext.Current.CancellationToken;
         using HttpClient master = await keycloak.CriarClienteMasterAsync(ct);
         string realm = KeycloakFixture.Realm;
@@ -68,12 +85,23 @@ public sealed class KeycloakRealTests(KeycloakFixture keycloak)
             new Uri($"admin/realms/{realm}/clients?clientId=realm-management", UriKind.Relative), ct));
         string realmManagementId = clientes.RootElement[0].GetProperty("id").GetString()!;
 
-        using var papeis = JsonDocument.Parse(await master.GetStringAsync(
-            new Uri($"admin/realms/{realm}/users/{usuarioId}/role-mappings/clients/{realmManagementId}",
+        using var efetivosDoCliente = JsonDocument.Parse(await master.GetStringAsync(
+            new Uri($"admin/realms/{realm}/users/{usuarioId}/role-mappings/clients/{realmManagementId}/composite",
                 UriKind.Relative), ct));
+        using var efetivosDoRealm = JsonDocument.Parse(await master.GetStringAsync(
+            new Uri($"admin/realms/{realm}/users/{usuarioId}/role-mappings/realm/composite", UriKind.Relative), ct));
 
-        papeis.RootElement.EnumerateArray().Select(papel => papel.GetProperty("name").GetString())
-            .Should().Equal("manage-organizations");
+        List<string> papeisDoCliente = [.. efetivosDoCliente.RootElement.EnumerateArray()
+            .Select(papel => papel.GetProperty("name").GetString()!)];
+        List<string> papeisDoRealm = [.. efetivosDoRealm.RootElement.EnumerateArray()
+            .Select(papel => papel.GetProperty("name").GetString()!)];
+
+        papeisDoCliente.Should().BeEquivalentTo(PapeisEsperados);
+        papeisDoCliente.Should().NotContain(
+            PapeisProibidos);
+        papeisDoRealm.Should().BeSubsetOf(
+            PapeisDeRealmAceitos,
+            "nenhum papel de negócio (tenant-admin, platform-admin) no service account");
     }
 
     [Fact]
