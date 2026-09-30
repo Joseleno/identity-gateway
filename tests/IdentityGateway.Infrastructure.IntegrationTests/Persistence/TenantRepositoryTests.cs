@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Domain.Members;
 using IdentityGateway.Domain.Tenants;
 using IdentityGateway.Infrastructure.Persistence;
 using IdentityGateway.Infrastructure.Persistence.Repositories;
@@ -31,7 +32,7 @@ public sealed class TenantRepositoryTests(PostgresFixture postgres) : IClassFixt
         await using AppDbContext contexto = postgres.CriarContexto();
         ITenantRepository repositorio = new TenantRepository(contexto);
 
-        repositorio.Add(Tenant.Register("Repo", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora));
+        repositorio.Add(Tenant.Register("Repo", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.EmailDoAdmin(), PostgresFixture.Agora));
         await contexto.SaveChangesAsync(ct);
 
         bool existe = await repositorio.SlugExistsAsync(slug, ct);
@@ -64,7 +65,7 @@ public sealed class TenantRepositoryTests(PostgresFixture postgres) : IClassFixt
         await using AppDbContext contexto = postgres.CriarContexto();
         ITenantRepository repositorio = new TenantRepository(contexto);
 
-        repositorio.Add(Tenant.Register("Sem commit", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora));
+        repositorio.Add(Tenant.Register("Sem commit", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.EmailDoAdmin(), PostgresFixture.Agora));
 
         await using AppDbContext outro = postgres.CriarContexto();
         ITenantRepository leitura = new TenantRepository(outro);
@@ -81,7 +82,7 @@ public sealed class TenantRepositoryTests(PostgresFixture postgres) : IClassFixt
         // chamar Update. Um GetAsync com AsNoTracking faria o provisionamento "funcionar" sem nunca persistir.
         CancellationToken ct = TestContext.Current.CancellationToken;
         TenantSlug slug = TenantSlug.Create($"get-{Guid.NewGuid():N}"[..18]).Value;
-        var tenant = Tenant.Register("Get", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora);
+        var tenant = Tenant.Register("Get", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.EmailDoAdmin(), PostgresFixture.Agora);
         await using (AppDbContext escrita = postgres.CriarContexto())
         {
             escrita.Tenants.Add(tenant);
@@ -93,7 +94,7 @@ public sealed class TenantRepositoryTests(PostgresFixture postgres) : IClassFixt
             ITenantRepository repositorio = new TenantRepository(contexto);
             Tenant? lido = await repositorio.GetAsync(tenant.Id, ct);
             lido.Should().NotBeNull();
-            lido!.MarkProvisioned("org-get");
+            lido!.CompleteProvisioning("org-get", ExternalUserId.From("sub-get"), PostgresFixture.Agora);
             await contexto.SaveChangesAsync(ct);
         }
 

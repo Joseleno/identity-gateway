@@ -57,9 +57,9 @@ public sealed class OutboxProcessorTests(PostgresFixture postgres) : IClassFixtu
         CancellationToken ct = TestContext.Current.CancellationToken;
 
         var tenantComFalha = Tenant.Register(
-            "Com falha", SlugUnico(), new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora);
+            "Com falha", SlugUnico(), new Plan(PlanTier.Free, 5, 1), PostgresFixture.EmailDoAdmin(), PostgresFixture.Agora);
         var tenantSemFalha = Tenant.Register(
-            "Sem falha", SlugUnico(), new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora);
+            "Sem falha", SlugUnico(), new Plan(PlanTier.Free, 5, 1), PostgresFixture.EmailDoAdmin(), PostgresFixture.Agora);
 
         await using (AppDbContext semente = postgres.CriarContexto())
         {

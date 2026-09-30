@@ -35,12 +35,12 @@ public sealed class SchemaDeTenantsTests(PostgresFixture postgres) : IClassFixtu
 
         await using (AppDbContext primeiro = postgres.CriarContexto())
         {
-            primeiro.Tenants.Add(Tenant.Register("Primeiro", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora));
+            primeiro.Tenants.Add(Tenant.Register("Primeiro", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.EmailDoAdmin(), PostgresFixture.Agora));
             await primeiro.SaveChangesAsync(ct);
         }
 
         await using AppDbContext segundo = postgres.CriarContexto();
-        segundo.Tenants.Add(Tenant.Register("Segundo", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora));
+        segundo.Tenants.Add(Tenant.Register("Segundo", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.EmailDoAdmin(), PostgresFixture.Agora));
 
         Func<Task> gravar = async () => await segundo.SaveChangesAsync(ct);
 

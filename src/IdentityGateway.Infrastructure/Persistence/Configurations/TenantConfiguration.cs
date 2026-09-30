@@ -119,6 +119,10 @@ internal sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
             .ValueGeneratedOnAddOrUpdate()
             .IsConcurrencyToken();
 
+        // Transição: a coluna initial_admin_email e a migration chegam na Tarefa 4 do plano da fatia C, que troca
+        // este Ignore pelo mapeamento.
+        builder.Ignore(tenant => tenant.InitialAdminEmail);
+
         // Os domain events são levantados pelo agregado e coletados pelo DomainEventInterceptor; não são
         // estado persistido.
         builder.Ignore(tenant => tenant.DomainEvents);

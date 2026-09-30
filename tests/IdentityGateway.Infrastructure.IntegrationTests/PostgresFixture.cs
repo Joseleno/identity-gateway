@@ -1,4 +1,5 @@
 using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Domain.ValueObjects;
 using IdentityGateway.Infrastructure.Configuration;
 using IdentityGateway.Infrastructure.Persistence;
 using IdentityGateway.Infrastructure.Persistence.Interceptors;
@@ -32,6 +33,9 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     /// <summary>Usuário fictício, para conferir <c>CreatedBy</c>.</summary>
     public static readonly Guid Usuario = Guid.CreateVersion7();
+
+    /// <summary>E-mail de admin único, com <c>+</c>: o mesmo formato dos testes contra o Keycloak.</summary>
+    public static Email EmailDoAdmin() => Email.Of($"admin+{Guid.NewGuid():N}@acme.test").Value;
 
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine")
         .WithDatabase("identitygateway_tests")

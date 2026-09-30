@@ -3,6 +3,7 @@ using IdentityGateway.Application.Common.Abstractions;
 using IdentityGateway.Application.Tenants.ProvisionTenant;
 using IdentityGateway.Domain.Common;
 using IdentityGateway.Domain.Tenants;
+using IdentityGateway.Domain.ValueObjects;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -30,7 +31,9 @@ public sealed class ProvisionTenantHandlerTests
 
     private Tenant TenantPendente()
     {
-        var tenant = Tenant.Register("Acme", TenantSlug.Create("acme").Value, new Plan(PlanTier.Free, 5, 1), Registro);
+        var tenant = Tenant.Register(
+            "Acme", TenantSlug.Create("acme").Value, new Plan(PlanTier.Free, 5, 1),
+            Email.Of("admin@acme.test").Value, Registro);
         _tenants.GetAsync(tenant.Id, Arg.Any<CancellationToken>()).Returns(tenant);
         return tenant;
     }
