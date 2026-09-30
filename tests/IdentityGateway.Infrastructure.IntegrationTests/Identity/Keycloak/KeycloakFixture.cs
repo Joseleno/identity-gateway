@@ -200,6 +200,114 @@ public sealed partial class KeycloakFixture : IAsyncLifetime
         return lista.RootElement.GetArrayLength();
     }
 
+    /// <summary>O usuário em JSON cru, lido pelo master — nunca pelo DTO do adaptador sob teste.</summary>
+    public async Task<JsonElement> LerUsuarioCruAsync(string id, CancellationToken cancellationToken)
+    {
+        using HttpClient master = await CriarClienteMasterAsync(cancellationToken);
+        string json = await master.GetStringAsync(
+            new Uri($"admin/realms/{Realm}/users/{id}", UriKind.Relative), cancellationToken);
+
+        using var usuario = JsonDocument.Parse(json);
+        return usuario.RootElement.Clone();
+    }
+
+    /// <summary>Os usuários com o e-mail exato, lidos pelo master.</summary>
+    public async Task<IReadOnlyList<JsonElement>> UsuariosPorEmailAsync(string email, CancellationToken cancellationToken)
+    {
+        using HttpClient master = await CriarClienteMasterAsync(cancellationToken);
+        string json = await master.GetStringAsync(
+            new Uri($"admin/realms/{Realm}/users?email={Uri.EscapeDataString(email)}&exact=true", UriKind.Relative),
+            cancellationToken);
+
+        using var lista = JsonDocument.Parse(json);
+        return [.. lista.RootElement.EnumerateArray().Select(usuario => usuario.Clone())];
+    }
+
+    /// <summary>Cria um usuário por fora da Gateway e devolve o id.</summary>
+    public async Task<string> CriarUsuarioComoMasterAsync(object usuario, CancellationToken cancellationToken)
+    {
+        using HttpClient master = await CriarClienteMasterAsync(cancellationToken);
+        using HttpResponseMessage resposta = await master.PostAsJsonAsync(
+            $"admin/realms/{Realm}/users", usuario, cancellationToken);
+        resposta.EnsureSuccessStatusCode();
+
+        return resposta.Headers.Location!.Segments[^1];
+    }
+
+    public async Task DesabilitarUsuarioComoMasterAsync(string id, CancellationToken cancellationToken)
+    {
+        using HttpClient master = await CriarClienteMasterAsync(cancellationToken);
+        using HttpResponseMessage resposta = await master.PutAsJsonAsync(
+            $"admin/realms/{Realm}/users/{id}", new { enabled = false }, cancellationToken);
+        resposta.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>Os ids dos membros da Organization, lidos pelo master.</summary>
+    public async Task<IReadOnlyList<string>> MembrosDaOrganizacaoAsync(string organizacao, CancellationToken cancellationToken)
+    {
+        using HttpClient master = await CriarClienteMasterAsync(cancellationToken);
+        string json = await master.GetStringAsync(
+            new Uri($"admin/realms/{Realm}/organizations/{organizacao}/members", UriKind.Relative), cancellationToken);
+
+        using var lista = JsonDocument.Parse(json);
+        return [.. lista.RootElement.EnumerateArray().Select(membro => membro.GetProperty("id").GetString()!)];
+    }
+
+    /// <summary>Os papéis de realm atribuídos diretamente ao usuário, lidos pelo master.</summary>
+    public async Task<IReadOnlyList<string>> PapeisDeRealmDoUsuarioAsync(string id, CancellationToken cancellationToken)
+    {
+        using HttpClient master = await CriarClienteMasterAsync(cancellationToken);
+        string json = await master.GetStringAsync(
+            new Uri($"admin/realms/{Realm}/users/{id}/role-mappings/realm", UriKind.Relative), cancellationToken);
+
+        using var lista = JsonDocument.Parse(json);
+        return [.. lista.RootElement.EnumerateArray().Select(papel => papel.GetProperty("name").GetString()!)];
+    }
+
+    /// <summary>
+    /// Token de um usuário comum do realm, por senha, num client de teste criado para isso.
+    /// </summary>
+    /// <remarks>
+    /// Um client próprio, público e com direct grant: o <c>admin-cli</c> do realm não tem <c>fullScopeAllowed</c>, e o
+    /// token dele não traria os papéis do client <c>account</c> que a Account REST API exige.
+    /// </remarks>
+    public async Task<string> TokenDeUsuarioComumAsync(string username, string senha, CancellationToken cancellationToken)
+    {
+        string clientId = $"teste-conta-{Guid.NewGuid():N}"[..24];
+
+        using (HttpClient master = await CriarClienteMasterAsync(cancellationToken))
+        {
+            using HttpResponseMessage criado = await master.PostAsJsonAsync(
+                $"admin/realms/{Realm}/clients",
+                new
+                {
+                    clientId,
+                    publicClient = true,
+                    directAccessGrantsEnabled = true,
+                    standardFlowEnabled = false,
+                    fullScopeAllowed = true,
+                },
+                cancellationToken);
+            criado.EnsureSuccessStatusCode();
+        }
+
+        using HttpClient http = new() { BaseAddress = new Uri($"{BaseUrl}/") };
+        using FormUrlEncodedContent corpo = new(
+        [
+            new("grant_type", "password"),
+            new("client_id", clientId),
+            new("username", username),
+            new("password", senha),
+        ]);
+
+        using HttpResponseMessage resposta = await http.PostAsync(
+            new Uri($"realms/{Realm}/protocol/openid-connect/token", UriKind.Relative), corpo, cancellationToken);
+        resposta.EnsureSuccessStatusCode();
+
+        using var token = JsonDocument.Parse(await resposta.Content.ReadAsStringAsync(cancellationToken));
+        return token.RootElement.GetProperty("access_token").GetString()!;
+    }
+
     /// <summary>Os ids das mensagens do mailpit cujo destinatário é exatamente o informado.</summary>
     /// <remarks>
     /// A busca <c>to:</c> do mailpit casa por trecho — <c>x@acme.test</c> acharia <c>pre.x@acme.test</c>. O filtro

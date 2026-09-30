@@ -1,6 +1,8 @@
 using System.Net;
 using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Domain.Members;
 using IdentityGateway.Domain.Tenants;
+using IdentityGateway.Domain.ValueObjects;
 using IdentityGateway.Infrastructure.Identity.Keycloak;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -95,6 +97,36 @@ public sealed class ResilienciaDoAdminClientTests(KeycloakFixture keycloak)
         interceptacao.Status(HttpMethod.Post).Should().Equal(HttpStatusCode.Unauthorized, HttpStatusCode.Created);
         tokensPedidos[0].Should().Be(2);
         (await keycloak.ContarPorAliasAsync(slug.Value, ct)).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task PutDoEnvioComRespostaPerdida_NaoERepetidoEOEmailJaSaiu()
+    {
+        // O Keycloak envia dentro da requisição: um timeout no PUT não significa "não enviado". Por isso o PUT fica fora
+        // do retry automático (DisableForUnsafeHttpMethods), como o POST — e a próxima entrega reenvia, porque o usuário
+        // continua com UPDATE_PASSWORD.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        Interceptacao interceptacao = new()
+        {
+            PerderResposta = (pedido, ordinal) => pedido.Method == HttpMethod.Put && ordinal == 1,
+        };
+        await using ServiceProvider provider = keycloak.CriarProvider(services => services.Interceptar(interceptacao));
+        IIdentityProvider identidade = provider.GetRequiredService<IIdentityProvider>();
+        var tenant = TenantId.New();
+        string email = KeycloakFixture.EmailUnico();
+        string organizacao = await identidade.EnsureOrganizationAsync(tenant, KeycloakFixture.SlugUnico(), "Acme", ct);
+        InviteData convite = new(Email.Of(email).Value, RoleName.TenantAdmin, TimeSpan.FromHours(2));
+
+        Func<Task> primeira = () => identidade.EnsureInvitedUserAsync(organizacao, tenant, convite, ct);
+
+        await primeira.Should().ThrowAsync<HttpRequestException>();
+        interceptacao.Contar(HttpMethod.Put).Should().Be(1);
+        (await keycloak.EsperarMensagensAsync(email, 1, ct)).Should().ContainSingle("o Keycloak enviou antes de a resposta se perder");
+
+        await identidade.EnsureInvitedUserAsync(organizacao, tenant, convite, ct);
+
+        interceptacao.Contar(HttpMethod.Put).Should().Be(2);
+        (await keycloak.EsperarMensagensAsync(email, 2, ct)).Should().HaveCount(2);
     }
 
     private sealed class EndpointContador(ITokenEndpoint real, int[] contador) : ITokenEndpoint

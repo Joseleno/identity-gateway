@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using IdentityGateway.Domain.Tenants;
 using IdentityGateway.Infrastructure.Identity.Keycloak;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -9,7 +11,8 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 namespace IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 
 /// <summary>
-/// O service account autentica por <c>private_key_jwt</c> com <c>aud</c> = issuer, e tem só o papel que precisa.
+/// O service account autentica por <c>private_key_jwt</c> com <c>aud</c> = issuer, e tem só o papel que precisa; o
+/// realm protege o que a Gateway grava no usuário.
 /// </summary>
 public sealed class KeycloakRealTests(KeycloakFixture keycloak)
 {
@@ -131,5 +134,53 @@ public sealed class KeycloakRealTests(KeycloakFixture keycloak)
             .CheckHealthAsync(registro => registro.Name == "keycloak", ct);
 
         relatorio.Entries["keycloak"].Status.Should().Be(HealthStatus.Healthy);
+    }
+
+    [Fact]
+    public async Task UsuarioComum_NaoAlteraOTenantIdPelaAccountApi()
+    {
+        // D10: o tenant_id é a correlação do convite e a fonte do claim da §12.2. Editável pelo usuário, ele se
+        // mudaria de tenant. Prova o User Profile do realm, não o adaptador.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        string username = KeycloakFixture.EmailUnico();
+        const string senha = "Senha-de-teste-1";
+        string original = TenantId.New().Value.ToString();
+        string id = await keycloak.CriarUsuarioComoMasterAsync(new
+        {
+            username,
+            email = username,
+            emailVerified = true,
+            firstName = "Comum",
+            lastName = "Teste",
+            enabled = true,
+            attributes = new Dictionary<string, string[]> { ["tenant_id"] = [original] },
+            credentials = new[] { new { type = "password", value = senha, temporary = false } },
+        }, ct);
+
+        string token = await keycloak.TokenDeUsuarioComumAsync(username, senha, ct);
+        using HttpClient conta = new() { BaseAddress = new Uri($"{keycloak.BaseUrl}/") };
+        conta.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        conta.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        Uri rota = new($"realms/{KeycloakFixture.Realm}/account/", UriKind.Relative);
+
+        // Controle: a mesma rota aceita uma alteração permitida — o 400 abaixo não é de autenticação.
+        using HttpResponseMessage permitida = await conta.PostAsJsonAsync(
+            rota, new { username, email = username, firstName = "Comum2", lastName = "Teste" }, ct);
+        using HttpResponseMessage sequestro = await conta.PostAsJsonAsync(
+            rota,
+            new
+            {
+                username,
+                email = username,
+                firstName = "Comum2",
+                lastName = "Teste",
+                attributes = new Dictionary<string, string[]> { ["tenant_id"] = [TenantId.New().Value.ToString()] },
+            },
+            ct);
+
+        permitida.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        sequestro.IsSuccessStatusCode.Should().BeFalse();
+        (await keycloak.LerUsuarioCruAsync(id, ct)).GetProperty("attributes").GetProperty("tenant_id")[0]
+            .GetString().Should().Be(original);
     }
 }
