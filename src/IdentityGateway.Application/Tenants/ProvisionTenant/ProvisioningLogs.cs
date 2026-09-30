@@ -8,7 +8,8 @@ namespace IdentityGateway.Application.Tenants.ProvisionTenant;
 /// </summary>
 /// <remarks>
 /// Só o id do tenant, o status e a exceção — nunca o nome do tenant: log é indexado e lido por muita gente (§14).
-/// Os dois <c>Error</c> são o único registro do motivo de um <c>ProvisioningFailed</c>; o banco guarda só o estado.
+/// Nem o e-mail do admin inicial (D15).
+/// Os <c>Error</c> são o único registro do motivo de um <c>ProvisioningFailed</c>; o banco guarda só o estado.
 /// </remarks>
 internal static partial class ProvisioningLogs
 {
@@ -41,4 +42,16 @@ internal static partial class ProvisioningLogs
         Level = LogLevel.Error,
         Message = "Provisionamento: tenant {TenantId} em ProvisioningFailed; janela de {Horas}h esgotada")]
     public static partial void JanelaEsgotada(ILogger logger, Guid tenantId, double horas, Exception excecao);
+
+    [LoggerMessage(
+        EventId = 1105,
+        Level = LogLevel.Error,
+        Message = "Provisionamento: tenant {TenantId} em ProvisioningFailed; sem o e-mail do admin inicial (registrado antes da fatia C)")]
+    public static partial void SemEmailDoAdmin(ILogger logger, Guid tenantId);
+
+    [LoggerMessage(
+        EventId = 1106,
+        Level = LogLevel.Error,
+        Message = "Provisionamento: tenant {TenantId} em ProvisioningFailed; o plano ({MaxUsers} vagas) não comporta o admin inicial")]
+    public static partial void SemVagaParaOAdmin(ILogger logger, Guid tenantId, int maxUsers);
 }

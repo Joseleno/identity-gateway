@@ -56,15 +56,23 @@ internal static class ComposicaoDoProvisionamento
         return services.BuildServiceProvider(validateScopes: true);
     }
 
+    /// <summary>Registra um tenant pelo caminho de produção, com e-mail de admin único.</summary>
+    /// <remarks>
+    /// Único por teste: com o convite no provisionamento, dois tenants com o mesmo e-mail caem no D5 (o segundo vira
+    /// ProvisioningFailed), e os testes passariam a depender da ordem.
+    /// </remarks>
+    internal static Task<TenantId> RegistrarAsync(ServiceProvider provider, CancellationToken ct) =>
+        RegistrarAsync(provider, KeycloakFixture.EmailUnico(), ct);
+
     /// <summary>Registra um tenant pelo caminho de produção: command, pipeline e commit com a mensagem no Outbox.</summary>
-    internal static async Task<TenantId> RegistrarAsync(ServiceProvider provider, CancellationToken ct)
+    internal static async Task<TenantId> RegistrarAsync(ServiceProvider provider, string email, CancellationToken ct)
     {
         string slug = KeycloakFixture.SlugUnico().Value;
         await using AsyncServiceScope escopo = provider.CreateAsyncScope();
         Mediator.ISender sender = escopo.ServiceProvider.GetRequiredService<Mediator.ISender>();
 
         Result<TenantId> resultado = await sender.Send(
-            new RegisterTenantCommand("Acme Provisionamento", slug, "free", "admin@acme.com"), ct);
+            new RegisterTenantCommand("Acme Provisionamento", slug, "free", email), ct);
 
         resultado.IsSuccess.Should().BeTrue(resultado.IsFailure ? resultado.Error.Message : string.Empty);
         return resultado.Value;

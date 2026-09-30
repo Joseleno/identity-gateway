@@ -175,9 +175,9 @@ public sealed class Tenant : AggregateRoot<TenantId>
     /// pela metade.
     /// </para>
     /// <para>
-    /// <b>Recusa <c>Active</c> e <c>ProvisioningFailed</c></b>, ao contrário do <c>MarkProvisioned</c> que substitui:
-    /// uma segunda ativação criaria um segundo membro. A mensagem repetida é tratada pelo handler, que só age em
-    /// <c>Pending</c>.
+    /// <b>Recusa <c>Active</c> e <c>ProvisioningFailed</c></b>, ao contrário do <c>MarkProvisioned</c> que substituiu
+    /// (removido na fatia C): uma segunda ativação criaria um segundo membro. A mensagem repetida é tratada pelo
+    /// handler, que só age em <c>Pending</c>.
     /// </para>
     /// </remarks>
     /// <param name="externalOrganizationId">Id da Organization no Keycloak.</param>
@@ -211,36 +211,6 @@ public sealed class Tenant : AggregateRoot<TenantId>
         RaiseDomainEvent(new TenantActivated(Id));
 
         return admin;
-    }
-
-    /// <summary>
-    /// Conclui o provisionamento e coloca o tenant em operação.
-    /// </summary>
-    /// <remarks>
-    /// <b>Idempotente na entrada:</b> a mesma mensagem do Outbox pode ser entregue mais de uma vez, e a
-    /// segunda entrega precisa ser inofensiva. Já estando ativo com o mesmo id externo, retorna sem efeito
-    /// — inclusive sem levantar o evento de novo.
-    /// </remarks>
-    /// <param name="externalOrganizationId">Id da Organization criada no Keycloak.</param>
-    /// <exception cref="DomainInvariantViolation">
-    /// Se o tenant não estiver em <see cref="TenantStatus.Pending"/> nem em
-    /// <see cref="TenantStatus.ProvisioningFailed"/>. Transição inválida é erro de programação.
-    /// </exception>
-    public void MarkProvisioned(string externalOrganizationId)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(externalOrganizationId);
-
-        if (Status == TenantStatus.Active && ExternalOrganizationId == externalOrganizationId)
-        {
-            return;
-        }
-
-        EnsureStatusIn(TenantStatus.Pending, TenantStatus.ProvisioningFailed);
-
-        ExternalOrganizationId = externalOrganizationId;
-        Status = TenantStatus.Active;
-
-        RaiseDomainEvent(new TenantActivated(Id));
     }
 
     /// <summary>

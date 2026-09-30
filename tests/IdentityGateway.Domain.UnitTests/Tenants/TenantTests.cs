@@ -212,67 +212,6 @@ public sealed class TenantTests
         tenant.OccupiedSeats.Should().Be(0);
     }
 
-    // ── MarkProvisioned: removido na Tarefa 9, com estes cinco testes ──
-
-    [Fact]
-    public void MarkProvisioned_AtivaEGuardaOIdExterno()
-    {
-        Tenant tenant = TenantRegistrado();
-
-        tenant.MarkProvisioned("org-externa-1");
-
-        tenant.Status.Should().Be(TenantStatus.Active);
-        tenant.ExternalOrganizationId.Should().Be("org-externa-1");
-        tenant.DomainEvents.OfType<TenantActivated>().Should().ContainSingle();
-    }
-
-    [Fact]
-    public void MarkProvisioned_RepetidoComOMesmoId_NaoLevantaSegundoEvento()
-    {
-        Tenant tenant = TenantRegistrado();
-
-        tenant.MarkProvisioned("org-externa-1");
-        tenant.MarkProvisioned("org-externa-1");
-
-        tenant.DomainEvents.OfType<TenantActivated>().Should().ContainSingle();
-    }
-
-    [Fact]
-    public void MarkProvisioned_APartirDeProvisioningFailed_Ativa()
-    {
-        Tenant tenant = TenantRegistrado();
-        tenant.MarkProvisioningFailed();
-
-        tenant.MarkProvisioned("org-externa-1");
-
-        tenant.Status.Should().Be(TenantStatus.Active);
-    }
-
-    [Fact]
-    public void MarkProvisioned_ComOutroIdExternoEstandoAtivo_Lanca()
-    {
-        Tenant tenant = TenantAtivo();
-
-        Action ativar = () => tenant.MarkProvisioned("org-externa-2");
-
-        ativar.Should().Throw<DomainInvariantViolation>();
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void MarkProvisioned_ComIdExternoVazio_Lanca(string idExterno)
-    {
-        Tenant tenant = TenantRegistrado();
-
-        Action provisionar = () => tenant.MarkProvisioned(idExterno);
-
-        provisionar.Should().Throw<ArgumentException>();
-        tenant.Status.Should().Be(TenantStatus.Pending);
-    }
-
-    // ── fim dos testes do MarkProvisioned ──
-
     [Fact]
     public void MarkProvisioningFailed_APartirDePending_MarcaFalha()
     {
@@ -404,6 +343,8 @@ public sealed class TenantTests
     [Fact]
     public void Register_ComNomeCercadoDeEspacos_Apara()
     {
+        // O nome é aparado mas mantém a caixa: é texto de exibição, não identificador. O slug, que é
+        // identificador, normaliza a caixa — a diferença entre os dois é deliberada.
         var tenant = Tenant.Register("  Acme Corp  ", SlugValido(), PlanoPadrao(), EmailDoAdmin(), Instante);
 
         tenant.Name.Should().Be("Acme Corp");
@@ -420,6 +361,8 @@ public sealed class TenantTests
     [Fact]
     public void Register_NormalizaOInstanteParaUtc()
     {
+        // O Npgsql recusa gravar DateTimeOffset com offset diferente de zero numa coluna timestamptz. Normalizar
+        // aqui tira do chamador a obrigação de lembrar disso.
         DateTimeOffset emBrasilia = new(2026, 9, 25, 9, 0, 0, TimeSpan.FromHours(-3));
 
         var tenant = Tenant.Register("Acme", SlugValido(), PlanoPadrao(), EmailDoAdmin(), emBrasilia);
