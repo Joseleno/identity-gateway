@@ -1,3 +1,4 @@
+using System.Net;
 using IdentityGateway.Application.Common.Abstractions;
 using IdentityGateway.Domain.Members;
 using IdentityGateway.Domain.Tenants;
@@ -105,8 +106,7 @@ internal sealed class KeycloakIdentityProvider(
         UserRepresentation usuario = await ObterOuCriarUsuarioAsync(invite.Email.Value, tenantId, cancellationToken);
         string id = usuario.Id!;
 
-        // Passo 3: o 409 (já é membro) é tratado como sucesso no cliente.
-        await admin.AddOrganizationMemberAsync(organizationId, id, cancellationToken);
+        await VincularAsync(organizationId, id, tenantId, cancellationToken);
 
         await GarantirPapelAsync(id, invite.Role, tenantId, cancellationToken);
 
@@ -184,6 +184,36 @@ internal sealed class KeycloakIdentityProvider(
             // Duas entregas da mesma mensagem concorreram, e a outra criou primeiro.
             KeycloakLogs.CorridaDoUsuarioResolvida(logger, tenantId.Value);
             return vencedor;
+        }
+    }
+
+    /// <summary>Passo 3: o vínculo à Organization. O 409 (já é membro) é tratado como sucesso no cliente.</summary>
+    /// <remarks>
+    /// <para>
+    /// O vínculo do Keycloak é "consultar e depois inserir" (<c>JpaOrganizationProvider.addMember</c>, 26.7.4): dois
+    /// <c>POST</c> concorrentes passam os dois pela consulta, e o perdedor recebe 400 (a <c>ModelException</c> do
+    /// <c>INSERT</c> repetido, em <c>OrganizationMemberResource.addMember</c>), não 409.
+    /// </para>
+    /// <para>
+    /// No 400, <b>uma</b> leitura da pertença, nunca em laço. Membro: a outra entrega vinculou, e o passo está feito.
+    /// Não membro: o 400 é o que parecia, e a exceção original sobe — transitória, o próximo ciclo repete.
+    /// </para>
+    /// </remarks>
+    private async Task VincularAsync(
+        string organizationId, string userId, TenantId tenantId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await admin.AddOrganizationMemberAsync(organizationId, userId, cancellationToken);
+        }
+        catch (HttpRequestException excecao) when (excecao.StatusCode == HttpStatusCode.BadRequest)
+        {
+            if (!await admin.IsOrganizationMemberAsync(organizationId, userId, cancellationToken))
+            {
+                throw;
+            }
+
+            KeycloakLogs.CorridaDoVinculoResolvida(logger, tenantId.Value);
         }
     }
 

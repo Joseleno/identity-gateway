@@ -230,6 +230,48 @@ public sealed class KeycloakIdentityProviderTests
     }
 
     [Fact]
+    public async Task Vinculo400ComUsuarioJaMembro_LeituraConfirmaESegue()
+    {
+        // Dois POST de vínculo concorrentes: o perdedor recebe 400 (ModelException), não 409. Uma leitura da pertença
+        // mostra que a outra entrega já vinculou.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        List<Uri> uris = [];
+        (KeycloakIdentityProvider adaptador, List<HttpMethod> metodos) = Montar(
+            _ => Lista(UsuarioDoTenant("u-1")),
+            _ => Status(HttpStatusCode.BadRequest),
+            pedido =>
+            {
+                uris.Add(pedido.RequestUri!);
+                return Lista("""{"id":"u-1","username":"admin+tag@acme.test"}""");
+            },
+            _ => Lista("""[{"id":"r-1","name":"tenant-admin"}]"""));
+
+        ExternalUserId sub = await adaptador.EnsureInvitedUserAsync("org-1", Tenant, Convite, ct);
+
+        sub.Value.Should().Be("u-1");
+        metodos.Should().Equal(HttpMethod.Get, HttpMethod.Post, HttpMethod.Get, HttpMethod.Get);
+        uris.Should().ContainSingle().Which.AbsolutePath
+            .Should().Be("/admin/realms/identity-gateway/organizations/org-1/members/u-1");
+    }
+
+    [Fact]
+    public async Task Vinculo400SemPertenca_PropagaOErroOriginalSemLaco()
+    {
+        // Sem a pertença, o 400 é o que era: falha que o próximo ciclo repete. Uma leitura só, e a exceção original.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        (KeycloakIdentityProvider adaptador, List<HttpMethod> metodos) = Montar(
+            _ => Lista(UsuarioDoTenant("u-1")),
+            _ => Status(HttpStatusCode.BadRequest),
+            _ => Status(HttpStatusCode.NotFound));
+
+        Func<Task> convidar = () => adaptador.EnsureInvitedUserAsync("org-1", Tenant, Convite, ct);
+
+        (await convidar.Should().ThrowExactlyAsync<HttpRequestException>())
+            .Which.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        metodos.Should().Equal(HttpMethod.Get, HttpMethod.Post, HttpMethod.Get);
+    }
+
+    [Fact]
     public async Task PapelAtribuidoPorEntregaConcorrenteEntreAsLeituras_ReleituraResolveSemInconsistencia()
     {
         // "Disponíveis" exclui o que já está atribuído. Se uma entrega concorrente da mesma mensagem atribui o papel

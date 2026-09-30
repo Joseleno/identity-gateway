@@ -328,6 +328,61 @@ public sealed class EnsureInvitedUserContraKeycloakTests(KeycloakFixture keycloa
     }
 
     [Fact]
+    public async Task VinculoCom400EUsuarioJaMembro_LeituraDaPertencaConfirmaESegue()
+    {
+        // A corrida de dois POST de vínculo dá 400 ao perdedor. O 400 é injetado; a leitura da pertença vai ao
+        // Keycloak, com o service account — é ela que prova que manage-organizations e manage-users bastam (200).
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        bool[] responder400 = [false];
+        Interceptacao interceptacao = new()
+        {
+            ResponderSemEnviar = (pedido, _) => responder400[0] && EhPostDeVinculo(pedido) ? HttpStatusCode.BadRequest : null,
+        };
+        await using Cenario cenario = await PrepararAsync(ct, interceptacao);
+        ExternalUserId primeiro = await cenario.ConvidarAsync(ct);
+
+        responder400[0] = true;
+        ExternalUserId segundo = await cenario.ConvidarAsync(ct);
+
+        segundo.Should().Be(primeiro);
+        interceptacao.Detalhes.Should().ContainSingle(chamada =>
+            chamada.Metodo == HttpMethod.Get
+            && chamada.Caminho.EndsWith($"/organizations/{cenario.Organizacao}/members/{primeiro.Value}", StringComparison.Ordinal))
+            .Which.Status.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task VinculoCom400SemPertenca_PropagaOErroOriginal()
+    {
+        // Sem a pertença, o Keycloak responde 404 ao service account (e não 403: users().canQuery() vale), e o 400
+        // original sobe como transitório.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        Interceptacao interceptacao = new()
+        {
+            ResponderSemEnviar = (pedido, _) => EhPostDeVinculo(pedido) ? HttpStatusCode.BadRequest : null,
+        };
+        await using Cenario cenario = await PrepararAsync(ct, interceptacao);
+        string preCriado = await keycloak.CriarUsuarioComoMasterAsync(new
+        {
+            username = cenario.Endereco,
+            email = cenario.Endereco,
+            enabled = true,
+            requiredActions = AcoesDoConvite,
+            attributes = new Dictionary<string, string[]> { ["tenant_id"] = [cenario.Tenant.Value.ToString()] },
+        }, ct);
+
+        Func<Task> convidar = () => cenario.ConvidarAsync(ct);
+
+        (await convidar.Should().ThrowExactlyAsync<HttpRequestException>())
+            .Which.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        interceptacao.Detalhes.Should().ContainSingle(chamada =>
+            chamada.Metodo == HttpMethod.Get
+            && chamada.Caminho.EndsWith($"/organizations/{cenario.Organizacao}/members/{preCriado}", StringComparison.Ordinal))
+            .Which.Status.Should().Be(HttpStatusCode.NotFound);
+        (await keycloak.MembrosDaOrganizacaoAsync(cenario.Organizacao, ct)).Should().NotContain(preCriado);
+    }
+
+    [Fact]
     public async Task QuedaNoPapel_RetryCompletaSemDuplicar()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
@@ -410,6 +465,9 @@ public sealed class EnsureInvitedUserContraKeycloakTests(KeycloakFixture keycloa
         (await keycloak.LerUsuarioCruAsync(sub.Value, ct)).GetProperty("username").GetString()
             .Should().Be(cenario.Endereco);
     }
+
+    private static bool EhPostDeVinculo(HttpRequestMessage pedido) =>
+        pedido.Method == HttpMethod.Post && pedido.RequestUri!.AbsolutePath.EndsWith("/members", StringComparison.Ordinal);
 
     /// <summary>Responde 503 à primeira requisição com o método e o sufixo de caminho; deixa passar o resto.</summary>
     private static Func<HttpRequestMessage, int, HttpResponseMessage?> CairUmaVez(HttpMethod metodo, string sufixo)

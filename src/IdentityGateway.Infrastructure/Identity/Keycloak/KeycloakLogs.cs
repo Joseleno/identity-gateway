@@ -102,4 +102,10 @@ internal static partial class KeycloakLogs
         Level = LogLevel.Information,
         Message = "Keycloak: corrida na atribuição do papel {Papel} ao convidado do tenant {TenantId} resolvida pela releitura")]
     public static partial void CorridaDoPapelResolvida(ILogger logger, string papel, Guid tenantId);
+
+    [LoggerMessage(
+        EventId = 2215,
+        Level = LogLevel.Information,
+        Message = "Keycloak: corrida no vínculo do convidado do tenant {TenantId} à Organization resolvida pela leitura da pertença")]
+    public static partial void CorridaDoVinculoResolvida(ILogger logger, Guid tenantId);
 }

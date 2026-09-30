@@ -145,6 +145,30 @@ internal sealed class KeycloakAdminClient(HttpClient http, IOptions<KeycloakAdmi
         resposta.EnsureSuccessStatusCode();
     }
 
+    /// <summary>Se o usuário é membro da Organization.</summary>
+    /// <remarks>
+    /// <c>GET /organizations/{id}/members/{memberId}</c> (<c>OrganizationMemberResource.get</c>, 26.7.4): 200 para
+    /// membro; 404 para não membro quando quem pergunta pode consultar usuários (<c>manage-users</c> pode), 403
+    /// quando não pode — e o 403, como qualquer outro status, sobe como erro.
+    /// </remarks>
+    public async Task<bool> IsOrganizationMemberAsync(
+        string organizationId, string userId, CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage resposta = await http.GetAsync(
+            new Uri(
+                $"{Organizations}/{Uri.EscapeDataString(organizationId)}/members/{Uri.EscapeDataString(userId)}",
+                UriKind.Relative),
+            cancellationToken);
+
+        if (resposta.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        resposta.EnsureSuccessStatusCode();
+        return true;
+    }
+
     /// <summary>Os papéis de realm atribuídos diretamente ao usuário.</summary>
     /// <remarks>
     /// Pelos endpoints do próprio usuário, que exigem só a visão de usuários: ler o papel por <c>GET /roles/{nome}</c>
