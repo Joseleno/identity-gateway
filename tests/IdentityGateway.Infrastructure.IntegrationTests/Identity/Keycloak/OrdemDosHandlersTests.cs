@@ -5,7 +5,7 @@ namespace IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 
 /// <summary>
 /// A ordem dos handlers do cliente da Admin API do Keycloak — resiliência por fora, token por dentro (§4.2 do
-/// design) — não tinha nenhum teste automático; só a revisão de código a protegia (handoff da Task 11, mutação 2,
+/// design) — não tinha nenhum teste automático; só a revisão de código a protegia (handoff da fatia, mutação 2,
 /// registrada como "verde, não corrigido").
 /// </summary>
 /// <remarks>

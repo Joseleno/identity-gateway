@@ -59,7 +59,7 @@ public sealed class TenantTests
     [Fact]
     public void Register_GuardaOEmailNormalizado()
     {
-        // Foco de revisão 1: o que vai para a coluna é o endereço normalizado, o mesmo que a busca exata do Keycloak
+        // O que vai para a coluna é o endereço normalizado, o mesmo que a busca exata do Keycloak
         // compara.
         var tenant = Tenant.Register(
             "Acme", SlugValido(), PlanoPadrao(), Email.Of("  Admin@Acme.COM ").Value, Instante);

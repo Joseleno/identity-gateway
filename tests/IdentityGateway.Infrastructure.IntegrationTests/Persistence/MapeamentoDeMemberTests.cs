@@ -72,7 +72,7 @@ public sealed class MapeamentoDeMemberTests(PostgresFixture postgres) : IClassFi
     [Fact]
     public async Task IndiceUnico_RecusaOMesmoSubNoMesmoTenant()
     {
-        // É o índice que pega a entrega concorrente duplicada que escapasse do xmin do tenant (Tarefa 11).
+        // É o índice que pega a entrega concorrente duplicada que escapasse do xmin do tenant.
         CancellationToken ct = TestContext.Current.CancellationToken;
         string sub = $"sub-{Guid.NewGuid():N}";
         Member admin = await AtivarComAdminAsync(sub, ct);

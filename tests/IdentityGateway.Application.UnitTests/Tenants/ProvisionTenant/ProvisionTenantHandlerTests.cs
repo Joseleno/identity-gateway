@@ -55,7 +55,7 @@ public sealed class ProvisionTenantHandlerTests
     /// </summary>
     /// <remarks>
     /// O ramo transitório dentro da janela não está aqui: a exceção sobe, e quem registra é o <c>OutboxProcessor</c>
-    /// (coberto no teste de vazamento da Tarefa 10).
+    /// (coberto no teste de vazamento do e-mail).
     /// </remarks>
     public static TheoryData<Func<ProvisionTenantHandlerTests, TenantId>> RamosQueRegistram => new()
     {
@@ -326,7 +326,7 @@ public sealed class ProvisionTenantHandlerTests
     [Fact]
     public async Task SmtpForaEDeVolta_FicaPendingComEmailEDepoisAtiva()
     {
-        // Foco de revisão 4: o 500 do SMTP é transitório; na volta, a mesma entrega completa.
+        // O 500 do SMTP é transitório; na volta, a mesma entrega completa.
         CancellationToken ct = TestContext.Current.CancellationToken;
         Tenant tenant = TenantPendente();
         OrganizacaoDevolve(_identidade, "org-1");
@@ -385,7 +385,7 @@ public sealed class ProvisionTenantHandlerTests
     public async Task Keycloak403DentroEForaDaJanela_SoViraFailedDepoisDela()
     {
         // Um volume antigo sem manage-users dá 403 no vínculo: não é inconsistência (corrigir o realm resolve), então
-        // segue a janela — e o health check avisa antes (Tarefa 7).
+        // segue a janela — e o health check avisa antes.
         CancellationToken ct = TestContext.Current.CancellationToken;
         Tenant tenant = TenantPendente();
         ConviteLanca(_identidade, new HttpRequestException("Forbidden", inner: null, HttpStatusCode.Forbidden));

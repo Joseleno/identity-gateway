@@ -285,7 +285,7 @@ public sealed class EnsureInvitedUserContraKeycloakTests(KeycloakFixture keycloa
     [Fact]
     public async Task SmtpFora_RetryReaproveitaOUsuarioEEnviaNaVolta()
     {
-        // Foco de revisão 4. O 500 do SMTP é injetado: derrubar o mailpit compartilhado quebraria os testes paralelos.
+        // O 500 do SMTP é injetado: derrubar o mailpit compartilhado quebraria os testes paralelos.
         // Que "SMTP fora do ar = 500" vem da leitura de código (UserResource.java L1073-1075).
         CancellationToken ct = TestContext.Current.CancellationToken;
         Interceptacao interceptacao = new()
@@ -310,7 +310,7 @@ public sealed class EnsureInvitedUserContraKeycloakTests(KeycloakFixture keycloa
     [Fact]
     public async Task QuedaNoVinculo_RetryCompletaSemDuplicar()
     {
-        // Foco de revisão 3: usuário criado, Keycloak cai no vínculo. POST não é repetido pela resiliência, então a
+        // Usuário criado, Keycloak cai no vínculo. POST não é repetido pela resiliência, então a
         // exceção sobe; a próxima entrega retoma do usuário existente.
         CancellationToken ct = TestContext.Current.CancellationToken;
         Interceptacao interceptacao = new() { Responder = CairUmaVez(HttpMethod.Post, "/members") };
@@ -431,7 +431,7 @@ public sealed class EnsureInvitedUserContraKeycloakTests(KeycloakFixture keycloa
     [Fact]
     public async Task UsuarioCriadoPeloMasterComCaixaMista_EReaproveitado()
     {
-        // Foco de revisão 1: o Keycloak grava em minúsculas, e o Email.Of também normaliza — a busca exata dos dois
+        // O Keycloak grava em minúsculas, e o Email.Of também normaliza — a busca exata dos dois
         // lados concorda, e o usuário de uma tentativa anterior é reencontrado.
         CancellationToken ct = TestContext.Current.CancellationToken;
         string marca = Guid.NewGuid().ToString("N").ToUpperInvariant();
@@ -455,7 +455,7 @@ public sealed class EnsureInvitedUserContraKeycloakTests(KeycloakFixture keycloa
     [Fact]
     public async Task EmailDe254Caracteres_ViraUsernameNoKeycloak()
     {
-        // Foco de revisão 5: parte local de 64 (o limite do Keycloak) e username de 254 (o perfil aceita 255).
+        // Parte local de 64 (o limite do Keycloak) e username de 254 (o perfil aceita 255).
         CancellationToken ct = TestContext.Current.CancellationToken;
         await using Cenario cenario = await PrepararAsync(ct, endereco: KeycloakFixture.EmailUnicoDe254Caracteres());
         cenario.Endereco.Length.Should().Be(254);

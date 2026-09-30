@@ -68,7 +68,7 @@ public sealed class EmailTests
     [Fact]
     public void Of_ComCaixaEEspacos_Normaliza()
     {
-        // Foco de revisão 1: é o valor que vai para a coluna e para a busca exata do Keycloak, que compara em
+        // É o valor que vai para a coluna e para a busca exata do Keycloak, que compara em
         // minúsculas. Guardado como veio, o retry não reencontraria o usuário criado na primeira tentativa.
         Email.Of("  Admin@Acme.COM ").Value.Value.Should().Be("admin@acme.com");
     }
@@ -76,7 +76,7 @@ public sealed class EmailTests
     [Fact]
     public void Of_Com254Caracteres_Aceita()
     {
-        // Foco de revisão 5: 254 é o tamanho da coluna initial_admin_email e o limite da RFC 5321.
+        // 254 é o tamanho da coluna initial_admin_email e o limite da RFC 5321.
         string endereco = Endereco254();
         endereco.Length.Should().Be(254);
 

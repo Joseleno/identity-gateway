@@ -54,7 +54,7 @@ public sealed class MapeamentoDeTenantTests(PostgresFixture postgres) : IClassFi
     [Fact]
     public async Task EmailDe254Caracteres_SobreviveAoRoundTrip()
     {
-        // Foco de revisão 5: 254 é o maior endereço que o Email.Of aceita e o tamanho exato da coluna.
+        // 254 é o maior endereço que o Email.Of aceita e o tamanho exato da coluna.
         CancellationToken ct = TestContext.Current.CancellationToken;
         string local = $"admin+{Guid.NewGuid():N}{new string('a', 26)}";
         string endereco = $"{local}@{new string('b', 63)}.{new string('c', 63)}.{new string('d', 56)}.test";

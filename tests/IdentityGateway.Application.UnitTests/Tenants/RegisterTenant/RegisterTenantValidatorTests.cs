@@ -58,6 +58,7 @@ public sealed class RegisterTenantValidatorTests
 
         resultado.IsValid.Should().BeFalse();
     }
+
     [Theory]
     [InlineData("")]
     [InlineData("sem-arroba")]
