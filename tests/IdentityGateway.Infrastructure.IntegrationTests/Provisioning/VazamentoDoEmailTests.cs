@@ -117,8 +117,10 @@ public sealed class VazamentoDoEmailTests(PostgresFixture postgres, KeycloakFixt
             span => TextoDoSpan(span).Contains("/users", StringComparison.Ordinal),
             "idem para os spans do HttpClient");
 
-        // O e-mail cru e escapado (é assim que ele iria numa URL: %2B e %40).
-        string[] formas = [email, Uri.EscapeDataString(email)];
+        // O e-mail cru e escapado (é assim que ele iria numa URL: %2B e %40), e o fragmento GUID único dele, que
+        // cobre qualquer outra codificação (o "+" do JSON, por exemplo).
+        string fragmentoUnico = email[(email.IndexOf('+') + 1)..email.IndexOf('@')];
+        string[] formas = [email, Uri.EscapeDataString(email), fragmentoUnico];
 
         foreach (string forma in formas)
         {

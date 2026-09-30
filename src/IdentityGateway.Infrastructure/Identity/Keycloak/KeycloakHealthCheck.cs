@@ -53,9 +53,9 @@ internal sealed class KeycloakHealthCheck(ServiceAccountTokenCache cache) : IHea
         {
             return new HealthCheckResult(
                 context.Registration.FailureStatus,
-                $"O service account do Keycloak não tem {PapelExigido}: o realm foi importado antes da fatia C, e o "
-                + "import só roda na primeira subida. Rode `docker compose down -v` e suba de novo com "
-                + "`docker compose up -d --build`.");
+                $"O token do service account não traz {PapelExigido} em resource_access.realm-management.roles: o "
+                + "realm importado não é o que a Gateway espera. Em desenvolvimento local, o realm só é importado na "
+                + "primeira subida do compose — ver o README.");
         }
 
         return HealthCheckResult.Healthy("Token do service account obtido, com manage-users.");
@@ -75,7 +75,8 @@ internal sealed class KeycloakHealthCheck(ServiceAccountTokenCache cache) : IHea
                    && cliente.TryGetProperty("roles", out JsonElement papeis)
                    && papeis.EnumerateArray().Any(item => item.GetString() == papel);
         }
-        catch (Exception excecao) when (excecao is ArgumentException or JsonException or FormatException)
+        catch (Exception excecao) when (excecao is ArgumentException or JsonException or FormatException
+                                          or InvalidOperationException)
         {
             return false;
         }

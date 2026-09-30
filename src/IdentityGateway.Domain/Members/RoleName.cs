@@ -50,6 +50,6 @@ public sealed partial class RoleName : ValueObject
     /// <summary>O nome em texto.</summary>
     public override string ToString() => Value;
 
-    [GeneratedRegex("^[a-z0-9]+(-[a-z0-9]+)*$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^[a-z0-9]+(-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant)]
     private static partial Regex FormaValida();
 }

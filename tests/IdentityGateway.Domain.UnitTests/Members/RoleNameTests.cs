@@ -17,6 +17,7 @@ public sealed class RoleNameTests
     [InlineData("-admin")]
     [InlineData("admin--x")]
     [InlineData("admin x")]
+    [InlineData("tenant-admin\n")]
     public void From_ForaDoFormato_Lanca(string valor)
     {
         Action criar = () => RoleName.From(valor);

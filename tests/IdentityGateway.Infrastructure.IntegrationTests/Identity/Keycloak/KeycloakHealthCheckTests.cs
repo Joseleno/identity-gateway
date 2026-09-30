@@ -20,7 +20,7 @@ namespace IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 public sealed class KeycloakHealthCheckTests
 {
     /// <summary>
-    /// A composição real (<c>AddInfrastructure</c>) apontada para um Keycloak. A <c>KeycloakFixture</c> (Task 9) usa a
+    /// A composição real (<c>AddInfrastructure</c>) apontada para um Keycloak. A <c>KeycloakFixture</c> usa a
     /// mesma, acrescentando handlers de teste antes de construir.
     /// </summary>
     internal static ServiceCollection ColecaoDaComposicao(
@@ -107,7 +107,7 @@ public sealed class KeycloakHealthCheckTests
         HealthReportEntry entrada = await Checar(provider, ct);
 
         entrada.Status.Should().Be(HealthStatus.Unhealthy);
-        entrada.Description.Should().Contain("manage-users").And.Contain("docker compose down -v");
+        entrada.Description.Should().Contain("manage-users").And.Contain("README");
     }
 
     [Fact]
@@ -125,8 +125,26 @@ public sealed class KeycloakHealthCheckTests
         entrada.Status.Should().Be(HealthStatus.Healthy);
     }
 
+    [Fact]
+    public async Task RolesQueNaoEhArrayDeTexto_UnhealthyComADescricao()
+    {
+        // EnumerateArray e GetString lançam InvalidOperationException quando roles não é array de strings: sem o
+        // filtro do catch, o ready estouraria em vez de descrever o realm que a Gateway não espera.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        ServiceCollection services = ColecaoDaComposicao("http://127.0.0.1:9");
+        services.AddSingleton<ITokenEndpoint>(new EndpointFixo(TokenComRoles("manage-users")));
+        await using ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
+
+        HealthReportEntry entrada = await Checar(provider, ct);
+
+        entrada.Status.Should().Be(HealthStatus.Unhealthy);
+        entrada.Description.Should().Contain("manage-users");
+    }
+
     // Token não assinado com só a parte que o check lê: resource_access.realm-management.roles.
-    private static string TokenComPapeis(params string[] papeis)
+    private static string TokenComPapeis(params string[] papeis) => TokenComRoles(papeis);
+
+    private static string TokenComRoles(object roles)
     {
         static string Codificar(string json) => Base64UrlEncoder.Encode(Encoding.UTF8.GetBytes(json));
 
@@ -134,7 +152,7 @@ public sealed class KeycloakHealthCheckTests
         {
             ["resource_access"] = new Dictionary<string, object>
             {
-                ["realm-management"] = new Dictionary<string, object> { ["roles"] = papeis },
+                ["realm-management"] = new Dictionary<string, object> { ["roles"] = roles },
             },
         });
 

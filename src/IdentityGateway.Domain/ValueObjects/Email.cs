@@ -104,12 +104,12 @@ public sealed partial class Email : ValueObject
 
     // Átomos separados por ponto: sem ponto no início, no fim ou repetido. Os caracteres são os que o validador de
     // username do Keycloak aceita — o username do convidado é o próprio e-mail.
-    [GeneratedRegex(@"^[a-z0-9_+-]+(\.[a-z0-9_+-]+)*$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[a-z0-9_+-]+(\.[a-z0-9_+-]+)*\z", RegexOptions.CultureInvariant)]
     private static partial Regex ParteLocal();
 
     // Rótulos DNS: letras e dígitos nas pontas, hífen só no meio, até 63 cada, e pelo menos um ponto.
     [GeneratedRegex(
-        @"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$",
+        @"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+\z",
         RegexOptions.CultureInvariant)]
     private static partial Regex Dominio();
 }

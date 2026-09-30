@@ -46,7 +46,7 @@ internal static partial class ProvisioningLogs
     [LoggerMessage(
         EventId = 1105,
         Level = LogLevel.Error,
-        Message = "Provisionamento: tenant {TenantId} em ProvisioningFailed; sem o e-mail do admin inicial (registrado antes da fatia C)")]
+        Message = "Provisionamento: tenant {TenantId} em ProvisioningFailed; sem o e-mail do admin inicial (tenant registrado antes de o convite do admin inicial existir)")]
     public static partial void SemEmailDoAdmin(ILogger logger, Guid tenantId);
 
     [LoggerMessage(
