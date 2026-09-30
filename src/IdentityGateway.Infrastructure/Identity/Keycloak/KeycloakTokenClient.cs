@@ -46,7 +46,7 @@ internal sealed class KeycloakTokenClient(
         ]);
 
         using HttpResponseMessage resposta = await http.PostAsync(
-            new Uri($"{opcoes.Issuer}/protocol/openid-connect/token"), corpo, cancellationToken);
+            new Uri(opcoes.TokenEndpoint), corpo, cancellationToken);
 
         if (!resposta.IsSuccessStatusCode)
         {

@@ -1,7 +1,9 @@
 using IdentityGateway.Application;
 using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Application.Tenants.ProvisionTenant;
 using IdentityGateway.Application.Tenants.RegisterTenant;
 using IdentityGateway.Domain.Common;
+using IdentityGateway.Domain.Members;
 using IdentityGateway.Domain.Tenants;
 using IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 using IdentityGateway.Infrastructure.Persistence;
@@ -22,31 +24,46 @@ namespace IdentityGateway.Infrastructure.IntegrationTests.Provisioning;
 /// </remarks>
 internal static class ComposicaoDoProvisionamento
 {
+    /// <summary>A composição de produção sobre os containers do teste.</summary>
+    /// <remarks>
+    /// <paramref name="ajustar"/> registra por cima da composição de produção; <paramref name="extras"/> completa ou
+    /// sobrescreve as chaves de configuração padrão.
+    /// </remarks>
     internal static ServiceProvider Criar(
-        PostgresFixture postgres, KeycloakFixture keycloak, Action<IServiceCollection>? ajustar = null)
+        PostgresFixture postgres,
+        KeycloakFixture keycloak,
+        Action<IServiceCollection>? ajustar = null,
+        IReadOnlyDictionary<string, string?>? extras = null)
     {
-        IConfiguration configuracao = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Database:ConnectionString"] = postgres.ConnectionString,
-                ["Jwt:Issuer"] = "identitygateway",
-                ["Jwt:Audience"] = "identitygateway-api",
-                ["Jwt:SigningKey"] = new string('k', 32),
-                ["Keycloak:Admin:BaseUrl"] = keycloak.BaseUrl,
-                ["Keycloak:Admin:Realm"] = KeycloakFixture.Realm,
-                ["Keycloak:Admin:ClientId"] = "identity-gateway",
-                ["Keycloak:Admin:PrivateKeyPem"] = keycloak.Chaves.PemPrivado,
-                ["Keycloak:Admin:AllowInsecureHttp"] = "true",
-                ["HttpResilience:MaxRetryAttempts"] = "1",
-                ["Outbox:Enabled"] = "false",
-                ["Plans:free:tier"] = "Free",
-                ["Plans:free:maxUsers"] = "5",
-                ["Plans:free:maxClients"] = "1",
-            })
-            .Build();
+        Dictionary<string, string?> valores = new()
+        {
+            ["Database:ConnectionString"] = postgres.ConnectionString,
+            ["Jwt:Issuer"] = "identitygateway",
+            ["Jwt:Audience"] = "identitygateway-api",
+            ["Jwt:SigningKey"] = new string('k', 32),
+            ["Keycloak:Admin:BaseUrl"] = keycloak.BaseUrl,
+            ["Keycloak:Admin:PublicBaseUrl"] = KeycloakFixture.HostnamePublico,
+            ["Keycloak:Admin:Realm"] = KeycloakFixture.Realm,
+            ["Keycloak:Admin:ClientId"] = "identity-gateway",
+            ["Keycloak:Admin:PrivateKeyPem"] = keycloak.Chaves.PemPrivado,
+            ["Keycloak:Admin:AllowInsecureHttp"] = "true",
+            ["HttpResilience:MaxRetryAttempts"] = "1",
+            ["Outbox:Enabled"] = "false",
+            ["Plans:free:tier"] = "Free",
+            ["Plans:free:maxUsers"] = "5",
+            ["Plans:free:maxClients"] = "1",
+        };
+
+        foreach ((string chave, string? valor) in extras ?? new Dictionary<string, string?>())
+        {
+            valores[chave] = valor;
+        }
+
+        IConfiguration configuracao = new ConfigurationBuilder().AddInMemoryCollection(valores).Build();
 
         ServiceCollection services = new();
         services.AddLogging();
+        services.ComAmbiente();
         services.AddApplication();
         services.AddInfrastructure(configuracao);
         ajustar?.Invoke(services);
@@ -54,15 +71,23 @@ internal static class ComposicaoDoProvisionamento
         return services.BuildServiceProvider(validateScopes: true);
     }
 
+    /// <summary>Registra um tenant pelo caminho de produção, com e-mail de admin único.</summary>
+    /// <remarks>
+    /// Único por teste: com o convite no provisionamento, dois tenants com o mesmo e-mail caem no D5 (o segundo vira
+    /// ProvisioningFailed), e os testes passariam a depender da ordem.
+    /// </remarks>
+    internal static Task<TenantId> RegistrarAsync(ServiceProvider provider, CancellationToken ct) =>
+        RegistrarAsync(provider, KeycloakFixture.EmailUnico(), ct);
+
     /// <summary>Registra um tenant pelo caminho de produção: command, pipeline e commit com a mensagem no Outbox.</summary>
-    internal static async Task<TenantId> RegistrarAsync(ServiceProvider provider, CancellationToken ct)
+    internal static async Task<TenantId> RegistrarAsync(ServiceProvider provider, string email, CancellationToken ct)
     {
         string slug = KeycloakFixture.SlugUnico().Value;
         await using AsyncServiceScope escopo = provider.CreateAsyncScope();
         Mediator.ISender sender = escopo.ServiceProvider.GetRequiredService<Mediator.ISender>();
 
         Result<TenantId> resultado = await sender.Send(
-            new RegisterTenantCommand("Acme Provisionamento", slug, "free", "admin@acme.com"), ct);
+            new RegisterTenantCommand("Acme Provisionamento", slug, "free", email), ct);
 
         resultado.IsSuccess.Should().BeTrue(resultado.IsFailure ? resultado.Error.Message : string.Empty);
         return resultado.Value;
@@ -112,6 +137,38 @@ internal static class ComposicaoDoProvisionamento
 
         return await contexto.Tenants.AsNoTracking().SingleAsync(item => item.Id == tenant, ct);
     }
+
+    /// <summary>Os membros gravados do tenant, lidos num escopo novo.</summary>
+    internal static async Task<List<Member>> MembrosAsync(ServiceProvider provider, TenantId tenant, CancellationToken ct)
+    {
+        await using AsyncServiceScope escopo = provider.CreateAsyncScope();
+        AppDbContext contexto = escopo.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        return await contexto.Members.AsNoTracking().Where(membro => membro.TenantId == tenant).ToListAsync(ct);
+    }
+
+    /// <summary>O valor cru da coluna initial_admin_email, ou <c>&lt;nulo&gt;</c>.</summary>
+    internal static async Task<string> EmailGravadoAsync(ServiceProvider provider, TenantId tenant, CancellationToken ct)
+    {
+        await using AsyncServiceScope escopo = provider.CreateAsyncScope();
+        AppDbContext contexto = escopo.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        List<string> valor = await contexto.Database
+            .SqlQuery<string>(
+                $"SELECT coalesce(initial_admin_email, '<nulo>') AS \"Value\" FROM tenants WHERE id = {tenant.Value}")
+            .ToListAsync(ct);
+
+        return valor.Single();
+    }
+
+    /// <summary>Entrega o command do provisionamento num escopo novo, pelo pipeline — como o despacho do Outbox faz.</summary>
+    internal static async Task ProvisionarAsync(ServiceProvider provider, TenantId tenant, CancellationToken ct)
+    {
+        await using AsyncServiceScope escopo = provider.CreateAsyncScope();
+        Mediator.ISender sender = escopo.ServiceProvider.GetRequiredService<Mediator.ISender>();
+
+        await sender.Send(new ProvisionTenantCommand(tenant), ct);
+    }
 }
 
 /// <summary>
@@ -131,5 +188,69 @@ internal sealed class UnitOfWorkQueFalha(AppDbContext contexto, int[] falhasRest
         }
 
         return contexto.SaveChangesAsync(cancellationToken);
+    }
+}
+
+/// <summary>Faz duas chamadas se encontrarem: nenhuma segue antes de a outra chegar — ou desistir.</summary>
+internal sealed class EncontroDeDois
+{
+    private readonly TaskCompletionSource _ambas = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _chegaram;
+
+    public Task ChegarAsync(CancellationToken ct)
+    {
+        if (Interlocked.Increment(ref _chegaram) == 2)
+        {
+            _ambas.TrySetResult();
+        }
+
+        return _ambas.Task.WaitAsync(TimeSpan.FromSeconds(60), ct);
+    }
+
+    /// <summary>Quem falhou antes do encontro libera o outro: esperar quem não vem só esgotaria o prazo.</summary>
+    public void Desistir() => _ambas.TrySetResult();
+}
+
+/// <summary>
+/// O provedor real, com um ponto de encontro depois do convite: as duas entregas terminam a parte do Keycloak antes de
+/// qualquer uma commitar — e as duas leram o tenant em Pending antes disso.
+/// </summary>
+/// <remarks>
+/// Uma entrega que falha no Keycloak (a corrida pode dar erro transitório a uma delas) desiste do encontro, e a outra
+/// segue sozinha.
+/// </remarks>
+internal sealed class ProvedorComEncontro(IIdentityProvider real, EncontroDeDois encontro) : IIdentityProvider
+{
+    public async Task<string> EnsureOrganizationAsync(
+        TenantId tenantId, TenantSlug slug, string name, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await real.EnsureOrganizationAsync(tenantId, slug, name, cancellationToken);
+        }
+        catch
+        {
+            encontro.Desistir();
+            throw;
+        }
+    }
+
+    public async Task<ExternalUserId> EnsureInvitedUserAsync(
+        string organizationId, TenantId tenantId, InviteData invite, CancellationToken cancellationToken)
+    {
+        ExternalUserId sub;
+
+        try
+        {
+            sub = await real.EnsureInvitedUserAsync(organizationId, tenantId, invite, cancellationToken);
+        }
+        catch
+        {
+            encontro.Desistir();
+            throw;
+        }
+
+        await encontro.ChegarAsync(cancellationToken);
+        return sub;
     }
 }

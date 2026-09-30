@@ -47,7 +47,10 @@ public sealed class DatabaseOptions
     /// </summary>
     /// <remarks>
     /// <b>Falso por padrão, e é importante que seja.</b> Os parâmetros carregam dado de cliente — documento,
-    /// e-mail, endereço — e ligá-los manda PII para o log. Serve em desenvolvimento, nunca em produção.
+    /// e-mail, endereço — e ligá-los manda PII para o log. <b>Desligado também no <c>appsettings.Development.json</c></b>:
+    /// a tabela de tenants guarda o e-mail do admin inicial até a ativação, e o EF o registraria no <c>INSERT</c> e,
+    /// ao apagá-lo, no valor antigo da coluna. Um teste de arquitetura trava o arquivo, e o teste de vazamento usa o
+    /// valor dele.
     /// </remarks>
     public bool EnableSensitiveDataLogging { get; init; }
 }

@@ -1,4 +1,6 @@
+using IdentityGateway.Domain.Members;
 using IdentityGateway.Domain.Tenants;
+using IdentityGateway.Domain.ValueObjects;
 using IdentityGateway.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -26,7 +28,7 @@ public sealed class MapeamentoDeTenantTests(PostgresFixture postgres) : IClassFi
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         TenantSlug slug = TenantSlug.Create($"acme-{Guid.NewGuid():N}"[..20]).Value;
-        var original = Tenant.Register("Acme Corp", slug, new Plan(PlanTier.Standard, 50, 5), PostgresFixture.Agora);
+        var original = Tenant.Register("Acme Corp", slug, new Plan(PlanTier.Standard, 50, 5), PostgresFixture.EmailDoAdmin(), PostgresFixture.Agora);
 
         await using (AppDbContext escrita = postgres.CriarContexto())
         {
@@ -46,6 +48,63 @@ public sealed class MapeamentoDeTenantTests(PostgresFixture postgres) : IClassFi
         lido.OccupiedSeats.Should().Be(0);
         lido.OverSubscribed.Should().BeFalse();
         lido.RegisteredAt.Should().Be(PostgresFixture.Agora);
+        lido.InitialAdminEmail.Should().Be(original.InitialAdminEmail);
+    }
+
+    [Fact]
+    public async Task EmailDe254Caracteres_SobreviveAoRoundTrip()
+    {
+        // 254 é o maior endereço que o Email.Of aceita e o tamanho exato da coluna.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        string local = $"admin+{Guid.NewGuid():N}{new string('a', 26)}";
+        string endereco = $"{local}@{new string('b', 63)}.{new string('c', 63)}.{new string('d', 56)}.test";
+        endereco.Length.Should().Be(254);
+
+        TenantSlug slug = TenantSlug.Create($"longo-{Guid.NewGuid():N}"[..20]).Value;
+        var tenant = Tenant.Register(
+            "Longo", slug, new Plan(PlanTier.Free, 5, 1), Email.Of(endereco).Value, PostgresFixture.Agora);
+
+        await using (AppDbContext escrita = postgres.CriarContexto())
+        {
+            escrita.Tenants.Add(tenant);
+            await escrita.SaveChangesAsync(ct);
+        }
+
+        await using AppDbContext leitura = postgres.CriarContexto();
+        Tenant lido = await leitura.Tenants.SingleAsync(item => item.Id == tenant.Id, ct);
+
+        lido.InitialAdminEmail!.Value.Should().Be(endereco);
+    }
+
+    [Fact]
+    public async Task Ativacao_ApagaAColunaDoEmail()
+    {
+        // D1 em forma de dado: depois do commit da ativação, a linha não guarda mais o endereço.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        TenantSlug slug = TenantSlug.Create($"apaga-{Guid.NewGuid():N}"[..20]).Value;
+        var tenant = Tenant.Register(
+            "Apaga", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.EmailDoAdmin(), PostgresFixture.Agora);
+
+        await using (AppDbContext escrita = postgres.CriarContexto())
+        {
+            escrita.Tenants.Add(tenant);
+            await escrita.SaveChangesAsync(ct);
+        }
+
+        await using (AppDbContext contexto = postgres.CriarContexto())
+        {
+            Tenant rastreado = await contexto.Tenants.SingleAsync(item => item.Id == tenant.Id, ct);
+            rastreado.CompleteProvisioning("org-apaga", ExternalUserId.From("sub-apaga"), PostgresFixture.Agora);
+            await contexto.SaveChangesAsync(ct);
+        }
+
+        await using AppDbContext conferencia = postgres.CriarContexto();
+        List<string> coluna = await conferencia.Database
+            .SqlQuery<string>(
+                $"SELECT coalesce(initial_admin_email, '<nulo>') AS \"Value\" FROM tenants WHERE id = {tenant.Id.Value}")
+            .ToListAsync(ct);
+
+        coluna.Should().ContainSingle().Which.Should().Be("<nulo>");
     }
 
     [Fact]
@@ -55,7 +114,7 @@ public sealed class MapeamentoDeTenantTests(PostgresFixture postgres) : IClassFi
         // enum aberto ao lado. E a ordem dos membros deixa de ser dado de schema.
         CancellationToken ct = TestContext.Current.CancellationToken;
         TenantSlug slug = TenantSlug.Create($"enum-{Guid.NewGuid():N}"[..20]).Value;
-        var tenant = Tenant.Register("Enum", slug, new Plan(PlanTier.Enterprise, 500, 50), PostgresFixture.Agora);
+        var tenant = Tenant.Register("Enum", slug, new Plan(PlanTier.Enterprise, 500, 50), PostgresFixture.EmailDoAdmin(), PostgresFixture.Agora);
 
         await using AppDbContext contexto = postgres.CriarContexto();
         contexto.Tenants.Add(tenant);

@@ -65,6 +65,6 @@ public sealed partial class TenantSlug : ValueObject
 
     // Começa e termina em letra ou dígito; no meio, hífen isolado é permitido e hífen duplo não.
     // Regex compilada em tempo de build pelo gerador: sem custo de interpretação a cada chamada.
-    [GeneratedRegex("^[a-z0-9]+(-[a-z0-9]+)*$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^[a-z0-9]+(-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant)]
     private static partial Regex FormaValida();
 }

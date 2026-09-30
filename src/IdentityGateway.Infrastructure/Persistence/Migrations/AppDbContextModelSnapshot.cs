@@ -23,6 +23,57 @@ namespace IdentityGateway.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("IdentityGateway.Domain.Members.Member", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("ExternalUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("external_user_id");
+
+                    b.Property<DateTimeOffset>("InvitedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("invited_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ExternalUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_members_tenant_id_external_user_id");
+
+                    b.ToTable("members", (string)null);
+                });
+
             modelBuilder.Entity("IdentityGateway.Domain.Tenants.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -32,6 +83,11 @@ namespace IdentityGateway.Infrastructure.Persistence.Migrations
                     b.Property<string>("ExternalOrganizationId")
                         .HasColumnType("text")
                         .HasColumnName("external_organization_id");
+
+                    b.Property<string>("InitialAdminEmail")
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("initial_admin_email");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -141,6 +197,15 @@ namespace IdentityGateway.Infrastructure.Persistence.Migrations
                         .HasFilter("processed_on IS NULL");
 
                     b.ToTable("outbox_messages", (string)null);
+                });
+
+            modelBuilder.Entity("IdentityGateway.Domain.Members.Member", b =>
+                {
+                    b.HasOne("IdentityGateway.Domain.Tenants.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

@@ -1,11 +1,13 @@
 using IdentityGateway.Domain.Common;
+using IdentityGateway.Domain.Members;
 using IdentityGateway.Domain.Tenants.Events;
+using IdentityGateway.Domain.ValueObjects;
 
 namespace IdentityGateway.Domain.Tenants;
 
 /// <summary>
 /// Aggregate root do tenant. Guarda somente dados de governança; identidade e credenciais vivem no
-/// Keycloak.
+/// Keycloak — com uma exceção declarada e temporária, o e-mail do admin inicial (<see cref="InitialAdminEmail"/>).
 /// </summary>
 public sealed class Tenant : AggregateRoot<TenantId>
 {
@@ -54,7 +56,8 @@ public sealed class Tenant : AggregateRoot<TenantId>
     /// É o que <see cref="Register"/> usa. Ter o plano como parâmetro obrigatório é o que faz o compilador
     /// recusar um caminho de criação que o esqueça.
     /// </remarks>
-    private Tenant(TenantId id, string name, TenantSlug slug, Plan plan, DateTimeOffset registeredAt)
+    private Tenant(
+        TenantId id, string name, TenantSlug slug, Plan plan, Email initialAdminEmail, DateTimeOffset registeredAt)
         : base(id)
     {
         Name = name;
@@ -62,6 +65,7 @@ public sealed class Tenant : AggregateRoot<TenantId>
         Plan = plan;
         Status = TenantStatus.Pending;
         RegisteredAt = registeredAt;
+        InitialAdminEmail = initialAdminEmail;
     }
 
     /// <summary>Nome de exibição.</summary>
@@ -100,6 +104,28 @@ public sealed class Tenant : AggregateRoot<TenantId>
     /// </remarks>
     public bool OverSubscribed { get; private set; }
 
+    /// <summary>E-mail do primeiro administrador, só enquanto o tenant está em <see cref="TenantStatus.Pending"/>.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Exceção declarada à regra "dados pessoais só no Keycloak" (D1).</b> O convite acontece depois do
+    /// <c>POST</c>, no consumidor do Outbox, e o endereço precisa esperar em algum lugar. Fora do evento
+    /// <c>TenantRegistered</c>, que o levaria ao Outbox e, com o broker, ao RabbitMQ.
+    /// </para>
+    /// <para>
+    /// Apagado na mesma operação que ativa (<see cref="CompleteProvisioning"/>) <b>ou</b> que marca a falha
+    /// (<see cref="MarkProvisioningFailed"/>, D13). Nulo também em tenant registrado antes da fatia C — o handler trata
+    /// esse caso como falha permanente.
+    /// </para>
+    /// </remarks>
+    public Email? InitialAdminEmail { get; private set; }
+
+    /// <summary>Se ainda cabe um membro no plano.</summary>
+    /// <remarks>
+    /// Leitura, para o provisionamento recusar antes de tocar o Keycloak um tenant cujo plano não comporta o admin
+    /// (D14) — o <c>Plan</c> gravado pode ser anterior à regra do catálogo que exige <c>maxUsers</c> de pelo menos 1.
+    /// </remarks>
+    public bool HasSeatAvailable => OccupiedSeats < Plan.MaxUsers;
+
     /// <summary>
     /// Registra um tenant novo, ainda por provisionar.
     /// </summary>
@@ -111,63 +137,90 @@ public sealed class Tenant : AggregateRoot<TenantId>
     /// <param name="name">Nome de exibição.</param>
     /// <param name="slug">Slug já validado.</param>
     /// <param name="plan">Plano vindo do catálogo.</param>
+    /// <param name="initialAdminEmail">E-mail de quem será convidado como <c>tenant-admin</c>.</param>
     /// <param name="registeredAt">Instante do registro; normalizado para UTC.</param>
     /// <returns>O tenant em <see cref="TenantStatus.Pending"/>.</returns>
-    public static Tenant Register(string name, TenantSlug slug, Plan plan, DateTimeOffset registeredAt)
+    public static Tenant Register(
+        string name, TenantSlug slug, Plan plan, Email initialAdminEmail, DateTimeOffset registeredAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(slug);
         ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(initialAdminEmail);
 
         // O nome é aparado, mas não tem a caixa alterada, e a diferença em relação ao slug é deliberada:
         // o slug é identificador — `Acme` e `acme` seriam o mesmo tenant e precisam colidir —, enquanto o
         // nome é texto de exibição, e "IBM" não pode virar "ibm". Aparar o entorno resolve o espaço colado
         // sem tocar no que o cliente escolheu se chamar.
-        Tenant tenant = new(TenantId.New(), name.Trim(), slug, plan, registeredAt.ToUniversalTime());
+        Tenant tenant = new(
+            TenantId.New(), name.Trim(), slug, plan, initialAdminEmail, registeredAt.ToUniversalTime());
 
+        // O evento carrega só o id e o slug: o e-mail fica na coluna (D1).
         tenant.RaiseDomainEvent(new TenantRegistered(tenant.Id, slug.Value));
 
         return tenant;
     }
 
     /// <summary>
-    /// Conclui o provisionamento e coloca o tenant em operação.
+    /// Conclui o provisionamento: ativa o tenant, ocupa a vaga do admin inicial e devolve o <see cref="Member"/> dele.
     /// </summary>
     /// <remarks>
-    /// <b>Idempotente na entrada:</b> a mesma mensagem do Outbox pode ser entregue mais de uma vez, e a
-    /// segunda entrega precisa ser inofensiva. Já estando ativo com o mesmo id externo, retorna sem efeito
-    /// — inclusive sem levantar o evento de novo.
+    /// <para>
+    /// <b>Uma operação de domínio, num commit só (D2).</b> No Keycloak o convite já aconteceu; aqui, <c>Active</c>, a
+    /// vaga, o membro em <c>Invited</c> e o e-mail apagado acontecem juntos ou não acontecem.
+    /// </para>
+    /// <para>
+    /// <b>Valida tudo antes de mudar qualquer coisa.</b> Exige <see cref="TenantStatus.Pending"/> e vaga livre, e cria o
+    /// membro — que valida os próprios argumentos — antes da primeira atribuição. Uma exceção nunca deixa o agregado
+    /// pela metade.
+    /// </para>
+    /// <para>
+    /// <b>Recusa <c>Active</c> e <c>ProvisioningFailed</c></b>, ao contrário do <c>MarkProvisioned</c> que substituiu
+    /// (removido na fatia C): uma segunda ativação criaria um segundo membro. A mensagem repetida é tratada pelo
+    /// handler, que só age em <c>Pending</c>.
+    /// </para>
     /// </remarks>
-    /// <param name="externalOrganizationId">Id da Organization criada no Keycloak.</param>
+    /// <param name="externalOrganizationId">Id da Organization no Keycloak.</param>
+    /// <param name="adminUserId">O <c>sub</c> do admin convidado.</param>
+    /// <param name="invitedAt">Instante do convite; normalizado para UTC.</param>
+    /// <returns>O membro do admin, para o handler entregar ao repositório.</returns>
     /// <exception cref="DomainInvariantViolation">
-    /// Se o tenant não estiver em <see cref="TenantStatus.Pending"/> nem em
-    /// <see cref="TenantStatus.ProvisioningFailed"/>. Transição inválida é erro de programação.
+    /// Fora de <c>Pending</c>, ou sem vaga — o handler verifica a vaga antes (D14), então chegar aqui sem ela é defeito.
     /// </exception>
-    public void MarkProvisioned(string externalOrganizationId)
+    public Member CompleteProvisioning(
+        string externalOrganizationId, ExternalUserId adminUserId, DateTimeOffset invitedAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(externalOrganizationId);
+        ArgumentNullException.ThrowIfNull(adminUserId);
 
-        if (Status == TenantStatus.Active && ExternalOrganizationId == externalOrganizationId)
+        EnsureStatusIn(TenantStatus.Pending);
+
+        if (!HasSeatAvailable)
         {
-            return;
+            throw new DomainInvariantViolation(
+                $"Tenant {Id.Value}: ativação sem vaga para o admin inicial; o provisionamento verifica antes.");
         }
 
-        EnsureStatusIn(TenantStatus.Pending, TenantStatus.ProvisioningFailed);
+        var admin = Member.Invite(Id, adminUserId, invitedAt);
 
         ExternalOrganizationId = externalOrganizationId;
         Status = TenantStatus.Active;
+        OcuparVaga();
+        InitialAdminEmail = null;
 
         RaiseDomainEvent(new TenantActivated(Id));
+
+        return admin;
     }
 
     /// <summary>
-    /// Marca que o provisionamento falhou depois de esgotados os retries.
+    /// Marca que o provisionamento falhou: erro permanente, ou janela de retry esgotada.
     /// </summary>
     /// <remarks>
-    /// O tenant fica aguardando retry manual: a mensagem original continua no Outbox, e reprocessá-la
-    /// chama <see cref="MarkProvisioned"/>, que aceita sair deste estado. Não levanta evento — nada reage
-    /// à falha hoje, e um evento sem consumidor seria despachado a cada tentativa esgotada. Idempotente
-    /// porque o consumidor de Fault também pode reentregar.
+    /// O tenant fica aguardando o retry manual, que o devolverá a <c>Pending</c> antes de reenfileirar (§6.2). <b>Apaga
+    /// o e-mail do admin (D13):</b> este estado não tem saída automática, e guardá-lo seria retenção sem prazo; o retry
+    /// manual recebe o e-mail de novo, o que também permite corrigir um endereço digitado errado. Não levanta evento —
+    /// nada reage à falha hoje. Idempotente, porque a mesma mensagem pode ser reentregue.
     /// </remarks>
     /// <exception cref="DomainInvariantViolation">Se o tenant não estiver em Pending nem já falhado.</exception>
     public void MarkProvisioningFailed()
@@ -180,6 +233,7 @@ public sealed class Tenant : AggregateRoot<TenantId>
         EnsureStatusIn(TenantStatus.Pending);
 
         Status = TenantStatus.ProvisioningFailed;
+        InitialAdminEmail = null;
     }
 
     /// <summary>
@@ -239,6 +293,16 @@ public sealed class Tenant : AggregateRoot<TenantId>
 
         OccupiedSeats--;
     }
+
+    /// <summary>
+    /// Ocupa uma vaga sem exigir <c>Active</c>.
+    /// </summary>
+    /// <remarks>
+    /// Existe para <see cref="CompleteProvisioning"/>, que ocupa a vaga do admin no mesmo passo em que ativa.
+    /// <see cref="ReserveSeat"/> continua exigindo <c>Active</c> para todo outro chamador (D2): afrouxá-lo enfraqueceria
+    /// a invariante para quem vier depois.
+    /// </remarks>
+    private void OcuparVaga() => OccupiedSeats++;
 
     /// <summary>
     /// Exige que o tenant esteja em um dos estados informados.

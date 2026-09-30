@@ -35,12 +35,12 @@ public sealed class SchemaDeTenantsTests(PostgresFixture postgres) : IClassFixtu
 
         await using (AppDbContext primeiro = postgres.CriarContexto())
         {
-            primeiro.Tenants.Add(Tenant.Register("Primeiro", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora));
+            primeiro.Tenants.Add(Tenant.Register("Primeiro", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.EmailDoAdmin(), PostgresFixture.Agora));
             await primeiro.SaveChangesAsync(ct);
         }
 
         await using AppDbContext segundo = postgres.CriarContexto();
-        segundo.Tenants.Add(Tenant.Register("Segundo", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.Agora));
+        segundo.Tenants.Add(Tenant.Register("Segundo", slug, new Plan(PlanTier.Free, 5, 1), PostgresFixture.EmailDoAdmin(), PostgresFixture.Agora));
 
         Func<Task> gravar = async () => await segundo.SaveChangesAsync(ct);
 
@@ -64,5 +64,23 @@ public sealed class SchemaDeTenantsTests(PostgresFixture postgres) : IClassFixtu
             .ToListAsync(ct);
 
         coluna.Should().ContainSingle().Which.Should().Be("NO|");
+    }
+
+    [Fact]
+    public async Task InitialAdminEmail_AnulavelDe254()
+    {
+        // Anulável: nulo em tenant ativo, falhado ou registrado antes da fatia C. 254: o limite do Email.Of.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using AppDbContext contexto = postgres.CriarContexto();
+
+        List<string> coluna = await contexto.Database
+            .SqlQuery<string>($"""
+                SELECT is_nullable || '|' || data_type || '|' || character_maximum_length AS "Value"
+                  FROM information_schema.columns
+                 WHERE table_name = 'tenants' AND column_name = 'initial_admin_email'
+                """)
+            .ToListAsync(ct);
+
+        coluna.Should().ContainSingle().Which.Should().Be("YES|character varying|254");
     }
 }

@@ -44,7 +44,8 @@ public sealed class PlanTests
     [Fact]
     public void ComLimitesZerados_Aceita()
     {
-        // Zero é decisão comercial possível, não impossibilidade — diferente de negativo.
+        // O value object aceita zero: o plano gravado num tenant pode ser anterior à regra do catálogo, que recusa
+        // maxUsers < 1 na subida. Quem trata o tenant sem vaga é o provisionamento (D14).
         Action criar = () => _ = new Plan(PlanTier.Free, maxUsers: 0, maxClients: 0);
 
         criar.Should().NotThrow();

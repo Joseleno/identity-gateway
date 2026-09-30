@@ -13,11 +13,12 @@ public sealed class KeycloakAdminOptionsTests
 {
     private static readonly string PemValido = ChavesDeTeste.Gerar().PemPrivado;
 
-    private static KeycloakAdminOptions Resolver(Dictionary<string, string?> valores)
+    private static KeycloakAdminOptions Resolver(Dictionary<string, string?> valores, string ambiente = "Development")
     {
         IConfiguration configuracao = new ConfigurationBuilder().AddInMemoryCollection(valores).Build();
 
         ServiceCollection services = new();
+        services.ComAmbiente(ambiente);
         services.AddKeycloakIdentity(configuracao);
 
         using ServiceProvider provider = services.BuildServiceProvider();
@@ -33,11 +34,13 @@ public sealed class KeycloakAdminOptionsTests
     };
 
     [Fact]
-    public void ConfiguracaoCompleta_ExpoeIssuerEEnderecoBase()
+    public void ConfiguracaoCompleta_SemPublicBaseUrl_AudEOTransporteSaemDoBaseUrl()
     {
+        // Omitido o PublicBaseUrl, nada muda para quem roda a API pela IDE com BaseUrl=http://localhost:8081.
         KeycloakAdminOptions opcoes = Resolver(Validos());
 
-        opcoes.Issuer.Should().Be("https://sso.exemplo.test/realms/identity-gateway");
+        opcoes.AssertionAudience.Should().Be("https://sso.exemplo.test/realms/identity-gateway");
+        opcoes.TokenEndpoint.Should().Be("https://sso.exemplo.test/realms/identity-gateway/protocol/openid-connect/token");
         opcoes.AdminBaseAddress.Should().Be(new Uri("https://sso.exemplo.test/"));
     }
 
@@ -51,7 +54,7 @@ public sealed class KeycloakAdminOptionsTests
 
         KeycloakAdminOptions opcoes = Resolver(valores);
 
-        opcoes.Issuer.Should().Be("https://sso.exemplo.test/auth/realms/identity-gateway");
+        opcoes.AssertionAudience.Should().Be("https://sso.exemplo.test/auth/realms/identity-gateway");
         opcoes.AdminBaseAddress.Should().Be(new Uri("https://sso.exemplo.test/auth/"));
     }
 
@@ -163,6 +166,74 @@ public sealed class KeycloakAdminOptionsTests
 
         KeycloakAdminOptions opcoes = Resolver(valores);
 
-        opcoes.Issuer.Should().Be("http://keycloak:8080/realms/identity-gateway");
+        opcoes.AssertionAudience.Should().Be("http://keycloak:8080/realms/identity-gateway");
+    }
+
+    [Fact]
+    public void ComPublicBaseUrl_AudUsaOPublicoEOTransporteContinuaNoBaseUrl()
+    {
+        // D8: com KC_HOSTNAME, o emissor é o endereço público, e o aud é comparado por texto com ele. O token endpoint
+        // e a Admin API continuam no endereço interno — de dentro do container, localhost:8081 não é o Keycloak.
+        Dictionary<string, string?> valores = Validos();
+        valores["Keycloak:Admin:BaseUrl"] = "http://keycloak:8080";
+        valores["Keycloak:Admin:AllowInsecureHttp"] = "true";
+        valores["Keycloak:Admin:PublicBaseUrl"] = "http://localhost:8081/";
+
+        KeycloakAdminOptions opcoes = Resolver(valores);
+
+        opcoes.AssertionAudience.Should().Be("http://localhost:8081/realms/identity-gateway");
+        opcoes.TokenEndpoint.Should().Be("http://keycloak:8080/realms/identity-gateway/protocol/openid-connect/token");
+        opcoes.AdminBaseAddress.Should().Be(new Uri("http://keycloak:8080/"));
+    }
+
+    [Theory]
+    [InlineData("localhost:8081")]
+    [InlineData("http://localhost:8081/?x=1")]
+    [InlineData("http://localhost:8081/#frag")]
+    [InlineData("ftp://localhost:8081")]
+    public void PublicBaseUrlMalFormado_FalhaAoValidar(string publico)
+    {
+        Dictionary<string, string?> valores = Validos();
+        valores["Keycloak:Admin:PublicBaseUrl"] = publico;
+
+        Action resolver = () => Resolver(valores);
+
+        resolver.Should().Throw<OptionsValidationException>().WithMessage("*PublicBaseUrl*");
+    }
+
+    [Fact]
+    public void AllowInsecureHttpForaDeDevelopment_FalhaAoValidar()
+    {
+        // "Transporte interno" não pode virar convite a http em produção com um bearer de manage-users.
+        Dictionary<string, string?> valores = Validos();
+        valores["Keycloak:Admin:BaseUrl"] = "http://keycloak:8080";
+        valores["Keycloak:Admin:AllowInsecureHttp"] = "true";
+
+        Action resolver = () => Resolver(valores, ambiente: "Production");
+
+        resolver.Should().Throw<OptionsValidationException>().WithMessage("*Development*");
+    }
+
+    [Fact]
+    public void PublicBaseUrlHttpForaDeDevelopment_FalhaAoValidar()
+    {
+        Dictionary<string, string?> valores = Validos();
+        valores["Keycloak:Admin:PublicBaseUrl"] = "http://sso.exemplo.test";
+
+        Action resolver = () => Resolver(valores, ambiente: "Production");
+
+        resolver.Should().Throw<OptionsValidationException>().WithMessage("*Development*");
+    }
+
+    [Fact]
+    public void HttpsEmProducao_Aceita()
+    {
+        // Controle positivo das duas regras acima: sem ele, "Production recusa tudo" também passaria.
+        Dictionary<string, string?> valores = Validos();
+        valores["Keycloak:Admin:PublicBaseUrl"] = "https://sso.exemplo.test";
+
+        KeycloakAdminOptions opcoes = Resolver(valores, ambiente: "Production");
+
+        opcoes.AssertionAudience.Should().Be("https://sso.exemplo.test/realms/identity-gateway");
     }
 }

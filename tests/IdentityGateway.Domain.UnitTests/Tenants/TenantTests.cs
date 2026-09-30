@@ -1,20 +1,29 @@
+using System.Text.Json;
 using IdentityGateway.Domain.Common;
+using IdentityGateway.Domain.Members;
 using IdentityGateway.Domain.Tenants;
 using IdentityGateway.Domain.Tenants.Events;
+using IdentityGateway.Domain.ValueObjects;
 
 namespace IdentityGateway.Domain.UnitTests.Tenants;
 
 public sealed class TenantTests
 {
     private static readonly DateTimeOffset Instante = new(2026, 9, 25, 12, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset Convite = new(2026, 9, 25, 12, 5, 0, TimeSpan.Zero);
+    private static readonly ExternalUserId Sub = ExternalUserId.From("sub-admin");
+
+    private static Email EmailDoAdmin() => Email.Of("admin@acme.test").Value;
 
     private static Tenant TenantRegistrado(int maxUsers = 10) =>
-        Tenant.Register("Acme", TenantSlug.Create("acme").Value, new Plan(PlanTier.Standard, maxUsers, 5), Instante);
+        Tenant.Register(
+            "Acme", TenantSlug.Create("acme").Value, new Plan(PlanTier.Standard, maxUsers, 5), EmailDoAdmin(), Instante);
 
+    // Ativo pelo caminho de produção: a ativação ocupa a vaga do admin inicial.
     private static Tenant TenantAtivo(int maxUsers = 10)
     {
         Tenant tenant = TenantRegistrado(maxUsers);
-        tenant.MarkProvisioned("org-externa-1");
+        tenant.CompleteProvisioning("org-externa-1", Sub, Convite);
         return tenant;
     }
 
@@ -48,49 +57,159 @@ public sealed class TenantTests
     }
 
     [Fact]
-    public void MarkProvisioned_AtivaEGuardaOIdExterno()
+    public void Register_GuardaOEmailNormalizado()
+    {
+        // O que vai para a coluna é o endereço normalizado, o mesmo que a busca exata do Keycloak
+        // compara.
+        var tenant = Tenant.Register(
+            "Acme", SlugValido(), PlanoPadrao(), Email.Of("  Admin@Acme.COM ").Value, Instante);
+
+        tenant.InitialAdminEmail!.Value.Should().Be("admin@acme.com");
+    }
+
+    [Fact]
+    public void Register_ComEmailNulo_Lanca()
+    {
+        // Sem o e-mail o tenant nasceria trancado: ninguém seria convidado como tenant-admin (§9.1).
+        Action registrar = () => Tenant.Register("Acme", SlugValido(), PlanoPadrao(), null!, Instante);
+
+        registrar.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void Register_TenantRegisteredNaoCarregaOEmail()
+    {
+        // D1: o evento vira mensagem no Outbox e, com o broker, no RabbitMQ. O e-mail fica só na coluna.
+        Tenant tenant = TenantRegistrado();
+        IDomainEvent evento = tenant.DomainEvents.Single();
+
+        string json = JsonSerializer.Serialize(evento, evento.GetType());
+
+        json.Should().NotContain("admin@acme.test");
+    }
+
+    [Fact]
+    public void HasSeatAvailable_ComVaga_Verdadeiro()
+    {
+        TenantRegistrado(maxUsers: 1).HasSeatAvailable.Should().BeTrue();
+    }
+
+    [Fact]
+    public void HasSeatAvailable_ComPlanoSemVagas_Falso()
+    {
+        // O catálogo recusa maxUsers < 1 na subida, mas o Plan gravado no tenant pode ser antigo (D14).
+        TenantRegistrado(maxUsers: 0).HasSeatAvailable.Should().BeFalse();
+    }
+
+    [Fact]
+    public void CompleteProvisioning_AtivaOcupaUmaVagaCriaOMemberEApagaOEmail()
     {
         Tenant tenant = TenantRegistrado();
 
-        tenant.MarkProvisioned("org-externa-1");
+        Member admin = tenant.CompleteProvisioning("org-externa-1", Sub, Convite);
 
         tenant.Status.Should().Be(TenantStatus.Active);
         tenant.ExternalOrganizationId.Should().Be("org-externa-1");
-        tenant.DomainEvents.OfType<TenantActivated>().Should().ContainSingle();
+        tenant.OccupiedSeats.Should().Be(1, "a vaga do admin é reservada na ativação, exatamente uma (D2)");
+        tenant.InitialAdminEmail.Should().BeNull("o e-mail só existe em tenant Pending (D1)");
+
+        admin.TenantId.Should().Be(tenant.Id);
+        admin.ExternalUserId.Should().Be(Sub);
+        admin.Status.Should().Be(MemberStatus.Invited);
+        admin.InvitedAt.Should().Be(Convite);
     }
 
     [Fact]
-    public void MarkProvisioned_RepetidoComOMesmoId_NaoLevantaSegundoEvento()
+    public void CompleteProvisioning_LevantaTenantActivatedUmaVez()
     {
-        // A mesma mensagem do Outbox pode ser entregue mais de uma vez: a segunda não pode duplicar efeito.
         Tenant tenant = TenantRegistrado();
 
-        tenant.MarkProvisioned("org-externa-1");
-        tenant.MarkProvisioned("org-externa-1");
+        tenant.CompleteProvisioning("org-externa-1", Sub, Convite);
 
         tenant.DomainEvents.OfType<TenantActivated>().Should().ContainSingle();
     }
 
     [Fact]
-    public void MarkProvisioned_APartirDeProvisioningFailed_Ativa()
+    public void CompleteProvisioning_NormalizaInvitedAtParaUtc()
     {
-        // É o retry manual: o provisionamento falhou, alguém reprocessou o evento, e agora deu certo.
+        Tenant tenant = TenantRegistrado();
+        DateTimeOffset emBrasilia = new(2026, 9, 25, 9, 5, 0, TimeSpan.FromHours(-3));
+
+        Member admin = tenant.CompleteProvisioning("org-externa-1", Sub, emBrasilia);
+
+        admin.InvitedAt.Offset.Should().Be(TimeSpan.Zero);
+    }
+
+    [Fact]
+    public void CompleteProvisioning_ComTenantAtivo_Lanca()
+    {
+        // Inversão deliberada em relação ao MarkProvisioned, que aceitava Active: uma segunda ativação criaria um
+        // segundo Member e ocuparia uma segunda vaga. Quem entrega a mensagem repetida é o handler, que só age em
+        // Pending.
+        Tenant tenant = TenantAtivo();
+
+        Action ativar = () => tenant.CompleteProvisioning("org-externa-1", Sub, Convite);
+
+        ativar.Should().Throw<DomainInvariantViolation>();
+        tenant.OccupiedSeats.Should().Be(1);
+    }
+
+    [Fact]
+    public void CompleteProvisioning_ComTenantEmProvisioningFailed_Lanca()
+    {
+        // O MarkProvisioned aceitava sair de ProvisioningFailed; o retry manual, quando existir, devolve o tenant a
+        // Pending antes (§6.2).
         Tenant tenant = TenantRegistrado();
         tenant.MarkProvisioningFailed();
 
-        tenant.MarkProvisioned("org-externa-1");
+        Action ativar = () => tenant.CompleteProvisioning("org-externa-1", Sub, Convite);
 
-        tenant.Status.Should().Be(TenantStatus.Active);
+        ativar.Should().Throw<DomainInvariantViolation>();
     }
 
     [Fact]
-    public void MarkProvisioned_ComOutroIdExternoEstandoAtivo_Lanca()
+    public void CompleteProvisioning_SemVaga_LancaSemTerMudadoNada()
     {
-        Tenant tenant = TenantAtivo();
+        // O handler verifica a vaga antes (D14); chegar aqui sem vaga é defeito. E o defeito não pode deixar o
+        // agregado pela metade: nada muda antes de tudo ser validado.
+        Tenant tenant = TenantRegistrado(maxUsers: 0);
 
-        Action ativar = () => tenant.MarkProvisioned("org-externa-2");
+        Action ativar = () => tenant.CompleteProvisioning("org-externa-1", Sub, Convite);
 
         ativar.Should().Throw<DomainInvariantViolation>();
+        tenant.Status.Should().Be(TenantStatus.Pending);
+        tenant.ExternalOrganizationId.Should().BeNull();
+        tenant.OccupiedSeats.Should().Be(0);
+        tenant.InitialAdminEmail.Should().NotBeNull();
+        tenant.DomainEvents.OfType<TenantActivated>().Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void CompleteProvisioning_ComIdExternoVazio_LancaSemMudarNada(string idExterno)
+    {
+        // Sem esta guarda o tenant iria a Active com id externo em branco — indistinguível de "não provisionado" para
+        // o job de reconciliação.
+        Tenant tenant = TenantRegistrado();
+
+        Action ativar = () => tenant.CompleteProvisioning(idExterno, Sub, Convite);
+
+        ativar.Should().Throw<ArgumentException>();
+        tenant.Status.Should().Be(TenantStatus.Pending);
+        tenant.OccupiedSeats.Should().Be(0);
+    }
+
+    [Fact]
+    public void CompleteProvisioning_SemSub_LancaSemMudarNada()
+    {
+        Tenant tenant = TenantRegistrado();
+
+        Action ativar = () => tenant.CompleteProvisioning("org-externa-1", null!, Convite);
+
+        ativar.Should().Throw<ArgumentNullException>();
+        tenant.Status.Should().Be(TenantStatus.Pending);
+        tenant.OccupiedSeats.Should().Be(0);
     }
 
     [Fact]
@@ -104,9 +223,20 @@ public sealed class TenantTests
     }
 
     [Fact]
+    public void MarkProvisioningFailed_ApagaOEmail()
+    {
+        // D13: ProvisioningFailed não tem saída automática, e guardar o e-mail ali seria retenção sem prazo. O retry
+        // manual recebe o e-mail de novo.
+        Tenant tenant = TenantRegistrado();
+
+        tenant.MarkProvisioningFailed();
+
+        tenant.InitialAdminEmail.Should().BeNull();
+    }
+
+    [Fact]
     public void MarkProvisioningFailed_Repetido_NaoLanca()
     {
-        // O consumidor de Fault pode reentregar a mesma mensagem.
         Tenant tenant = TenantRegistrado();
         tenant.MarkProvisioningFailed();
 
@@ -133,7 +263,7 @@ public sealed class TenantTests
         Result resultado = tenant.ReserveSeat();
 
         resultado.IsSuccess.Should().BeTrue();
-        tenant.OccupiedSeats.Should().Be(1);
+        tenant.OccupiedSeats.Should().Be(2, "a primeira vaga é do admin inicial");
     }
 
     [Fact]
@@ -153,7 +283,6 @@ public sealed class TenantTests
     {
         Tenant tenant = TenantAtivo(maxUsers: 2);
         tenant.ReserveSeat();
-        tenant.ReserveSeat();
 
         Result resultado = tenant.ReserveSeat();
 
@@ -170,15 +299,15 @@ public sealed class TenantTests
 
         tenant.ReleaseSeat();
 
-        tenant.OccupiedSeats.Should().Be(0);
+        tenant.OccupiedSeats.Should().Be(1);
     }
 
     [Fact]
     public void ReleaseSeat_SemVagaOcupada_Lanca()
     {
-        // NÃO é idempotente por desenho: um clamp em zero esconderia dupla liberação, e o contador chegaria
-        // a zero com o tenant cheio. Ver o XML doc do método.
+        // NÃO é idempotente por desenho: um clamp em zero esconderia dupla liberação. Ver o XML doc do método.
         Tenant tenant = TenantAtivo();
+        tenant.ReleaseSeat();
 
         Action liberar = tenant.ReleaseSeat;
 
@@ -190,7 +319,7 @@ public sealed class TenantTests
     [InlineData("   ")]
     public void Register_ComNomeVazio_Lanca(string nome)
     {
-        Action registrar = () => Tenant.Register(nome, SlugValido(), PlanoPadrao(), Instante);
+        Action registrar = () => Tenant.Register(nome, SlugValido(), PlanoPadrao(), EmailDoAdmin(), Instante);
 
         registrar.Should().Throw<ArgumentException>();
     }
@@ -198,7 +327,7 @@ public sealed class TenantTests
     [Fact]
     public void Register_ComSlugNulo_Lanca()
     {
-        Action registrar = () => Tenant.Register("Acme", null!, PlanoPadrao(), Instante);
+        Action registrar = () => Tenant.Register("Acme", null!, PlanoPadrao(), EmailDoAdmin(), Instante);
 
         registrar.Should().Throw<ArgumentNullException>();
     }
@@ -206,7 +335,7 @@ public sealed class TenantTests
     [Fact]
     public void Register_ComPlanoNulo_Lanca()
     {
-        Action registrar = () => Tenant.Register("Acme", SlugValido(), null!, Instante);
+        Action registrar = () => Tenant.Register("Acme", SlugValido(), null!, EmailDoAdmin(), Instante);
 
         registrar.Should().Throw<ArgumentNullException>();
     }
@@ -216,7 +345,7 @@ public sealed class TenantTests
     {
         // O nome é aparado mas mantém a caixa: é texto de exibição, não identificador. O slug, que é
         // identificador, normaliza a caixa — a diferença entre os dois é deliberada.
-        var tenant = Tenant.Register("  Acme Corp  ", SlugValido(), PlanoPadrao(), Instante);
+        var tenant = Tenant.Register("  Acme Corp  ", SlugValido(), PlanoPadrao(), EmailDoAdmin(), Instante);
 
         tenant.Name.Should().Be("Acme Corp");
     }
@@ -224,7 +353,7 @@ public sealed class TenantTests
     [Fact]
     public void Register_GuardaOInstanteDoRegistro()
     {
-        var tenant = Tenant.Register("Acme", SlugValido(), PlanoPadrao(), Instante);
+        var tenant = Tenant.Register("Acme", SlugValido(), PlanoPadrao(), EmailDoAdmin(), Instante);
 
         tenant.RegisteredAt.Should().Be(Instante);
     }
@@ -236,25 +365,10 @@ public sealed class TenantTests
         // aqui tira do chamador a obrigação de lembrar disso.
         DateTimeOffset emBrasilia = new(2026, 9, 25, 9, 0, 0, TimeSpan.FromHours(-3));
 
-        var tenant = Tenant.Register("Acme", SlugValido(), PlanoPadrao(), emBrasilia);
+        var tenant = Tenant.Register("Acme", SlugValido(), PlanoPadrao(), EmailDoAdmin(), emBrasilia);
 
         tenant.RegisteredAt.Offset.Should().Be(TimeSpan.Zero);
         tenant.RegisteredAt.Should().Be(emBrasilia);
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void MarkProvisioned_ComIdExternoVazio_Lanca(string idExterno)
-    {
-        // Sem esta guarda o tenant iria a Active com id externo em branco — indistinguível de "não
-        // provisionado" para o job de reconciliação, que compara tenants com as Organizations existentes.
-        Tenant tenant = TenantRegistrado();
-
-        Action provisionar = () => tenant.MarkProvisioned(idExterno);
-
-        provisionar.Should().Throw<ArgumentException>();
-        tenant.Status.Should().Be(TenantStatus.Pending);
     }
 
     private static TenantSlug SlugValido() => TenantSlug.Create("acme").Value;

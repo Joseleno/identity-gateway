@@ -13,14 +13,17 @@ namespace IdentityGateway.Application.Tenants.RegisterTenant;
 /// exige <c>tenant-admin</c> daquele tenant, que ainda não existiria.
 /// </para>
 /// <para>
-/// <b>Nesta versão o campo é validado e descartado</b>: o handler não o repassa ao <c>Tenant</c> nem ao evento
-/// <c>TenantRegistered</c>, e nada o persiste. Onde ele deve viver entre o <c>POST</c> e o convite é decisão pendente
-/// da fatia C (spec v2.4, §9.1): pô-lo no evento o levaria ao Outbox e ao RabbitMQ, contra a regra de dados pessoais
-/// só no Keycloak. A versão anterior deste comentário afirmava que o campo era "carregado" — não era.
+/// <b>O e-mail fica no tenant até a ativação (fatia C, D1)</b>, fora do evento <c>TenantRegistered</c>: o evento vai
+/// para o Outbox e, com o broker, para o RabbitMQ, contra a regra de dados pessoais só no Keycloak. A coluna é
+/// apagada na transação que ativa o tenant ou que o marca <c>ProvisioningFailed</c>.
 /// </para>
 /// </remarks>
 public sealed record RegisterTenantCommand(
     string Name,
     string Slug,
     string PlanCode,
-    string InitialAdminEmail) : ICommand<TenantId>;
+    string InitialAdminEmail) : ICommand<TenantId>
+{
+    /// <summary>Sem o e-mail nem o nome: o <c>ToString</c> gerado do record os imprimiria em qualquer log (D15).</summary>
+    public override string ToString() => $"RegisterTenantCommand {{ Slug = {Slug}, PlanCode = {PlanCode} }}";
+}

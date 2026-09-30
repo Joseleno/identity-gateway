@@ -3,6 +3,7 @@ using IdentityGateway.Infrastructure.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
 
@@ -32,6 +33,12 @@ internal static class KeycloakServiceCollectionExtensions
                 BaseUrlAceitavel,
                 "Keycloak:Admin:BaseUrl precisa ser uma URL absoluta https (http só com AllowInsecureHttp, em "
                 + "desenvolvimento).")
+            .Validate(
+                PublicBaseUrlAceitavel,
+                "Keycloak:Admin:PublicBaseUrl precisa ser uma URL absoluta http ou https, sem query nem fragmento.")
+            .Validate<IHostEnvironment>(
+                HttpSoEmDesenvolvimento,
+                "Keycloak:Admin: AllowInsecureHttp e PublicBaseUrl em http só são aceitos no ambiente Development.")
             .Validate(
                 GatewaySigningKey.TemExatamenteUmaFonte,
                 "Keycloak:Admin: informe exatamente um entre PrivateKeyPath e PrivateKeyPem.")
@@ -118,5 +125,32 @@ internal static class KeycloakServiceCollectionExtensions
 
         return endereco.Scheme == Uri.UriSchemeHttps
                || (endereco.Scheme == Uri.UriSchemeHttp && opcoes.AllowInsecureHttp);
+    }
+
+    private static bool PublicBaseUrlAceitavel(KeycloakAdminOptions opcoes)
+    {
+        if (string.IsNullOrWhiteSpace(opcoes.PublicBaseUrl))
+        {
+            return true;
+        }
+
+        return Uri.TryCreate(opcoes.PublicBaseUrl, UriKind.Absolute, out Uri? endereco)
+               && (endereco.Scheme == Uri.UriSchemeHttps || endereco.Scheme == Uri.UriSchemeHttp)
+               && string.IsNullOrEmpty(endereco.Query)
+               && string.IsNullOrEmpty(endereco.Fragment);
+    }
+
+    // O ambiente vem do contêiner (o host sempre registra IHostEnvironment); sem ele, a validação falha fechada.
+    private static bool HttpSoEmDesenvolvimento(KeycloakAdminOptions opcoes, IHostEnvironment ambiente)
+    {
+        if (ambiente.IsDevelopment())
+        {
+            return true;
+        }
+
+        bool publicoEmHttp = !string.IsNullOrWhiteSpace(opcoes.PublicBaseUrl)
+                             && !opcoes.PublicBaseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+        return !opcoes.AllowInsecureHttp && !publicoEmHttp;
     }
 }

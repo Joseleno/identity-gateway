@@ -131,7 +131,8 @@ jobs:
   # A promessa do M0 é "git clone + docker compose up funcionam na primeira tentativa". Verificada à mão, ela vale só
   # no dia em que alguém testou; aqui vale a cada PR. E o /health/ready da Api obtém o token do service account: um
   # verde aqui prova a geração das chaves, o import do realm, o banco do Keycloak e o private_key_jwt juntos — e o
-  # registro com provisionamento prova as migrations e o Outbox.
+  # registro com provisionamento prova as migrations e o Outbox. E o convite do admin inicial: o e-mail no mailpit e o
+  # link público que abre.
   #
   # `up ... api`, com o nome do serviço: o --wait espera a api ficar saudável e não tropeça nos one-shots, que
   # terminam de propósito. Seq e Jaeger não sobem aqui — a api não depende deles.
@@ -164,12 +165,18 @@ jobs:
           assinatura=$(printf '%s.%s' "$cabecalho" "$corpo" | openssl dgst -sha256 -hmac "chave-de-desenvolvimento-nao-use-em-producao" -binary | b64url)
           token="$cabecalho.$corpo.$assinatura"
 
+          # Únicos por execução: um e-mail já convidado cairia no D5 (e-mail em uso por outra conta), e a segunda
+          # execução sobre o mesmo volume quebraria. O + exercita o escape da busca no Keycloak.
+          sufixo=$(date +%s)
+          email="admin+$sufixo@acme.test"
+          echo "EMAIL_CONVIDADO=$email" >> "$GITHUB_ENV"
+
           resposta="$RUNNER_TEMP/resposta.json"
           cabecalhos="$RUNNER_TEMP/cabecalhos.txt"
           status=$(curl --silent --show-error --max-time 10 --output "$resposta" --dump-header "$cabecalhos" \
             --write-out '%{http_code}' -X POST http://localhost:8080/api/v1/tenants \
             -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
-            -d '{"name":"Acme","slug":"acme-ci","planCode":"free","initialAdminEmail":"admin@acme.com"}')
+            -d "{\"name\":\"Acme\",\"slug\":\"acme-ci-$sufixo\",\"planCode\":\"free\",\"initialAdminEmail\":\"$email\"}")
           if [ "$status" != "202" ]; then
             echo "POST /api/v1/tenants respondeu $status, esperado 202:"; cat "$resposta"; exit 1
           fi
@@ -182,9 +189,51 @@ jobs:
             provisionamento=$(curl --fail --silent --show-error --max-time 10 "$location" -H "Authorization: Bearer $token")
             echo "$provisionamento"
             if echo "$provisionamento" | grep -q '"status":"Active"'; then exit 0; fi
+            if echo "$provisionamento" | grep -q '"status":"ProvisioningFailed"'; then
+              echo "O tenant caiu em ProvisioningFailed."; exit 1
+            fi
             sleep 3
           done
           echo "O tenant não chegou a Active em 90 s."; exit 1
+
+      # O critério de sucesso do convite do admin inicial: o e-mail chega ao mailpit, com o link no endereço público, e
+      # o link abre. Lê o campo Text com jq (o HTML traz &amp;, e o JSON da API escapa o & como \u0026). Nunca imprime
+      # o link: ele troca a senha do convidado e carrega o e-mail no token. Exige ao menos uma mensagem, nunca
+      # exatamente uma — a entrega "pelo menos uma vez" pode mandar duas. O `tr -d '\r'` é inofensivo aqui e deixa o
+      # mesmo roteiro rodar com o jq do Windows, que emite CRLF.
+      - name: Conferir o convite no mailpit
+        run: |
+          busca="$RUNNER_TEMP/busca.json"
+          quantidade=0
+          for _ in $(seq 1 10); do
+            curl --fail --silent --show-error --max-time 10 -G \
+              --data-urlencode "query=to:\"$EMAIL_CONVIDADO\"" http://127.0.0.1:8025/api/v1/search -o "$busca"
+            quantidade=$(jq --arg para "$EMAIL_CONVIDADO" \
+              '[.messages[] | select(any(.To[]; .Address == $para))] | length' "$busca" | tr -d '\r')
+            if [ "$quantidade" -ge 1 ]; then break; fi
+            sleep 2
+          done
+          if [ "$quantidade" -lt 1 ]; then echo "Nenhum convite para $EMAIL_CONVIDADO no mailpit em 20 s."; exit 1; fi
+
+          id=$(jq -r --arg para "$EMAIL_CONVIDADO" \
+            '[.messages[] | select(any(.To[]; .Address == $para))][0].ID' "$busca" | tr -d '\r')
+          texto=$(curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:8025/api/v1/message/$id" \
+            | jq -r '.Text' | tr -d '\r')
+          link=$(printf '%s\n' "$texto" | grep -o 'http[^[:space:]]*/login-actions/action-token?key=[^[:space:]]*' | head -n 1)
+
+          prefixo='http://localhost:8081/realms/identity-gateway/login-actions/action-token?key='
+          case "$link" in
+            "$prefixo"*) ;;
+            *) echo "O link do convite não usa o endereço público: '${link%%\?*}'"; exit 1 ;;
+          esac
+
+          pagina="$RUNNER_TEMP/pagina.html"
+          status=$(curl --silent --show-error --max-time 10 --output "$pagina" --write-out '%{http_code}' "$link")
+          if [ "$status" != "200" ]; then echo "O link do convite respondeu $status, esperado 200."; exit 1; fi
+          if grep -q 'id="kc-error-message"' "$pagina" || ! grep -q 'id="kc-info-message"' "$pagina"; then
+            echo "O link abriu a página de erro ou de link expirado, e não a de ações."; exit 1
+          fi
+          echo "Convite no mailpit ($quantidade mensagem(ns)); o link público abriu a página de ações."
 
       # Derruba SEM apagar volumes e sobe de novo: prova que os one-shots são idempotentes — o migrate inclusive, sobre
       # um banco já migrado e com dados — e que o realm já importado continua casando com a chave que ficou no volume.
@@ -194,9 +243,14 @@ jobs:
           docker compose up -d --wait --wait-timeout 300 api
           curl --fail --silent --show-error --max-time 10 http://localhost:8080/health/ready
 
+      # A listagem do mailpit não traz o corpo: o link do convite fica fora do log da CI também na falha.
       - name: Logs em caso de falha
         if: failure()
-        run: docker compose logs --no-color
+        run: |
+          docker compose logs --no-color
+          echo "── mailpit: mensagens recebidas (destinatário, assunto, horário) ──"
+          curl --silent --max-time 10 http://127.0.0.1:8025/api/v1/messages \
+            | jq '[.messages[] | {para: [.To[].Address], assunto: .Subject, criado: .Created}]' || true
 
       - name: Limpar
         if: always()

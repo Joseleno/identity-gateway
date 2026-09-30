@@ -2,6 +2,7 @@ using IdentityGateway.Application.Common.Abstractions;
 using IdentityGateway.Application.Common.Messaging;
 using IdentityGateway.Domain.Common;
 using IdentityGateway.Domain.Tenants;
+using IdentityGateway.Domain.ValueObjects;
 
 namespace IdentityGateway.Application.Tenants.RegisterTenant;
 
@@ -38,6 +39,15 @@ public sealed class RegisterTenantHandler(
             return Result.Failure<TenantId>(slug.Error);
         }
 
+        // Validação barata antes da consulta ao banco. O validador do pipeline já recusou o e-mail malformado; aqui é
+        // a defesa de quem envia o command por outro caminho.
+        Result<Email> email = Email.Of(command.InitialAdminEmail);
+
+        if (email.IsFailure)
+        {
+            return Result.Failure<TenantId>(email.Error);
+        }
+
         if (await repositorio.SlugExistsAsync(slug.Value, cancellationToken))
         {
             return Result.Failure<TenantId>(TenantErrors.SlugInUse(slug.Value));
@@ -50,7 +60,7 @@ public sealed class RegisterTenantHandler(
             return Result.Failure<TenantId>(TenantErrors.UnknownPlan(command.PlanCode));
         }
 
-        var tenant = Tenant.Register(command.Name, slug.Value, plano, relogio.UtcNow);
+        var tenant = Tenant.Register(command.Name, slug.Value, plano, email.Value, relogio.UtcNow);
 
         repositorio.Add(tenant);
 

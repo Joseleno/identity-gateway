@@ -16,19 +16,33 @@ namespace IdentityGateway.Infrastructure.Identity.Keycloak;
 /// montado como arquivo não aparece em <c>docker inspect</c> nem em <c>/proc/*/environ</c>, e é assim que cofres e
 /// orquestradores entregam segredo. <see cref="PrivateKeyPem"/> existe para user-secrets e testes.
 /// </para>
+/// <para>
+/// <b>Endereço público e transporte são coisas diferentes (fatia C, D8).</b> O <c>aud</c> do assertion é o emissor
+/// público (<see cref="AssertionAudience"/>); o token endpoint e a Admin API são chamados pelo <see cref="BaseUrl"/>,
+/// que pode ser o endereço interno.
+/// </para>
 /// </remarks>
 internal sealed class KeycloakAdminOptions
 {
     /// <summary>Seção correspondente no arquivo de configuração.</summary>
     public const string SectionName = "Keycloak:Admin";
 
-    /// <summary>Endereço do Keycloak como a Gateway o alcança, com eventual prefixo de caminho.</summary>
+    /// <summary>Endereço do Keycloak como a Gateway o alcança (transporte), com eventual prefixo de caminho.</summary>
     /// <remarks>
-    /// Precisa ser <b>o mesmo</b> endereço que o Keycloak usa para calcular o próprio issuer: o <c>aud</c> do
-    /// assertion é derivado daqui. Em produção, igual ao <c>KC_HOSTNAME</c>.
+    /// O token endpoint e a Admin API derivam só daqui. Pode ser o endereço interno — <c>http://keycloak:8080</c> no
+    /// compose —, porque, com <c>KC_HOSTNAME_BACKCHANNEL_DYNAMIC</c>, o Keycloak responde por ele sem redirecionar.
     /// </remarks>
     [Required(ErrorMessage = "Keycloak:Admin:BaseUrl é obrigatório.")]
     public string BaseUrl { get; init; } = string.Empty;
+
+    /// <summary>Endereço público do Keycloak — o <c>KC_HOSTNAME</c>. Só alimenta o <c>aud</c>; nunca é discado.</summary>
+    /// <remarks>
+    /// Com <c>KC_HOSTNAME</c>, o Keycloak calcula o emissor pelo endereço público, mesmo com a requisição chegando pelo
+    /// interno, e compara o <c>aud</c> por igualdade de texto: <c>127.0.0.1</c> no lugar de <c>localhost</c> é recusado
+    /// com "Invalid token audience". Omitido, vale o <see cref="BaseUrl"/>, e nada muda para quem roda a API pela IDE
+    /// com <c>BaseUrl=http://localhost:8081</c>. Absoluto, sem query nem fragmento; <c>http</c> só em Development.
+    /// </remarks>
+    public string? PublicBaseUrl { get; init; }
 
     /// <summary>Realm da Gateway. Nunca o <c>master</c>.</summary>
     [Required(ErrorMessage = "Keycloak:Admin:Realm é obrigatório.")]
@@ -44,15 +58,20 @@ internal sealed class KeycloakAdminOptions
     /// <summary>A chave privada RSA em PEM, inline.</summary>
     public string? PrivateKeyPem { get; init; }
 
-    /// <summary>Permite <c>http://</c>. Ligado só no ambiente de desenvolvimento.</summary>
+    /// <summary>Permite <c>http://</c>. Aceito só no ambiente Development.</summary>
     /// <remarks>
     /// Fora do desenvolvimento, o assertion e o token do service account trafegariam em claro — e o token dá
-    /// <c>manage-organizations</c> sobre o realm inteiro.
+    /// <c>manage-organizations</c> e <c>manage-users</c> sobre o realm inteiro. A subida recusa a opção fora de
+    /// Development (fatia C): "o transporte pode ser interno" não é licença para <c>http</c> em produção.
     /// </remarks>
     public bool AllowInsecureHttp { get; init; }
 
-    /// <summary>Issuer do realm, sem barra final. É o <c>aud</c> do client assertion.</summary>
-    public string Issuer => $"{BaseUrl.TrimEnd('/')}/realms/{Realm}";
+    /// <summary>O <c>aud</c> do client assertion: o emissor público do realm, sem barra final.</summary>
+    public string AssertionAudience =>
+        $"{(string.IsNullOrWhiteSpace(PublicBaseUrl) ? BaseUrl : PublicBaseUrl).TrimEnd('/')}/realms/{Realm}";
+
+    /// <summary>URL do token endpoint, derivada só do <see cref="BaseUrl"/>.</summary>
+    public string TokenEndpoint => $"{BaseUrl.TrimEnd('/')}/realms/{Realm}/protocol/openid-connect/token";
 
     /// <summary>Endereço base dos clientes HTTP, com barra final.</summary>
     /// <remarks>

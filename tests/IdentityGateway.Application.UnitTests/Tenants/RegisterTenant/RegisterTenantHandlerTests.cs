@@ -110,4 +110,31 @@ public sealed class RegisterTenantHandlerTests
         resultado.Error.Code.Should().Be("Tenant.PlanoDesconhecido");
         _repositorio.DidNotReceive().Add(Arg.Any<Tenant>());
     }
+
+    [Fact]
+    public async Task ComandoValido_GuardaOEmailNormalizadoNoTenant()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        Tenant? capturado = null;
+        _repositorio.Add(Arg.Do<Tenant>(tenant => capturado = tenant));
+
+        await _handler.Handle(new RegisterTenantCommand("Acme", "acme", "free", "  Admin@Acme.COM "), ct);
+
+        capturado!.InitialAdminEmail!.Value.Should().Be("admin@acme.com");
+    }
+
+    [Fact]
+    public async Task EmailInvalido_DevolveValidationSemRegistrar()
+    {
+        // O validador recusa antes, no pipeline; o handler não confia nisso sozinho, porque o command pode chegar por
+        // outro caminho (um teste, um job) que não passe pelo ValidationBehavior.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+
+        Result<TenantId> resultado = await _handler.Handle(
+            new RegisterTenantCommand("Acme", "acme", "free", "a@b"), ct);
+
+        resultado.IsFailure.Should().BeTrue();
+        resultado.Error.Code.Should().Be("Email.Invalido");
+        _repositorio.DidNotReceive().Add(Arg.Any<Tenant>());
+    }
 }

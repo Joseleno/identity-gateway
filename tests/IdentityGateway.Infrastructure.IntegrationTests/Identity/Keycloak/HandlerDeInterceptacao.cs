@@ -28,9 +28,23 @@ internal sealed class Interceptacao
     /// <summary>Envia, descarta a resposta e lança — a resposta "se perdeu na rede".</summary>
     public Func<HttpRequestMessage, int, bool>? PerderResposta { get; init; }
 
+    /// <summary>Responde com esta resposta (com corpo) sem enviar ao Keycloak.</summary>
+    /// <remarks>
+    /// Para simular uma busca vazia (corrida do 409) ou um 500 do SMTP, que precisam de corpo ou de caminho — o
+    /// <see cref="ResponderSemEnviar"/> só devolve o status.
+    /// </remarks>
+    public Func<HttpRequestMessage, int, HttpResponseMessage?>? Responder { get; init; }
+
     public ConcurrentQueue<(HttpMethod Metodo, HttpStatusCode? Status)> Registro { get; } = new();
 
+    /// <summary>Método, caminho e status de cada chamada, na ordem.</summary>
+    public ConcurrentQueue<(HttpMethod Metodo, string Caminho, HttpStatusCode? Status)> Detalhes { get; } = new();
+
     public int Contar(HttpMethod metodo) => Registro.Count(chamada => chamada.Metodo == metodo);
+
+    public int Contar(HttpMethod metodo, string sufixoDoCaminho) =>
+        Detalhes.Count(chamada => chamada.Metodo == metodo
+                                  && chamada.Caminho.EndsWith(sufixoDoCaminho, StringComparison.Ordinal));
 
     public IEnumerable<HttpStatusCode?> Status(HttpMethod metodo) =>
         Registro.Where(chamada => chamada.Metodo == metodo).Select(chamada => chamada.Status);
@@ -57,7 +71,15 @@ internal sealed class HandlerDeInterceptacao(Interceptacao estado) : DelegatingH
         if (estado.ResponderSemEnviar?.Invoke(request, ordinal) is { } status)
         {
             estado.Registro.Enqueue((request.Method, status));
+            estado.Detalhes.Enqueue((request.Method, request.RequestUri!.AbsolutePath, status));
             return new HttpResponseMessage(status);
+        }
+
+        if (estado.Responder?.Invoke(request, ordinal) is { } pronta)
+        {
+            estado.Registro.Enqueue((request.Method, pronta.StatusCode));
+            estado.Detalhes.Enqueue((request.Method, request.RequestUri!.AbsolutePath, pronta.StatusCode));
+            return pronta;
         }
 
         if (estado.TrocarTokenPorLixo?.Invoke(request, ordinal) == true)
@@ -67,6 +89,7 @@ internal sealed class HandlerDeInterceptacao(Interceptacao estado) : DelegatingH
 
         HttpResponseMessage resposta = await base.SendAsync(request, cancellationToken);
         estado.Registro.Enqueue((request.Method, resposta.StatusCode));
+        estado.Detalhes.Enqueue((request.Method, request.RequestUri!.AbsolutePath, resposta.StatusCode));
 
         if (estado.PerderResposta?.Invoke(request, ordinal) == true)
         {

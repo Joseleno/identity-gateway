@@ -1,8 +1,15 @@
 # IdentityGateway — Documentação de Negócio
 
-> **Versão:** 1.2 · **Data:** 2026-09-24
-> **Fonte da verdade:** [`especificacao-arquitetural-v2.4.md`](especificacao-arquitetural-v2.4.md)
-> **Estado do projeto:** implementação em andamento — registro de tenant entregue; fundação Keycloak em curso.
+> **Versão:** 1.3 · **Data:** 2026-09-30
+> **Fonte da verdade:** [`especificacao-arquitetural-v2.6.md`](especificacao-arquitetural-v2.6.md)
+> **Estado do projeto:** implementação em andamento — registro de tenant, fundação Keycloak, consumidor do provisionamento e convite do admin inicial entregues.
+>
+> **Nota da versão 1.3.** Alinha à v2.6 os trechos que a fatia C (convite do admin inicial) tornou falsos: o
+> convidado nasce **habilitado**, não desabilitado; o e-mail do administrador inicial fica **temporariamente** no
+> banco da Gateway, até a ativação ou a falha do provisionamento (RN-019); o terceiro passo do provisionamento
+> ativa, reserva a vaga e registra o membro num commit só; o cancelamento de convite **revoga sessões**; e o prazo
+> do link de ações é definido pela Gateway e passado ao Keycloak em cada envio. As citações `§N` continuam
+> válidas.
 >
 > **Nota da versão 1.2.** Este documento foi derivado da v2.2. A v1.2 alinha à v2.4 os trechos que repetiam
 > premissas sobre o Keycloak que a implementação verificou serem falsas (feature flag de Organizations, `aud`
@@ -14,7 +21,7 @@ desenhado assim**. Ele é derivado da especificação arquitetural v2.2 e não a
 spec fixa contratos, assinaturas e código de referência, aqui a linguagem é de negócio, com
 âncoras técnicas para quem quiser descer ao detalhe.
 
-**Rastreabilidade.** Toda afirmação relevante cita sua origem: `§N` remete a uma seção da spec vigente (v2.4),
+**Rastreabilidade.** Toda afirmação relevante cita sua origem: `§N` remete a uma seção da spec vigente (v2.6),
 `ADR-00N` a uma decisão arquitetural, e `C*`, `A*`, `N*`, `X*` e `CI-*` aos achados da
 [`revisao-critica.md`](revisao-critica.md). Essa rastreabilidade é deliberada — a linha evolutiva
 dos documentos (ideia → v2.0 → revisão → v2.1 → v2.2) é parte do que o projeto demonstra.
@@ -64,7 +71,7 @@ A proposta de valor se resume em uma frase: **governança centralizada na defini
 
 O público direto do sistema são três perfis: o **provedor da plataforma** (platform-admin), que cria e administra a carteira de clientes; o **administrador de cada cliente corporativo** (tenant-admin), que gerencia os próprios membros, aplicações, permissões e federação sem abrir ticket para ninguém; e as **equipes de engenharia** que constroem as APIs de negócio, que ganham uma biblioteca pronta (`IdentityGateway.Client.AspNetCore`) em vez de reacertar, API por API, os detalhes de validação de token do Keycloak — detalhes que a própria especificação documenta como a origem mais comum de erro nessa integração (§12, §12.1).
 
-O valor de negócio aparece em três eixos. **Time-to-market:** registrar um novo cliente corporativo é uma chamada REST que provisiona a Organization no Keycloak, convida o administrador inicial e ativa o tenant, de forma assíncrona e idempotente, sem intervenção manual (§9.1). **Continuidade:** como a Gateway está fora do caminho crítico, a indisponibilidade dela não derruba logins nem o tráfego de negócio que depende só de papéis globais (§2.1, ADR-002). **Conformidade:** a Gateway guarda vínculos e governança, não dados pessoais — esses ficam no Keycloak — e implementa tanto o direito ao esquecimento por indivíduo (§9.5) quanto o encerramento de contrato por cliente inteiro (§9.8), que é o cenário em que a LGPD costuma ser invocada de fato.
+O valor de negócio aparece em três eixos. **Time-to-market:** registrar um novo cliente corporativo é uma chamada REST que provisiona a Organization no Keycloak, convida o administrador inicial e ativa o tenant, de forma assíncrona e idempotente, sem intervenção manual (§9.1). **Continuidade:** como a Gateway está fora do caminho crítico, a indisponibilidade dela não derruba logins nem o tráfego de negócio que depende só de papéis globais (§2.1, ADR-002). **Conformidade:** a Gateway guarda vínculos e governança, não dados pessoais — esses ficam no Keycloak, com uma exceção temporária e declarada: o e-mail do administrador inicial, apagado quando o tenant é ativado ou falha (RN-019) — e implementa tanto o direito ao esquecimento por indivíduo (§9.5) quanto o encerramento de contrato por cliente inteiro (§9.8), que é o cenário em que a LGPD costuma ser invocada de fato.
 
 Um ponto de honestidade que o próprio documento faz questão de registrar, e que vale ser lido como qualidade e não como fraqueza: o projeto **não elimina o ponto único de falha, ele o desloca**. Com o Keycloak fora do ar, nenhum login acontece e, decorridos os 5 minutos de vida do access token, o Data Plane inteiro para. O ADR-002 tira a Gateway do caminho crítico; ele não torna o sistema resiliente à queda do Keycloak (§2.1, §19). Registrar esse limite, em vez de vender resiliência que não existe, é parte do que o projeto se propõe a demonstrar.
 
@@ -254,7 +261,7 @@ graph LR
 
 | Capacidade | O que entrega | Quem usa |
 |---|---|---|
-| Registro de tenant com administrador inicial | `POST /tenants` exige `initialAdminEmail` e responde `202 Accepted` com recurso de status. O provisionamento executa três passos idempotentes — garante a Organization, garante o convite do admin como `tenant-admin`, marca `Active` — e o tenant **nasce operável por construção** (§8, §9.1) | Platform-admin |
+| Registro de tenant com administrador inicial | `POST /tenants` exige `initialAdminEmail` e responde `202 Accepted` com recurso de status. O provisionamento garante a Organization, convida o admin como `tenant-admin` — o Keycloak envia o e-mail — e só então, num commit só, marca `Active`, reserva a vaga do admin e registra o membro; o tenant **nasce operável por construção** (§8, §9.1) | Platform-admin |
 | Gestão de plano, limites e vagas | `Plan` como value object com `Tier`, `MaxUsers` e `MaxClients`. Contador de vagas protegido por concorrência otimista (`xmin`), com retry explícito em conflito (§6.1, §11.10) | Platform-admin (define), tenant-admin (consome) |
 | Suspensão e reativação com efeito real | Suspender **não é flag no banco**: marca `WasActiveBeforeSuspension`, desabilita os usuários no Keycloak e **revoga sessões ativas**. Reativar restaura apenas quem estava `Active` na suspensão (§9.7) | Platform-admin |
 | Encerramento de contrato | `DELETE /tenants/{tenantId}`, só a partir de `Suspended` e com step-up. Desabilita Organization e membros, marca `Terminated` (terminal), **sem remoção física** de dados do Keycloak (§6.2, §9.8) | Platform-admin |
@@ -513,9 +520,9 @@ entrada de auditoria sem valores de credencial, e ADR quando há decisão nova).
 | **Objetivo de negócio** | Dar entrada a um novo cliente na plataforma, já operável — com um administrador capaz de convidar os demais. |
 | **Ator** | `platform-admin` (`POST /tenants`, §8) |
 | **Pré-condições** | Slug ainda não utilizado; `initialAdminEmail` informado; plano válido no catálogo. |
-| **Regras de negócio** | O slug é **único e imutável** — vira o *alias* da Organization no Keycloak e permanece reservado mesmo após o encerramento (§6.1, §9.8). `initialAdminEmail` é **obrigatório** (C9): sem ele o tenant nasceria trancado, porque criar tenant é ato de `platform-admin` mas convidar membro exige `tenant-admin` *daquele* tenant, e o platform-admin não satisfaz a verificação de tenant da §11.7. O tenant nasce em `Pending`; o provisionamento no Keycloak é **assíncrono** e idempotente, em três passos: garantir a Organization (com o atributo `gateway_tenant_id`), garantir o convite do admin inicial já com o papel `tenant-admin`, e só então marcar `Active` (§9.1). Nenhuma chamada ao Keycloak acontece dentro da transação do comando (anti-pattern 6, §17). |
+| **Regras de negócio** | O slug é **único e imutável** — vira o *alias* da Organization no Keycloak e permanece reservado mesmo após o encerramento (§6.1, §9.8). `initialAdminEmail` é **obrigatório** (C9): sem ele o tenant nasceria trancado, porque criar tenant é ato de `platform-admin` mas convidar membro exige `tenant-admin` *daquele* tenant, e o platform-admin não satisfaz a verificação de tenant da §11.7. O tenant nasce em `Pending`; o provisionamento no Keycloak é **assíncrono** e idempotente, em três passos: garantir a Organization (com o atributo `gateway_tenant_id`), garantir o convite do admin inicial já com o papel `tenant-admin` — o Keycloak cria o usuário e envia o e-mail —, e só então, num commit só, marcar `Active`, reservar a vaga do admin e registrar o membro em `Invited` (§9.1). Entre o `POST` e a ativação, o `initialAdminEmail` fica guardado no tenant, fora do evento, e é apagado quando o tenant é ativado ou falha (RN-019). Sem vaga livre no plano, o provisionamento falha antes de tocar o Keycloak. Nenhuma chamada ao Keycloak acontece dentro da transação do comando (anti-pattern 6, §17). |
 | **Pós-condições** | Tenant gravado em `Pending` e evento no Outbox, na **mesma transação** (ADR-006). Resposta `202 Accepted` com `Location` para o recurso de status do provisionamento. Ao final: tenant `Active` e um `tenant-admin` convidado, ocupando uma vaga do plano. |
-| **Erros de negócio** | Slug já em uso; plano inexistente; `initialAdminEmail` ausente ou inválido. Se os retries do provisionamento se esgotarem, o tenant vai para `ProvisioningFailed` e o evento fica disponível para retry manual — o registro **não** é desfeito. |
+| **Erros de negócio** | Slug já em uso; plano inexistente; `initialAdminEmail` ausente ou inválido. Se os retries do provisionamento se esgotarem, o tenant vai para `ProvisioningFailed` e o evento fica disponível para retry manual — o registro **não** é desfeito. Um `initialAdminEmail` já em uso por outra conta do Keycloak também leva a `ProvisioningFailed`: a mesma pessoa não administra dois tenants (ADR-009). O retry manual, quando existir, recebe o e-mail de novo, o que também corrige um e-mail digitado errado (§9.1). |
 
 > Valor demonstrável: com o Keycloak parado, `POST /tenants` continua respondendo `202`; quando
 > o Keycloak volta, o tenant vira `Active` sozinho. É a demonstração nº 1 do README (§16).
@@ -599,7 +606,7 @@ entrada de auditoria sem valores de credencial, e ADR quando há decisão nova).
 | **Ator** | `tenant-admin` do próprio tenant (`POST /tenants/{tenantId}/members`) |
 | **Pré-condições** | Tenant em `Active`; vaga disponível no plano. |
 | **Regras de negócio** | **A vaga é reservada no convite** — `Invited` já ocupa (decisão 2 do brainstorm, N5 da revisão). Reservar só na ativação permitiria que N convites simultâneos estourassem o plano no aceite, e o aceite chega pelo polling do ADR-007, tarde demais para recusar. Consequência direta: **a expiração de convite passa a ser obrigatória**, senão um convite nunca aceito travaria a vaga para sempre. A criação **não define senha** (ADR-003): o Keycloak envia ao usuário um e-mail de ações obrigatórias (`UPDATE_PASSWORD`, `VERIFY_EMAIL`). Duas reservas simultâneas não ultrapassam o limite — o contador é protegido por concorrência otimista e o conflito é reprocessado por retry explícito (§6.1, §11.10). |
-| **Pós-condições** | Membro em `Invited` com `InvitedAt`; uma vaga a mais ocupada; usuário garantido no Keycloak (desabilitado, com as *required actions*) e vinculado à Organization; evento `MemberInvited`. O ciclo completo do convite — aceite, expiração, reenvio e cancelamento — está na §9.9. |
+| **Pós-condições** | Membro em `Invited` com `InvitedAt`; uma vaga a mais ocupada; usuário garantido no Keycloak (**habilitado e sem senha**, com as *required actions* — a senha só existe depois que a pessoa a define pelo link) e vinculado à Organization; evento `MemberInvited`. O ciclo completo do convite — aceite, expiração, reenvio e cancelamento — está na §9.9. |
 | **Erros de negócio** | Tenant não `Active`; **limite de vagas do plano atingido**; e-mail já convidado ou já membro; conflito de concorrência persistente após os retries → `409 Conflict` (§11.10). |
 
 ---
@@ -624,8 +631,8 @@ entrada de auditoria sem valores de credencial, e ADR quando há decisão nova).
 | **Objetivo de negócio** | Desfazer um convite enviado por engano e **devolver a vaga ao plano** imediatamente. |
 | **Ator** | `tenant-admin` (`DELETE .../members/{memberId}/invite`) |
 | **Pré-condições** | Membro em `Invited`. |
-| **Regras de negócio** | O cancelamento leva ao estado **`Revoked`** (§9.9, I-2), não a `Expired` nem a `Erased`: `Revoked` é **ação humana deliberada do administrador**, enquanto `Expired` é decurso de prazo e `Erased` é apagamento LGPD com anonimização — colapsá-los perderia a distinção na auditoria. O usuário é desabilitado no Keycloak. A liberação da vaga é **consequência da transição efetiva de estado**, nunca uma chamada solta (§6.1, C5): cancelar um convite já cancelado não decrementa o contador de novo. De `Revoked`, um novo convite é um **novo membro**, com nova reserva de vaga. |
-| **Pós-condições** | Membro em `Revoked`; usuário desabilitado no Keycloak; vaga liberada exatamente uma vez. |
+| **Regras de negócio** | O cancelamento leva ao estado **`Revoked`** (§9.9, I-2), não a `Expired` nem a `Erased`: `Revoked` é **ação humana deliberada do administrador**, enquanto `Expired` é decurso de prazo e `Erased` é apagamento LGPD com anonimização — colapsá-los perderia a distinção na auditoria. O usuário é desabilitado no Keycloak **e suas sessões são revogadas**: ele nasce habilitado e pode já ter definido a senha pelo link antes de o aceite chegar à Gateway (§9.9). A liberação da vaga é **consequência da transição efetiva de estado**, nunca uma chamada solta (§6.1, C5): cancelar um convite já cancelado não decrementa o contador de novo. De `Revoked`, um novo convite é um **novo membro**, com nova reserva de vaga. |
+| **Pós-condições** | Membro em `Revoked`; usuário desabilitado no Keycloak e sem sessões; vaga liberada exatamente uma vez. |
 | **Erros de negócio** | Membro fora de `Invited`; `memberId` de outro tenant → `404`. |
 
 ---
@@ -636,9 +643,9 @@ entrada de auditoria sem valores de credencial, e ADR quando há decisão nova).
 |---|---|
 | **Objetivo de negócio** | Garantir que uma vaga paga não fique presa indefinidamente a um convite nunca aceito. |
 | **Ator** | Processo automático: **job periódico da própria Gateway** (§9.9) — não há ator humano. |
-| **Pré-condições** | Membro em `Invited` com `InvitedAt` além do prazo. O prazo é **configurável por tenant, com padrão de 7 dias**, e deve ser alinhado ao tempo de vida do link de ações do Keycloak — um link ainda válido para um membro já `Expired` produziria um aceite sem vaga reservada (§9.9). |
+| **Pré-condições** | Membro em `Invited` com `InvitedAt` além do prazo. O prazo é **configurável por tenant, com padrão de 7 dias**, e o tempo de vida do link de ações é definido pela própria Gateway — uma política de convite, com padrão de 7 dias — e passado ao Keycloak em cada envio, alinhado a esse prazo. Como o usuário nasce habilitado, a expiração também o **desabilita** no Keycloak: um link ainda válido para um membro já `Expired` produziria um aceite sem vaga reservada (§9.9). |
 | **Regras de negócio** | Esta funcionalidade é **pré-requisito**, não extra: existe porque `Invited` ocupa vaga (N5 → N7, RN-027). **O job vive na Gateway, não no Keycloak** (§9.9): quem libera a vaga tem de ser quem controla o contador. Derivar a expiração de um evento do Keycloak amarraria uma regra de plano à configuração de realm e dependeria do polling do ADR-007 — que a decisão 2 do brainstorm já considerou tarde demais para o aceite, pelo mesmo motivo. |
-| **Pós-condições** | Membro em `Expired`; vaga liberada; evento `MemberInviteExpired`. |
+| **Pós-condições** | Membro em `Expired`; usuário desabilitado no Keycloak; vaga liberada; evento `MemberInviteExpired`. |
 | **Erros de negócio** | Não aplicável — processo interno; divergências de contador são detectadas pelo job de reconciliação de vagas (§9.1). |
 
 ---
@@ -917,8 +924,8 @@ stateDiagram-v2
 | **`Invited`** | O convite foi enviado; o Keycloak mandou o e-mail de ações obrigatórias (`UPDATE_PASSWORD`, `VERIFY_EMAIL`). A pessoa ainda não entrou. | **Sim** — reservada no convite. | Aceite (→ `Active`), vencimento do prazo (→ `Expired`), cancelamento pelo admin (→ `Revoked`), ou exclusão definitiva. |
 | **`Active`** | A pessoa tem acesso. Pode receber papéis e permission sets. | Sim. | Desativação, ou exclusão definitiva. |
 | **`Deactivated`** | O acesso foi cortado: usuário desabilitado no Keycloak, sessões revogadas. O vínculo e o histórico permanecem. | **Não** — a vaga foi liberada. | Reativação (**sujeita a vaga disponível**), ou exclusão definitiva. |
-| **`Expired`** | O convite venceu sem aceite: o **job de expiração da Gateway** (§9.9) transicionou o membro ao passar do prazo. A vaga voltou ao plano automaticamente. | Não. | Novo convite (novo membro) ou exclusão definitiva. |
-| **`Revoked`** | O administrador **cancelou** o convite antes do aceite (`DELETE .../members/{memberId}/invite`, §9.9). O usuário é desabilitado no Keycloak e a vaga volta ao plano. | Não. | Novo convite (novo membro) ou exclusão definitiva. |
+| **`Expired`** | O convite venceu sem aceite: o **job de expiração da Gateway** (§9.9) transicionou o membro ao passar do prazo e desabilitou o usuário no Keycloak. A vaga voltou ao plano automaticamente. | Não. | Novo convite (novo membro) ou exclusão definitiva. |
+| **`Revoked`** | O administrador **cancelou** o convite antes do aceite (`DELETE .../members/{memberId}/invite`, §9.9). O usuário é desabilitado no Keycloak, suas sessões são revogadas e a vaga volta ao plano. | Não. | Novo convite (novo membro) ou exclusão definitiva. |
 | **`Erased`** | **Terminal.** Exclusão definitiva por LGPD art. 18: o usuário foi removido do Keycloak e o `ExternalUserId` substituído por um valor anônimo. | Não. | Não há saída. |
 
 **Três desfechos sem aceite, e a diferença entre eles importa** (§9.9, I-2). `Expired`, `Revoked`
@@ -1048,8 +1055,10 @@ não ter limite, porque o comercial o vende como se valesse.
 Um job periódico **da Gateway** varre os membros `Invited` cujo `InvitedAt` excedeu o prazo do
 tenant — **configurável, padrão de 7 dias** — transiciona para `Expired`, libera a vaga e publica
 `MemberInviteExpired` (§9.9). O reenvio reinicia `InvitedAt`, prorrogando a vaga já ocupada. O
-prazo deve ser **alinhado ao tempo de vida do link de ações do Keycloak**: um link ainda válido
-para um membro já `Expired` produziria um aceite sem vaga reservada.
+prazo do link de ações é **definido pela Gateway** (política de convite, padrão de 7 dias) e passado ao
+Keycloak em cada envio, alinhado ao prazo do convite; e a expiração desabilita o usuário no Keycloak,
+que nasce habilitado — um link ainda válido para um membro já `Expired` produziria um aceite sem vaga
+reservada.
 *Quando violada* (expiração derivada de evento do Keycloak, em vez do job): quem libera a vaga
 deixaria de ser quem controla o contador, e uma regra de plano ficaria amarrada à configuração de
 realm e à latência do polling do ADR-007 (§9.9).
@@ -1129,6 +1138,11 @@ Guardá-lo por 24h faria a Gateway persistir exatamente o segredo que ela diz n�
 **RN-019 — Dados pessoais ficam no Keycloak; a Gateway guarda vínculo e governança.**
 Nome, e-mail e telefone não vivem no banco da Gateway, que guarda o identificador do usuário
 (`sub`) e os dados de governança (§6). Isso limita o impacto de um eventual vazamento.
+**Exceção declarada e limitada** (§6, §10.3): o e-mail do administrador inicial fica guardado no
+tenant entre o `POST /tenants` e o convite, fora do evento, e é apagado na mesma transação que ativa
+o tenant ou que o marca `ProvisioningFailed` — só existe em tenant `Pending`, e nenhuma resposta o
+expõe. O apagamento é lógico: cópias de segurança e registros internos do banco guardam o valor pela
+retenção deles. O e-mail também não vai a log, mensagem de erro nem resposta.
 *Quando violada:* o banco da Gateway entra no escopo mais sensível de compliance.
 
 **RN-020 — A exclusão definitiva preserva a ação, não a identidade.**
@@ -1449,9 +1463,10 @@ sequenceDiagram
     CONS->>KC: "Passo 1: garante a Organization"
     Note over CONS,KC: "Consulta por gateway_tenant_id antes de criar"
     KC-->>CONS: "organizationId"
-    CONS->>KC: "Passo 2: garante o convite do admin inicial com papel tenant-admin"
-    KC-->>CONS: "convite registrado"
-    CONS->>PG: "Passo 3: grava organizationId e marca Tenant como Active"
+    CONS->>KC: "Passo 2: garante o usuario do admin, o vinculo, o papel tenant-admin e o e-mail"
+    Note over CONS,KC: "Usuario habilitado, sem senha, correlacionado pelo atributo tenant_id"
+    KC-->>CONS: "sub do admin"
+    CONS->>PG: "Passo 3, num commit so: Active, vaga do admin, membro Invited, e-mail apagado"
     APP->>GW: "GET do recurso de status (polling opcional)"
     GW-->>APP: "Active"
 ```
@@ -1461,15 +1476,21 @@ sequenceDiagram
 1. **A aplicação pede a criação do tenant.** `POST /tenants` exige `initialAdminEmail` (§9.1). Esse campo
    não é burocracia: sem ele o tenant nasceria trancado.
 2. **A Gateway grava o tenant em `Pending` e o evento no Outbox, na mesma transação** (ADR-006, §11.4).
-   Nada é enviado ao Keycloak neste momento. Se a transação falhar, não sobra nem tenant nem evento.
+   Nada é enviado ao Keycloak neste momento. Se a transação falhar, não sobra nem tenant nem evento. O
+   `initialAdminEmail` fica numa coluna do tenant, **fora do evento**, e é apagado quando o tenant é ativado
+   ou falha (RN-019).
 3. **A resposta é `202 Accepted`, não `201 Created`** (ADR-006). O recurso ainda não está pronto; o
    `Location` aponta para um recurso de status que o cliente pode consultar. Isso é honestidade de
    contrato: prometer `201` seria mentir sobre um trabalho que ainda vai acontecer.
 4. **O consumidor executa três passos idempotentes** (§9.1, §11.5). Idempotente aqui quer dizer "garanta
    que existe": se a mensagem for entregue duas vezes, o segundo processamento não duplica nada.
    1. garante a Organization, gravando nela o atributo `gateway_tenant_id` com o `TenantId` da Gateway;
-   2. garante o convite do `initialAdminEmail` já com o papel `tenant-admin`;
-   3. marca o tenant `Active`.
+   2. garante o convite do `initialAdminEmail` já com o papel `tenant-admin`: o Keycloak cria o usuário
+      habilitado e sem senha, vincula-o à Organization, atribui o papel e envia o e-mail de ações
+      obrigatórias — só se o convite ainda não foi aceito;
+   3. num commit só, marca o tenant `Active`, reserva a vaga do admin, registra o membro em `Invited` e
+      apaga o e-mail guardado. Antes do passo 1, um tenant sem vaga livre no plano falha sem tocar o
+      Keycloak.
 5. **Por que o admin inicial nasce junto.** `POST /tenants` é operação de `platform-admin`, mas convidar
    membros exige `tenant-admin` *daquele tenant* — que ainda não existiria (§9.1). A alternativa seria abrir
    uma exceção de platform-admin no mecanismo de isolamento da §11.7. Criar o admin junto do tenant
@@ -1951,7 +1972,7 @@ sequenceDiagram
 
     ADM->>GW: "convida membro"
     GW->>GW: "reserva a vaga, grava InvitedAt, membro nasce Invited"
-    GW->>KC: "cria usuario desabilitado com required actions"
+    GW->>KC: "cria usuario habilitado e sem senha, com required actions"
     KC->>USR: "e-mail de acoes obrigatorias"
 
     alt "Aceite"
@@ -1970,7 +1991,8 @@ sequenceDiagram
         ADM->>GW: "DELETE do convite, so aceito em Invited"
         GW->>GW: "membro passa a Revoked, libera a vaga"
         GW->>KC: "desabilita o usuario"
-        Note over GW,KC: "Nao ha sessao a revogar, o usuario nunca autenticou"
+        GW->>KC: "revoga as sessoes"
+        Note over GW,KC: "O usuario nasce habilitado e pode ter definido a senha antes de o aceite chegar"
     end
 
     Note over GW,JOB: "Expired e decurso de prazo, Revoked e acao humana do admin"
@@ -1979,26 +2001,31 @@ sequenceDiagram
 #### Passo a passo
 
 1. **O convite reserva a vaga na hora** (§9.9, §6.1). `POST /tenants/{tenantId}/members` cria o usuário no
-   Keycloak **desabilitado**, com as *required actions* `UPDATE_PASSWORD` e `VERIFY_EMAIL`, dispara o e-mail
+   Keycloak **habilitado e sem senha**, com as *required actions* `UPDATE_PASSWORD` e `VERIFY_EMAIL` — nascer
+   desabilitado não funciona, porque o Keycloak recusa o envio e o clique de usuário desabilitado (v2.6) —,
+   dispara o e-mail
    e grava `InvitedAt`. Reservar só na ativação permitiria que N convites simultâneos estourassem o plano no
    aceite — e o aceite chega pelo polling do ADR-007, tarde demais para recusar.
-2. **O aceite não cria reserva nova.** A pessoa define a senha no Keycloak, o evento chega pela sincronização
+2. **O aceite não cria reserva nova.** A pessoa define a senha e informa nome e sobrenome no Keycloak, o evento chega pela sincronização
    do ADR-007 e o membro passa a `Active`. A vaga apenas deixa de ser provisória. É exatamente por isso que
    **o aceite não pode falhar por limite de plano** (§6.1) — o que seria péssimo: a pessoa já recebeu o
    convite, já escolheu a senha, e o erro apareceria no pior momento possível.
 3. **A expiração roda por job da Gateway** (§9.9, RN-027). O job varre os membros `Invited` cujo `InvitedAt`
    excedeu o prazo, transiciona para `Expired`, libera a vaga e publica `MemberInviteExpired`. O prazo é
    **configurável por tenant, com padrão de 7 dias**.
-4. **O prazo precisa estar alinhado ao link do Keycloak.** Um link de ações ainda válido para um membro já
-   `Expired` produziria um aceite sem vaga reservada — a pessoa entraria por uma porta que a Gateway já
-   fechou no contador.
+4. **O prazo do link é da Gateway, e a expiração desabilita o usuário.** A Gateway define o tempo de vida do
+   link de ações (política de convite, padrão de 7 dias) e o passa ao Keycloak em cada envio, alinhado ao
+   prazo do convite. Como o usuário nasce habilitado, a expiração também o desabilita no Keycloak: senão, um
+   link ainda válido para um membro já `Expired` produziria um aceite sem vaga reservada — a pessoa entraria
+   por uma porta que a Gateway já fechou no contador.
 5. **Por que o job vive na Gateway, e não no Keycloak** (§9.9). Quem libera a vaga tem de ser quem controla o
    contador. Derivar a expiração de um evento do Keycloak amarraria uma regra de plano à configuração de
    realm e dependeria do polling do ADR-007 — tarde demais, pelo mesmo motivo do passo 1.
 6. **O reenvio reinicia `InvitedAt`** (§9.9, F-08). Redispara o e-mail e prorroga a vaga já ocupada; só é
    aceito em `Invited`. É o ticket de suporte mais comum de qualquer plataforma multi-tenant (N7), e existe
    por necessidade do modelo de vagas, não como conveniência.
-7. **O cancelamento leva a `Revoked`** (§9.9, I-2), libera a vaga e desabilita o usuário no Keycloak. Só é
+7. **O cancelamento leva a `Revoked`** (§9.9, I-2), libera a vaga, desabilita o usuário no Keycloak e revoga
+   as sessões dele. Só é
    aceito em `Invited`.
 8. **Os três desfechos sem aceite são distintos.** `Expired` é decurso de prazo, `Revoked` é ação humana
    deliberada do administrador, e `Erased` é apagamento LGPD com anonimização do `ExternalUserId` (§9.5).
@@ -2271,7 +2298,7 @@ Em volta desses dois planos ficam quatro peças de infraestrutura:
 | Peça | Papel |
 |---|---|
 | **Keycloak 26.x** | Único dono de credenciais e único emissor de tokens. Cada tenant é uma *Organization* dentro de um realm compartilhado (ADR-001) |
-| **PostgreSQL** | Banco de governança da Gateway. Guarda vínculos e regras — **nunca** dados pessoais nem senhas (§6, §10.3) |
+| **PostgreSQL** | Banco de governança da Gateway. Guarda vínculos e regras — **nunca** senhas, e dados pessoais só na exceção temporária do e-mail do administrador inicial, apagado na ativação ou na falha do provisionamento (§6, §10.3, RN-019) |
 | **RabbitMQ** | Transporte dos eventos de integração publicados pelo Outbox, e canal de invalidação de cache de permissões (ADR-006, §9.6) |
 | **`Client.AspNetCore`** | Pacote que as APIs consumidoras instalam: validação de token, resolução de permissões finas com cache e degradação controlada |
 
@@ -2434,7 +2461,7 @@ A fronteira é única e fácil de enunciar: **o Keycloak é dono de tudo que pro
 
 #### Por que a fronteira foi desenhada aqui
 
-**Primeiro: reduzir o valor do alvo.** Dados pessoais — nome, e-mail, telefone — ficam no Keycloak. A Gateway guarda apenas o identificador do usuário (`sub`) e os dados de governança (§6). Um vazamento do banco da Gateway expõe vínculos e regras, não identidades nem credenciais. Isso também mantém o banco fora do escopo mais sensível de compliance LGPD (ADR-003).
+**Primeiro: reduzir o valor do alvo.** Dados pessoais — nome, e-mail, telefone — ficam no Keycloak. A Gateway guarda apenas o identificador do usuário (`sub`) e os dados de governança (§6) — com uma única exceção, o e-mail do administrador inicial, guardado no tenant só enquanto ele está `Pending` e apagado na ativação ou na falha (RN-019). Um vazamento do banco da Gateway expõe vínculos e regras, não identidades nem credenciais. Isso também mantém o banco fora do escopo mais sensível de compliance LGPD (ADR-003).
 
 **Segundo: não competir com o IdP.** Reimplementar hash de senha, MFA ou rotação de token é trabalho já resolvido pelo Keycloak, e mal resolvido custa caro. A Gateway assume o que o Keycloak **não** faz: o conceito de plano contratado, limite de vagas, ciclo de vida do tenant e permissões customizáveis por cliente.
 
@@ -2620,7 +2647,9 @@ flowchart LR
     C --> N["Documentacao de negocio<br/>v1.0"]
     N --> D["Especificação v2.2"]
     D --> E["Especificação v2.3<br/>reconcilia com o CleanStart"]
-    E --> F["Especificação v2.4<br/>VIGENTE"]
+    E --> F["Especificação v2.4<br/>corrige premissas do Keycloak"]
+    F --> G["Especificação v2.5<br/>consumidor do provisionamento"]
+    G --> H["Especificação v2.6<br/>VIGENTE"]
 
     A -.->|"deixa em aberto:<br/>realm vs. Organizations,<br/>mappers vs. enriquecimento"| B
     B -.->|"deixa em aberto:<br/>claim tenant_id, IDOR de<br/>sub-recurso, gate estreito"| R
@@ -2628,6 +2657,7 @@ flowchart LR
     C -.->|"deixa em aberto:<br/>clients na suspensao, ciclo do<br/>convite, suspensao parcial"| N
     N -.->|"nenhum ADR revogado"| D
     E -.->|"a implementacao le o codigo<br/>do Keycloak e corrige premissas"| F
+    G -.->|"a fatia C le o codigo do Keycloak:<br/>o convidado nasce habilitado"| H
 ```
 
 #### O que mudou em cada salto
@@ -2653,7 +2683,9 @@ Este documento não foi apenas derivado da spec — ao percorrê-la inteira em b
 
 **v2.3 → v2.4: a implementação devolve à spec o que o código do Keycloak desmentiu.** Ao construir a fundação Keycloak, a leitura do código-fonte da versão fixada (26.7.4) mostrou que quatro premissas da spec estavam erradas — a feature flag de Organizations, o parâmetro de busca, o destinatário do client assertion e a validade dele — e duas armadilhas que a spec nem mencionava (o identificador da chave e o reuso da prova). A v2.4 corrige todas; **nenhum ADR foi revogado**. É o mesmo movimento da v2.2, um nível abaixo: lá, escrever para outro público revisou a spec; aqui, executar a revisou.
 
-**Como ler os documentos.** A **v2.4 é a fonte da verdade** — é a única aprovada para implementação. Da v2.0 à v2.3, as versões são preservadas como estavam, **intocadas**, porque o valor delas agora é mostrar a evolução; e a revisão crítica é o registro do que produziu a v2.1. O documento de origem mostra de onde tudo partiu.
+**v2.4 → v2.5 → v2.6: cada fatia devolve à spec o que a execução verificou.** A v2.5 registrou o consumidor do provisionamento: transporte em processo até a fatia do broker e a decisão de desistir no próprio handler. A v2.6 registrou o convite do administrador inicial e duas erratas — o convidado nasce **habilitado**, porque o Keycloak recusa enviar o e-mail e aceitar o clique de um usuário desabilitado, e o destinatário do client assertion é o endereço público do Keycloak, não o de transporte —, além de uma exceção declarada e limitada à regra de dados pessoais (RN-019). **Nenhum ADR foi revogado.**
+
+**Como ler os documentos.** A **v2.6 é a fonte da verdade** — é a única aprovada para implementação. Da v2.0 à v2.5, as versões são preservadas como estavam, **intocadas**, porque o valor delas agora é mostrar a evolução; e a revisão crítica é o registro do que produziu a v2.1. O documento de origem mostra de onde tudo partiu.
 
 ---
 
