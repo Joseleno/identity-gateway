@@ -7,10 +7,11 @@ namespace IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 internal static class OpcoesDeTeste
 {
     public static IOptions<KeycloakAdminOptions> Keycloak(
-        string baseUrl = "http://keycloak.test:8080", string? pem = null) =>
+        string baseUrl = "http://keycloak.test:8080", string? pem = null, string? publicBaseUrl = null) =>
         Options.Create(new KeycloakAdminOptions
         {
             BaseUrl = baseUrl,
+            PublicBaseUrl = publicBaseUrl,
             Realm = "identity-gateway",
             ClientId = "identity-gateway",
             PrivateKeyPem = pem ?? ChavesDeTeste.Gerar().PemPrivado,

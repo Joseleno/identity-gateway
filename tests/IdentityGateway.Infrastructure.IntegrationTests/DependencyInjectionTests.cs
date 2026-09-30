@@ -47,6 +47,7 @@ public sealed class DependencyInjectionTests
     {
         ServiceCollection services = new();
         services.AddLogging();
+        services.ComAmbiente();
         services.AddInfrastructure(configuration);
 
         return services.BuildServiceProvider(validateScopes: true);

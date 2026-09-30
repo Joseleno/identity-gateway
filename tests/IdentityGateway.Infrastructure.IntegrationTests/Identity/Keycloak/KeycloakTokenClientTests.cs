@@ -28,9 +28,9 @@ public sealed class KeycloakTokenClientTests
                 "application/json"),
         };
 
-    private static KeycloakTokenClient Criar(HandlerFalso handler)
+    private static KeycloakTokenClient Criar(HandlerFalso handler, string? publicBaseUrl = null)
     {
-        IOptions<KeycloakAdminOptions> opcoes = OpcoesDeTeste.Keycloak();
+        IOptions<KeycloakAdminOptions> opcoes = OpcoesDeTeste.Keycloak(publicBaseUrl: publicBaseUrl);
         IDateTimeProvider relogio = Substitute.For<IDateTimeProvider>();
         relogio.UtcNow.Returns(DateTimeOffset.UtcNow);
 
@@ -141,6 +141,7 @@ public sealed class KeycloakTokenClientTests
 
         ServiceCollection services = new();
         services.AddLogging();
+        services.ComAmbiente();
         services.AddSingleton(Substitute.For<IDateTimeProvider>());
         services.AddOptions<IdentityGateway.Infrastructure.Configuration.HttpResilienceOptions>();
         services.AddKeycloakIdentity(configuracao);
@@ -153,5 +154,23 @@ public sealed class KeycloakTokenClientTests
 
         await obter.Should().ThrowAsync<HttpRequestException>();
         handler.Chamadas.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ObterAsync_ComPublicBaseUrl_ContinuaChamandoOBaseUrl()
+    {
+        // D8: o PublicBaseUrl nunca é discado. Chamado de dentro do container, localhost:8081 seria o próprio container.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        Uri? destino = null;
+
+        HandlerFalso handler = new((pedido, _) =>
+        {
+            destino = pedido.RequestUri;
+            return Task.FromResult(TokenOk());
+        });
+
+        await Criar(handler, publicBaseUrl: "http://publico.test:8081").ObterAsync(ct);
+
+        destino.Should().Be(new Uri("http://keycloak.test:8080/realms/identity-gateway/protocol/openid-connect/token"));
     }
 }

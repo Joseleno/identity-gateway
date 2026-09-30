@@ -142,4 +142,19 @@ public sealed class ClientAssertionFactoryTests
             chaveB.Dispose();
         }
     }
+
+    [Fact]
+    public void Criar_ComPublicBaseUrl_AudEOEmissorPublico()
+    {
+        // Literal, e não recalculado pela fórmula: o aud é o KC_HOSTNAME, e o BaseUrl interno não aparece nele.
+        IOptions<KeycloakAdminOptions> opcoes = OpcoesDeTeste.Keycloak(
+            "http://keycloak:8080", _chaves.PemPrivado, publicBaseUrl: "http://keycloak.test:8081");
+        IDateTimeProvider relogio = Substitute.For<IDateTimeProvider>();
+        relogio.UtcNow.Returns(Agora);
+
+        string assertion = new ClientAssertionFactory(new GatewaySigningKey(opcoes), opcoes, relogio).Criar();
+
+        Payload(assertion).GetProperty("aud").GetString()
+            .Should().Be("http://keycloak.test:8081/realms/identity-gateway");
+    }
 }

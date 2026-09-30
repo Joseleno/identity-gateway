@@ -1,6 +1,10 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Containers;
+using DotNet.Testcontainers.Networks;
 using IdentityGateway.Domain.Tenants;
 using IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,7 +15,8 @@ using Testcontainers.Keycloak;
 namespace IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 
 /// <summary>
-/// Um Keycloak 26.7.4 de verdade para o assembly inteiro, importando o MESMO realm que o compose usa.
+/// Um Keycloak 26.7.4 de verdade para o assembly inteiro, importando o MESMO realm que o compose usa, com um mailpit
+/// na mesma rede recebendo o SMTP dele.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -20,28 +25,57 @@ namespace IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 /// </para>
 /// <para>
 /// <b>O realm é o arquivo do repositório</b>, não uma cópia de teste: o teste prova o arquivo que o compose importa.
-/// O certificado entra pelo mesmo placeholder, por variável de ambiente.
+/// O certificado e o SMTP entram pelos mesmos placeholders, por variável de ambiente.
 /// </para>
 /// <para>
-/// <b>Isolamento por slug único.</b> Os testes compartilham o realm; cada um cria as próprias Organizations com slug
-/// aleatório e nunca afirma sobre a contagem global.
+/// <b><c>KC_HOSTNAME</c> fixo e diferente do endereço discado</b> (<see cref="HostnamePublico"/>). Assim todo teste
+/// de Keycloak exercita a separação do D8: o <c>aud</c> sai do <c>PublicBaseUrl</c>, e o transporte vai pela porta
+/// mapeada. Um <c>aud</c> vindo do <c>BaseUrl</c> quebra todos eles com "Invalid token audience".
+/// </para>
+/// <para>
+/// <b>Isolamento por dado único.</b> Os testes compartilham o realm e o mailpit; cada um cria as próprias
+/// Organizations com slug aleatório e usa e-mails únicos com <c>+</c>, e nunca afirma sobre contagem global. O
+/// mailpit é sempre filtrado pelo destinatário exato.
 /// </para>
 /// </remarks>
-public sealed class KeycloakFixture : IAsyncLifetime
+public sealed partial class KeycloakFixture : IAsyncLifetime
 {
     public const string Realm = "identity-gateway";
 
+    /// <summary>O <c>KC_HOSTNAME</c> do container. Não resolve na máquina do teste — e não precisa: nunca é discado.</summary>
+    public const string HostnamePublico = "http://keycloak.test:8081";
+
+    /// <summary>A mesma tag do <c>docker-compose.yml</c> — um teste de arquitetura confere.</summary>
+    public const string ImagemDoMailpit = "axllent/mailpit:v1.31.3";
+
+    private const int PortaDoMailpit = 8025;
+
+    private readonly INetwork _rede;
+    private readonly IContainer _mailpit;
     private readonly KeycloakContainer _container;
 
     public KeycloakFixture()
     {
         Chaves = ChavesDeTeste.Gerar();
 
+        _rede = new NetworkBuilder().Build();
+
+        _mailpit = new ContainerBuilder(ImagemDoMailpit)
+            .WithNetwork(_rede)
+            .WithNetworkAliases("mailpit")
+            .WithPortBinding(PortaDoMailpit, assignRandomHostPort: true)
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(pedido =>
+                pedido.ForPort(PortaDoMailpit).ForPath("/readyz")))
+            .Build();
+
         _container = new KeycloakBuilder("quay.io/keycloak/keycloak:26.7.4")
+            .WithNetwork(_rede)
             .WithRealm(CaminhoDoRealm())
             .WithEnvironment("GATEWAY_CLIENT_CERT", Chaves.CertificadoBase64)
-            // O import do realm recusa placeholder literal no remetente ("Invalid sender address"): o SMTP_* precisa
-            // existir. O mailpit e a rede que o alcanca chegam na Tarefa 7; ate la ninguem envia e-mail.
+            .WithEnvironment("KC_HOSTNAME", HostnamePublico)
+            .WithEnvironment("KC_HOSTNAME_BACKCHANNEL_DYNAMIC", "true")
+            // O SMTP_* é o do mailpit acima, pelo alias na rede. Além de entregar o convite, ele precisa existir já no
+            // import: o Keycloak recusa placeholder literal no remetente ("Invalid sender address").
             .WithEnvironment("SMTP_HOST", "mailpit")
             .WithEnvironment("SMTP_PORT", "1025")
             .WithEnvironment("SMTP_FROM", "convites@identity-gateway.test")
@@ -54,12 +88,32 @@ public sealed class KeycloakFixture : IAsyncLifetime
 
     public string BaseUrl => _container.GetBaseAddress().TrimEnd('/');
 
-    public ValueTask InitializeAsync() => new(_container.StartAsync());
+    /// <summary>Interface e API do mailpit, pela porta mapeada.</summary>
+    public string MailpitUrl => $"http://{_mailpit.Hostname}:{_mailpit.GetMappedPublicPort(PortaDoMailpit)}";
 
-    public ValueTask DisposeAsync() => _container.DisposeAsync();
+    public async ValueTask InitializeAsync()
+    {
+        await _rede.CreateAsync();
+        await Task.WhenAll(_mailpit.StartAsync(), _container.StartAsync());
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _container.DisposeAsync();
+        await _mailpit.DisposeAsync();
+        await _rede.DisposeAsync();
+    }
 
     /// <summary>Slug aleatório, válido e curto — o isolamento entre testes.</summary>
     public static TenantSlug SlugUnico() => TenantSlug.Create($"t-{Guid.NewGuid():N}"[..18]).Value;
+
+    /// <summary>E-mail único com <c>+</c>: exercita o escape da query em todo teste e evita o conflito do D5.</summary>
+    public static string EmailUnico() => $"admin+{Guid.NewGuid():N}@acme.test";
+
+    /// <summary>E-mail único de exatamente 254 caracteres: parte local de 64, domínio em rótulos de até 63.</summary>
+    public static string EmailUnicoDe254Caracteres() =>
+        $"admin+{Guid.NewGuid():N}{new string('a', 26)}@{new string('b', 63)}.{new string('c', 63)}."
+        + $"{new string('d', 56)}.test";
 
     /// <summary>
     /// A composição real (<c>AddInfrastructure</c>) apontada para este Keycloak, com handlers de teste opcionais
@@ -67,7 +121,8 @@ public sealed class KeycloakFixture : IAsyncLifetime
     /// </summary>
     public ServiceProvider CriarProvider(Action<IServiceCollection>? ajustar = null, string? pem = null)
     {
-        ServiceCollection services = KeycloakHealthCheckTests.ColecaoDaComposicao(BaseUrl, pem ?? Chaves.PemPrivado);
+        ServiceCollection services = KeycloakHealthCheckTests.ColecaoDaComposicao(
+            BaseUrl, pem ?? Chaves.PemPrivado, HostnamePublico);
         ajustar?.Invoke(services);
 
         return services.BuildServiceProvider(validateScopes: true);
@@ -144,6 +199,77 @@ public sealed class KeycloakFixture : IAsyncLifetime
         using var lista = JsonDocument.Parse(json);
         return lista.RootElement.GetArrayLength();
     }
+
+    /// <summary>Os ids das mensagens do mailpit cujo destinatário é exatamente o informado.</summary>
+    /// <remarks>
+    /// A busca <c>to:</c> do mailpit casa por trecho — <c>x@acme.test</c> acharia <c>pre.x@acme.test</c>. O filtro
+    /// exato é feito aqui, sobre <c>To[].Address</c>.
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> MensagensParaAsync(string destinatario, CancellationToken cancellationToken)
+    {
+        using HttpClient http = new() { BaseAddress = new Uri($"{MailpitUrl}/") };
+        string consulta = Uri.EscapeDataString($"to:\"{destinatario}\"");
+
+        using var busca = JsonDocument.Parse(await http.GetStringAsync(
+            new Uri($"api/v1/search?query={consulta}", UriKind.Relative), cancellationToken));
+
+        return
+        [
+            .. busca.RootElement.GetProperty("messages").EnumerateArray()
+                .Where(mensagem => mensagem.GetProperty("To").EnumerateArray().Any(para =>
+                    string.Equals(para.GetProperty("Address").GetString(), destinatario, StringComparison.OrdinalIgnoreCase)))
+                .Select(mensagem => mensagem.GetProperty("ID").GetString()!),
+        ];
+    }
+
+    /// <summary>Espera até haver ao menos <paramref name="quantidade"/> mensagens para o destinatário (até 5 s).</summary>
+    /// <remarks>
+    /// O Keycloak envia dentro da requisição de <c>execute-actions-email</c>, então o e-mail já deveria estar lá quando
+    /// a chamada volta; a espera curta só absorve a gravação do mailpit.
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> EsperarMensagensAsync(
+        string destinatario, int quantidade, CancellationToken cancellationToken)
+    {
+        for (int tentativa = 0; tentativa < 20; tentativa++)
+        {
+            IReadOnlyList<string> ids = await MensagensParaAsync(destinatario, cancellationToken);
+
+            if (ids.Count >= quantidade)
+            {
+                return ids;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+        }
+
+        return await MensagensParaAsync(destinatario, cancellationToken);
+    }
+
+    /// <summary>O corpo em texto da mensagem (o HTML traz o <c>&amp;</c> do link escapado).</summary>
+    public async Task<string> TextoDaMensagemAsync(string id, CancellationToken cancellationToken)
+    {
+        using HttpClient http = new() { BaseAddress = new Uri($"{MailpitUrl}/") };
+
+        using var mensagem = JsonDocument.Parse(await http.GetStringAsync(
+            new Uri($"api/v1/message/{id}", UriKind.Relative), cancellationToken));
+
+        return mensagem.RootElement.GetProperty("Text").GetString()!;
+    }
+
+    /// <summary>O link de ações do primeiro convite para o destinatário, com o host público.</summary>
+    public async Task<Uri> LinkDoConviteAsync(string destinatario, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<string> ids = await EsperarMensagensAsync(destinatario, 1, cancellationToken);
+        ids.Should().NotBeEmpty("o convite precisa estar no mailpit");
+
+        Match link = LinkDeAcoes().Match(await TextoDaMensagemAsync(ids[0], cancellationToken));
+        link.Success.Should().BeTrue("o e-mail precisa trazer o link com o endereço público (KC_HOSTNAME)");
+
+        return new Uri(link.Value);
+    }
+
+    [GeneratedRegex(@"http://keycloak\.test:8081/realms/identity-gateway/login-actions/action-token\?key=\S+")]
+    private static partial Regex LinkDeAcoes();
 
     private static string CaminhoDoRealm()
     {

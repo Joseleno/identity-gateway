@@ -12,8 +12,9 @@ namespace IdentityGateway.Infrastructure.Identity.Keycloak;
 /// <remarks>
 /// <para>Cada campo tem um motivo verificado no código do Keycloak 26.7.4 (spec v2.4, §10.2):</para>
 /// <list type="bullet">
-///   <item><b><c>aud</c> = issuer, string única.</b> Aceito sempre e recomendado desde a 26.2; <c>aud</c> com mais de
-///   um valor é recusado.</item>
+///   <item><b><c>aud</c> = emissor público, string única.</b> Aceito sempre e recomendado desde a 26.2; <c>aud</c> com
+///   mais de um valor é recusado. O emissor é o <c>KC_HOSTNAME</c> quando configurado, não o endereço que a Gateway
+///   disca (<see cref="KeycloakAdminOptions.AssertionAudience"/>).</item>
 ///   <item><b><c>jti</c> novo.</b> O Keycloak o exige e o guarda num cache de uso único.</item>
 ///   <item><b>Tempos explícitos, 60s.</b> Deixados à biblioteca, seriam 60 minutos.</item>
 ///   <item><b><see cref="RsaSecurityKey"/> sem <c>KeyId</c>.</b> Nenhum <c>kid</c> sai no header, e o Keycloak usa o
@@ -53,7 +54,7 @@ internal sealed class ClientAssertionFactory(
             // Só aqui: o Keycloak 26.2+ recusa aud com mais de um valor. Repetir em Claims["aud"] seria, no
             // mínimo, redundante — nesta versão da biblioteca Audience prevalece em silêncio — e dependeria de
             // uma precedência não documentada que uma atualização poderia inverter.
-            Audience = opcoes.Issuer,
+            Audience = opcoes.AssertionAudience,
             Claims = new Dictionary<string, object>
             {
                 [JwtRegisteredClaimNames.Sub] = opcoes.ClientId,

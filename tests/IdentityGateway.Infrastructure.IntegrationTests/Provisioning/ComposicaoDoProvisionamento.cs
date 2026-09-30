@@ -33,6 +33,7 @@ internal static class ComposicaoDoProvisionamento
                 ["Jwt:Audience"] = "identitygateway-api",
                 ["Jwt:SigningKey"] = new string('k', 32),
                 ["Keycloak:Admin:BaseUrl"] = keycloak.BaseUrl,
+                ["Keycloak:Admin:PublicBaseUrl"] = KeycloakFixture.HostnamePublico,
                 ["Keycloak:Admin:Realm"] = KeycloakFixture.Realm,
                 ["Keycloak:Admin:ClientId"] = "identity-gateway",
                 ["Keycloak:Admin:PrivateKeyPem"] = keycloak.Chaves.PemPrivado,
@@ -47,6 +48,7 @@ internal static class ComposicaoDoProvisionamento
 
         ServiceCollection services = new();
         services.AddLogging();
+        services.ComAmbiente();
         services.AddApplication();
         services.AddInfrastructure(configuracao);
         ajustar?.Invoke(services);
