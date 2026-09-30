@@ -1,7 +1,9 @@
 using IdentityGateway.Application;
 using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Application.Tenants.ProvisionTenant;
 using IdentityGateway.Application.Tenants.RegisterTenant;
 using IdentityGateway.Domain.Common;
+using IdentityGateway.Domain.Members;
 using IdentityGateway.Domain.Tenants;
 using IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 using IdentityGateway.Infrastructure.Persistence;
@@ -134,6 +136,38 @@ internal static class ComposicaoDoProvisionamento
         AppDbContext contexto = escopo.ServiceProvider.GetRequiredService<AppDbContext>();
 
         return await contexto.Tenants.AsNoTracking().SingleAsync(item => item.Id == tenant, ct);
+    }
+
+    /// <summary>Os membros gravados do tenant, lidos num escopo novo.</summary>
+    internal static async Task<List<Member>> MembrosAsync(ServiceProvider provider, TenantId tenant, CancellationToken ct)
+    {
+        await using AsyncServiceScope escopo = provider.CreateAsyncScope();
+        AppDbContext contexto = escopo.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        return await contexto.Members.AsNoTracking().Where(membro => membro.TenantId == tenant).ToListAsync(ct);
+    }
+
+    /// <summary>O valor cru da coluna initial_admin_email, ou <c>&lt;nulo&gt;</c>.</summary>
+    internal static async Task<string> EmailGravadoAsync(ServiceProvider provider, TenantId tenant, CancellationToken ct)
+    {
+        await using AsyncServiceScope escopo = provider.CreateAsyncScope();
+        AppDbContext contexto = escopo.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        List<string> valor = await contexto.Database
+            .SqlQuery<string>(
+                $"SELECT coalesce(initial_admin_email, '<nulo>') AS \"Value\" FROM tenants WHERE id = {tenant.Value}")
+            .ToListAsync(ct);
+
+        return valor.Single();
+    }
+
+    /// <summary>Entrega o command do provisionamento num escopo novo, pelo pipeline — como o despacho do Outbox faz.</summary>
+    internal static async Task ProvisionarAsync(ServiceProvider provider, TenantId tenant, CancellationToken ct)
+    {
+        await using AsyncServiceScope escopo = provider.CreateAsyncScope();
+        Mediator.ISender sender = escopo.ServiceProvider.GetRequiredService<Mediator.ISender>();
+
+        await sender.Send(new ProvisionTenantCommand(tenant), ct);
     }
 }
 

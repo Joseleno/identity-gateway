@@ -19,12 +19,12 @@ public sealed class RegistroDeTenantTests(IdentityGatewayApiFactory factory)
 {
     private const string Rota = "/api/v1/tenants";
 
-    private static object Corpo(string slug, string plano = "free") => new
+    private static object Corpo(string slug, string plano = "free", string email = "admin@acme.com") => new
     {
         name = "Acme Corp",
         slug,
         planCode = plano,
-        initialAdminEmail = "admin@acme.com",
+        initialAdminEmail = email,
     };
 
     private static string SlugUnico() => $"acme-{Guid.NewGuid():N}"[..20];
@@ -77,6 +77,38 @@ public sealed class RegistroDeTenantTests(IdentityGatewayApiFactory factory)
                 .ToListAsync(ct);
             bool mensagem = conteudos.Any(conteudo => conteudo.Contains(slug, StringComparison.Ordinal));
             mensagem.Should().BeTrue();
+        });
+    }
+
+    [Fact]
+    public async Task ComandoValido_GravaOEmailNormalizadoForaDoEvento()
+    {
+        // A coluna guarda o endereço normalizado, e o tenant-registered no Outbox não o leva: o evento vai para o
+        // broker, e o e-mail não pode ir junto.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        using HttpClient client = factory.CreateClientAutenticado(roles: "platform-admin");
+        string slug = SlugUnico();
+        string marca = Guid.NewGuid().ToString("N");
+
+        HttpResponseMessage resposta = await client.PostAsJsonAsync(
+            Rota, Corpo(slug, email: $"  Admin+{marca.ToUpperInvariant()}@Acme.TEST "), ct);
+
+        resposta.StatusCode.Should().Be(HttpStatusCode.Accepted);
+
+        await factory.ComEscopoAsync(async contexto =>
+        {
+            List<string> coluna = await contexto.Database
+                .SqlQuery<string>($"SELECT initial_admin_email AS \"Value\" FROM tenants WHERE slug = {slug}")
+                .ToListAsync(ct);
+            coluna.Should().ContainSingle().Which.Should().Be($"admin+{marca}@acme.test");
+
+            List<string> conteudos = await contexto.OutboxMessages
+                .Where(m => m.Type == "tenant-registered")
+                .Select(m => m.Content)
+                .ToListAsync(ct);
+            string evento = conteudos.Single(conteudo => conteudo.Contains(slug, StringComparison.Ordinal));
+            evento.Should().NotContain(marca, "o e-mail não viaja no evento")
+                .And.NotContainEquivalentOf("initialAdminEmail");
         });
     }
 
