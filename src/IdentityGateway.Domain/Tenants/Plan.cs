@@ -28,8 +28,10 @@ public sealed class Plan : ValueObject
     /// <remarks>
     /// Limite negativo é recusado aqui, e não mais adiante: um <c>MaxUsers</c> negativo faria
     /// <c>ReserveSeat</c> recusar toda reserva com "o plano não admite mais de -5 membros" — uma mensagem
-    /// que descreve o sintoma e esconde a causa, que é catálogo mal configurado. Zero é permitido: um
-    /// plano sem vagas é estranho, mas é uma decisão comercial possível, e não uma impossibilidade.
+    /// que descreve o sintoma e esconde a causa, que é catálogo mal configurado. <b>Zero é aceito aqui, mas não no
+    /// catálogo</b> (fatia C): o catálogo recusa <c>maxUsers</c> abaixo de 1 na subida, porque o admin inicial ocupa uma
+    /// vaga; o value object continua aceitando zero porque o plano gravado num tenant pode ser anterior a essa regra, e
+    /// o provisionamento trata o tenant sem vaga como falha permanente.
     /// </remarks>
     /// <param name="tier">Nível comercial.</param>
     /// <param name="maxUsers">Teto de vagas de membro; não pode ser negativo.</param>

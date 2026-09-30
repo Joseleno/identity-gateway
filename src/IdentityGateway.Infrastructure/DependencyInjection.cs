@@ -82,6 +82,14 @@ public static class DependencyInjection
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<InvitationOptions>()
+            .Bind(configuration.GetSection(InvitationOptions.SectionName))
+            .Validate(
+                InvitationOptions.EhValido,
+                "Invitations:LinkLifetime precisa ser positivo, em segundos inteiros e de no máximo 30 dias "
+                + "(formato d.hh:mm:ss, por exemplo 7.00:00:00).")
+            .ValidateOnStart();
+
         // A rede do Outbox precisa ser maior que a janela do provisionamento. É um IValidateOptions, e não um
         // Validate(...) em linha, para a mensagem poder nomear os dois valores — o que torna o erro de subida acionável.
         services.AddSingleton<IValidateOptions<OutboxOptions>, OutboxCobreAJanelaDeProvisionamento>();
@@ -96,11 +104,16 @@ public static class DependencyInjection
         //
         // Limite negativo aqui viraria `ArgumentOutOfRangeException` lá no construtor do `Plan`, no meio do
         // primeiro registro de tenant — erro de catálogo mal configurado disfarçado de falha de requisição.
+        //
+        // maxUsers de pelo menos 1: o admin inicial ocupa uma vaga na ativação (fatia C, D2), e um plano sem vagas faria
+        // todo tenant nele cair em ProvisioningFailed. O Plan continua aceitando zero, porque pode vir de dado antigo
+        // gravado no tenant; o handler trata esse caso (D14).
         services.AddOptions<PlanOptions>()
             .Bind(configuration.GetSection(PlanOptions.SectionName))
             .Validate(
-                planos => planos.Values.All(plano => plano.MaxUsers >= 0 && plano.MaxClients >= 0),
-                "Plans: nenhum plano pode ter maxUsers ou maxClients negativo.")
+                planos => planos.Values.All(plano => plano.MaxUsers >= 1 && plano.MaxClients >= 0),
+                "Plans: todo plano precisa de maxUsers de pelo menos 1 (o admin inicial ocupa uma vaga) e de "
+                + "maxClients não negativo.")
             .ValidateOnStart();
 
         // Política do cliente da Admin API do Keycloak — o consumidor que o comentário da classe esperava.
@@ -199,6 +212,7 @@ public static class DependencyInjection
         services.AddSingleton<IPlanCatalog, PlanCatalog>();
 
         services.AddSingleton<IProvisioningPolicy, ProvisioningPolicy>();
+        services.AddSingleton<IInvitationPolicy, InvitationPolicy>();
 
         return services;
     }

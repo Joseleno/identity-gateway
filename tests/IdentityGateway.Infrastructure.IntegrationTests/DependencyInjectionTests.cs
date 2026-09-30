@@ -64,6 +64,7 @@ public sealed class DependencyInjectionTests
     [InlineData(typeof(IPlanCatalog))]
     [InlineData(typeof(IIdentityProvider))]
     [InlineData(typeof(IProvisioningPolicy))]
+    [InlineData(typeof(IInvitationPolicy))]
     [InlineData(typeof(ITenantQueries))]
     public void TodasAsAbstracoesDaApplication_SaoResolviveis(Type servico)
     {
@@ -301,5 +302,54 @@ public sealed class DependencyInjectionTests
         Action validar = () => _ = provider.GetRequiredService<IOptions<OutboxOptions>>().Value;
 
         validar.Should().Throw<OptionsValidationException>().WithMessage("*5 tentativas*24h*");
+    }
+
+    [Fact]
+    public void ConvitesSemConfiguracao_UsamSeteDias()
+    {
+        // Alinhado à §9.9: o padrão do realm (12 h) ficaria desalinhado do ciclo do convite.
+        using ServiceProvider provider = Construir(ConfiguracaoValida());
+
+        provider.GetRequiredService<IInvitationPolicy>().LinkLifetime.Should().Be(TimeSpan.FromDays(7));
+    }
+
+    [Theory]
+    [InlineData("00:00:00")]        // zero: o link nasceria expirado
+    [InlineData("-1.00:00:00")]     // negativo
+    [InlineData("00:00:01.500")]    // fração: o Keycloak recebe segundos inteiros, e truncar mudaria o prazo em silêncio
+    [InlineData("30.00:00:01")]     // acima do teto
+    public void PrazoDoLinkInvalido_FalhaAoValidar(string prazo)
+    {
+        using ServiceProvider provider = Construir(ConfiguracaoValidaCom(("Invitations:LinkLifetime", prazo)));
+
+        Action validar = () => _ = provider.GetRequiredService<IOptions<InvitationOptions>>().Value;
+
+        validar.Should().Throw<OptionsValidationException>().WithMessage("*LinkLifetime*");
+    }
+
+    [Theory]
+    [InlineData("00:00:01", 1)]
+    [InlineData("2.12:00:00", 216_000)]
+    [InlineData("30.00:00:00", 2_592_000)]
+    public void PrazoDoLinkValido_ChegaInteiroAPolitica(string prazo, int segundos)
+    {
+        using ServiceProvider provider = Construir(ConfiguracaoValidaCom(("Invitations:LinkLifetime", prazo)));
+
+        provider.GetRequiredService<IInvitationPolicy>().LinkLifetime.Should().Be(TimeSpan.FromSeconds(segundos));
+    }
+
+    [Fact]
+    public void PlanoSemVagas_FalhaAoValidar()
+    {
+        // O admin inicial ocupa uma vaga na ativação (D2): um plano com maxUsers 0 não comporta nem ele, e cada tenant
+        // nesse plano cairia em ProvisioningFailed.
+        using ServiceProvider provider = Construir(ConfiguracaoValidaCom(
+            ("Plans:gratis:tier", "Free"),
+            ("Plans:gratis:maxUsers", "0"),
+            ("Plans:gratis:maxClients", "1")));
+
+        Action validar = () => _ = provider.GetRequiredService<IOptions<PlanOptions>>().Value;
+
+        validar.Should().Throw<OptionsValidationException>().WithMessage("*maxUsers*");
     }
 }
