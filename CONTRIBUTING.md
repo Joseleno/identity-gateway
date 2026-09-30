@@ -105,7 +105,7 @@ Outras convenções: comentário em **português**, identificadores em **inglês
 e exception fica para falha de infraestrutura; `IDateTimeProvider` em vez de `DateTime.UtcNow`;
 `CancellationToken` propagado em toda chamada assíncrona; um caso de uso é **uma pasta** com tudo dentro.
 
-A [especificação arquitetural v2.3](docs/especificacao-arquitetural-v2.3.md) descreve as camadas, os
+A [especificação arquitetural v2.6](docs/especificacao-arquitetural-v2.6.md) descreve as camadas, os
 agregados e os contratos que um caso de uso novo precisa respeitar.
 
 ## Commits
