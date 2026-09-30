@@ -3,9 +3,11 @@ using System.Text.Json;
 using IdentityGateway.Application.Common.Abstractions;
 using IdentityGateway.Domain.Members;
 using IdentityGateway.Domain.Tenants;
+using IdentityGateway.Infrastructure.Identity.Keycloak;
 using IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 using IdentityGateway.Infrastructure.Persistence;
 using IdentityGateway.Infrastructure.Persistence.Outbox;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using static IdentityGateway.Infrastructure.IntegrationTests.Provisioning.ComposicaoDoProvisionamento;
 
@@ -144,5 +146,54 @@ public sealed class ProvisionamentoContraKeycloakTests(PostgresFixture postgres,
         (await keycloak.UsuariosPorEmailAsync(email, ct)).Should().ContainSingle();
         (await MembrosAsync(provider, tenant, ct)).Should().ContainSingle();
         (await keycloak.EsperarMensagensAsync(email, 2, ct)).Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task DuasEntregasConcorrentes_UmMemberUmaVagaENoMaximoUmCommit()
+    {
+        // Duas réplicas (ou dois ciclos sobrepostos) processam a mesma mensagem: as duas leem o tenant em Pending, as
+        // duas passam pelo Keycloak — onde as corridas de Organization, usuário, vínculo e papel são resolvidas pela
+        // reconsulta — e só então commitam. No lote do commit, o INSERT do Member vem antes do UPDATE do tenant: com o
+        // mesmo sub nas duas, quem derruba a segunda é o índice único de members, e o xmin do tenant é a defesa se esse
+        // INSERT passasse.
+        //
+        // Uma corrida no Keycloak ainda pode dar erro transitório a uma das entregas (e ela desiste do encontro). Por
+        // isso a rodada concorrente afirma só "no máximo um commit", e o estado final vem depois de mais um ciclo do
+        // Outbox — o que em produção aconteceria com a mensagem de volta.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        EncontroDeDois encontro = new();
+        await using ServiceProvider provider = Criar(postgres, keycloak, services =>
+            services.AddTransient<IIdentityProvider>(sp => new ProvedorComEncontro(
+                ActivatorUtilities.CreateInstance<KeycloakIdentityProvider>(sp), encontro)));
+        string email = KeycloakFixture.EmailUnico();
+        TenantId tenant = await RegistrarAsync(provider, email, ct);
+
+        async Task<Exception?> EntregarAsync()
+        {
+            try
+            {
+                await ProvisionarAsync(provider, tenant, ct);
+                return null;
+            }
+            catch (Exception excecao) when (excecao is DbUpdateException or HttpRequestException)
+            {
+                return excecao;
+            }
+        }
+
+        Exception?[] resultados = await Task.WhenAll(EntregarAsync(), EntregarAsync());
+
+        resultados.Count(resultado => resultado is null).Should().BeLessThanOrEqualTo(1, "no máximo uma entrega commita");
+
+        await LiberarAsync(provider, (await MensagemAsync(provider, "tenant-registered", tenant, ct)).Id, ct);
+        await ProcessarCicloAsync(provider, ct);
+
+        Tenant ativo = await TenantAsync(provider, tenant, ct);
+        ativo.Status.Should().Be(TenantStatus.Active);
+        ativo.OccupiedSeats.Should().Be(1, "uma vaga só");
+        (await MembrosAsync(provider, tenant, ct)).Should().ContainSingle();
+        (await keycloak.UsuariosPorEmailAsync(email, ct)).Should().ContainSingle();
+        (await MensagemAsync(provider, "tenant-registered", tenant, ct)).ProcessedOn
+            .Should().NotBeNull("a mensagem de volta encontra o tenant Active e sai da fila sem mudar nada");
     }
 }

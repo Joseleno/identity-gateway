@@ -190,3 +190,67 @@ internal sealed class UnitOfWorkQueFalha(AppDbContext contexto, int[] falhasRest
         return contexto.SaveChangesAsync(cancellationToken);
     }
 }
+
+/// <summary>Faz duas chamadas se encontrarem: nenhuma segue antes de a outra chegar — ou desistir.</summary>
+internal sealed class EncontroDeDois
+{
+    private readonly TaskCompletionSource _ambas = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _chegaram;
+
+    public Task ChegarAsync(CancellationToken ct)
+    {
+        if (Interlocked.Increment(ref _chegaram) == 2)
+        {
+            _ambas.TrySetResult();
+        }
+
+        return _ambas.Task.WaitAsync(TimeSpan.FromSeconds(60), ct);
+    }
+
+    /// <summary>Quem falhou antes do encontro libera o outro: esperar quem não vem só esgotaria o prazo.</summary>
+    public void Desistir() => _ambas.TrySetResult();
+}
+
+/// <summary>
+/// O provedor real, com um ponto de encontro depois do convite: as duas entregas terminam a parte do Keycloak antes de
+/// qualquer uma commitar — e as duas leram o tenant em Pending antes disso.
+/// </summary>
+/// <remarks>
+/// Uma entrega que falha no Keycloak (a corrida pode dar erro transitório a uma delas) desiste do encontro, e a outra
+/// segue sozinha.
+/// </remarks>
+internal sealed class ProvedorComEncontro(IIdentityProvider real, EncontroDeDois encontro) : IIdentityProvider
+{
+    public async Task<string> EnsureOrganizationAsync(
+        TenantId tenantId, TenantSlug slug, string name, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await real.EnsureOrganizationAsync(tenantId, slug, name, cancellationToken);
+        }
+        catch
+        {
+            encontro.Desistir();
+            throw;
+        }
+    }
+
+    public async Task<ExternalUserId> EnsureInvitedUserAsync(
+        string organizationId, TenantId tenantId, InviteData invite, CancellationToken cancellationToken)
+    {
+        ExternalUserId sub;
+
+        try
+        {
+            sub = await real.EnsureInvitedUserAsync(organizationId, tenantId, invite, cancellationToken);
+        }
+        catch
+        {
+            encontro.Desistir();
+            throw;
+        }
+
+        await encontro.ChegarAsync(cancellationToken);
+        return sub;
+    }
+}
