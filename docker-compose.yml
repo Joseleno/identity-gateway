@@ -4,9 +4,15 @@
 # NÃO É PRODUÇÃO. As senhas estão em texto aberto porque são de um banco descartável em máquina local; a chave
 # JWT é fixa pelo mesmo motivo. Em produção, tudo isto vem do cofre do provedor.
 #
-# O Keycloak também não: `start-dev`, http e chave gerada em volume são de desenvolvimento. Em produção, o BaseUrl da
-# Gateway precisa ser igual ao KC_HOSTNAME (o issuer é calculado da URL), a chave vem do cofre como arquivo montado, e
-# a Api recusa BaseUrl sem https (AllowInsecureHttp só existe no appsettings.Development.json).
+# O Keycloak também não: `start-dev`, http e chave gerada em volume são de desenvolvimento. Em produção, o KC_HOSTNAME
+# é o endereço público do Keycloak, e a Gateway o recebe em Keycloak:Admin:PublicBaseUrl — é o aud do client assertion;
+# o BaseUrl, por onde ela chama o token endpoint e a Admin API, pode ser o endereço interno. A chave vem do cofre como
+# arquivo montado, e a Api recusa http e AllowInsecureHttp fora de Development.
+#
+# QUEM JÁ TINHA VOLUMES DE ANTES DO CONVITE DO ADMIN INICIAL PRECISA DE `docker compose down -v`, e depois
+# `docker compose up -d --build`: o realm só é importado na primeira subida, e num volume antigo faltam o papel
+# tenant-admin, o manage-users, o User Profile e o SMTP. O /health/ready da Api acusa isso pelo nome (manage-users) em
+# vez de deixar o convite falhar por 24 h.
 #
 # Chave e realm andam juntos: o realm é importado só na primeira subida. Apagar SÓ o volume gateway-keys gera uma
 # chave que o realm não conhece, e o /health/ready da Api acusa invalid_client. Para recomeçar: docker compose down -v.
@@ -47,9 +53,11 @@ services:
       # serviço é alcançado pelo nome, e "localhost" apontaria para o próprio contêiner da API.
       Serilog__WriteTo__1__Args__serverUrl: "http://seq:80"
 
-      # A Api alcança o Keycloak pelo nome do serviço. O issuer que o Keycloak calcula vem desta mesma URL, então o
-      # aud do assertion confere sem fixar KC_HOSTNAME.
+      # Transporte: a api chama o token endpoint e a Admin API pelo nome do serviço, dentro da rede do compose.
       Keycloak__Admin__BaseUrl: "http://keycloak:8080"
+      # Endereço público: só o aud do client assertion, nunca discado. Igual ao KC_HOSTNAME do keycloak (um teste de
+      # arquitetura confere); sem ele o aud seria keycloak:8080, e o Keycloak responderia "Invalid token audience".
+      Keycloak__Admin__PublicBaseUrl: "http://localhost:8081"
       Keycloak__Admin__PrivateKeyPath: "/keys/private.pem"
     volumes:
       - type: volume
@@ -151,14 +159,15 @@ services:
   # admin master manda no Keycloak inteiro, e não fica exposto à rede local.
   keycloak:
     image: quay.io/keycloak/keycloak:26.7.4
-    # O ENTRYPOINT da imagem é o kc.sh, então a troca vai em `entrypoint`, não em `command`. `test -s` falha cedo se o
-    # arquivo não existir: um placeholder sem variável seria gravado como texto literal, sem erro, e só falharia na
-    # autenticação. `exec` para o kc.sh receber o SIGTERM.
+    # O ENTRYPOINT da imagem é o kc.sh, então a troca vai em `entrypoint`, não em `command`. `test -s` e `test -n`
+    # falham cedo se o arquivo ou a variável faltarem: um placeholder sem valor seria gravado no realm como texto
+    # literal, sem erro, e só falharia na autenticação ou no primeiro e-mail. `exec` para o kc.sh receber o SIGTERM.
     entrypoint:
       - /bin/sh
       - -c
       - >-
         test -s /keys/cert.b64 && test -s /keys/admin-password &&
+        test -n "$$SMTP_HOST" && test -n "$$SMTP_PORT" && test -n "$$SMTP_FROM" &&
         export GATEWAY_CLIENT_CERT="$$(cat /keys/cert.b64)" KC_BOOTSTRAP_ADMIN_PASSWORD="$$(cat /keys/admin-password)" &&
         exec /opt/keycloak/bin/kc.sh start-dev --import-realm
     environment:
@@ -169,6 +178,16 @@ services:
       KC_DB_PASSWORD: postgres
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_HEALTH_ENABLED: "true"
+      # Endereço público: o link do e-mail, o iss e o discovery usam localhost:8081, mesmo com a requisição chegando
+      # por keycloak:8080 — e a Admin API continua respondendo pelo nome do serviço (backchannel dinâmico).
+      # 127.0.0.1 no lugar de localhost quebraria o aud do assertion, comparado por texto.
+      KC_HOSTNAME: "http://localhost:8081"
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      # Lidos pelo smtpServer do realm, sem o prefixo KC_ (que o Keycloak leria como opção dele). Plugar outro servidor
+      # — ou o notification-hub, quando ele aceitar SMTP — é trocar estes três valores.
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_FROM: convites@identity-gateway.local
     ports:
       - "127.0.0.1:8081:8080"
     volumes:
@@ -192,6 +211,25 @@ services:
         condition: service_completed_successfully
       keycloak-db:
         condition: service_completed_successfully
+      # O SMTP do convite precisa responder quando o primeiro tenant for provisionado.
+      mailpit:
+        condition: service_healthy
+
+  # E-mail de desenvolvimento, em http://localhost:8025: o Keycloak envia para cá o convite do admin inicial. O SMTP
+  # (1025) só existe na rede do compose, sem porta publicada; a interface e a API ficam só em 127.0.0.1, porque os
+  # e-mails trazem links que trocam a senha do convidado.
+  mailpit:
+    # Fixada na release v1.31.3 (2026-09-27, conferida no Docker Hub e nas releases do GitHub). A mesma tag está no
+    # KeycloakFixture dos testes, e um teste de arquitetura confere as duas.
+    image: axllent/mailpit:v1.31.3
+    ports:
+      - "127.0.0.1:8025:8025"
+    healthcheck:
+      # O subcomando readyz da própria imagem — é o healthcheck embutido dela —, que consulta o /readyz do servidor.
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   postgres:
     image: postgres:17-alpine
@@ -200,8 +238,9 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: identitygateway
     ports:
-      # Exposto para que uma ferramenta de banco na máquina alcance o contêiner.
-      - "5432:5432"
+      # Só em 127.0.0.1: uma ferramenta de banco na máquina alcança o contêiner, a rede local não — a tabela de
+      # tenants guarda o e-mail do admin até a ativação.
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -213,7 +252,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -234,7 +273,8 @@ services:
       # Versões recentes do Seq exigem senha de admin (ou esta opção) para subir. Ambiente local, sem autenticação.
       SEQ_FIRSTRUN_NOAUTHENTICATION: "true"
     ports:
-      - "5341:80"
+      # Só em 127.0.0.1: os logs de falha podem trazer dado pessoal.
+      - "127.0.0.1:5341:80"
     volumes:
       - seq-data:/data
 
