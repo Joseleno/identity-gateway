@@ -1,5 +1,6 @@
-# Ambiente de desenvolvimento completo: a API, suas duas dependências e as duas ferramentas para enxergar o que
-# ela faz. `docker compose up` e a aplicação está no ar com logs e traces navegáveis.
+# Ambiente de desenvolvimento completo: a API, as dependências de que ela precisa (banco, cache, Keycloak e um SMTP
+# de desenvolvimento) e as ferramentas para enxergar o que ela faz. `docker compose up` e a aplicação está no ar
+# com logs e traces navegáveis.
 #
 # NÃO É PRODUÇÃO. As senhas estão em texto aberto porque são de um banco descartável em máquina local; a chave
 # JWT é fixa pelo mesmo motivo. Em produção, tudo isto vem do cofre do provedor.

@@ -92,8 +92,8 @@ log. Para recomeçar do zero: `docker compose down -v`.
 
 **Já tinha subido o compose antes do convite do admin inicial? Rode `docker compose down -v` uma vez.** O realm só
 é importado na primeira subida, e num volume antigo faltam o papel `tenant-admin`, a permissão `manage-users` do
-service account, o User Profile e o SMTP. O `/health/ready` da API detecta isso e responde 503 com uma mensagem
-que manda rodar `docker compose down -v`. Depois, `docker compose up -d --build`, para a imagem da API não ficar
+service account, o User Profile e o SMTP. O `/health/ready` da API detecta isso e responde 503 com uma descrição
+do que falta (o token sem `manage-users`). Depois do `down -v`, `docker compose up -d --build`, para a imagem da API não ficar
 para trás do código.
 
 ### Rodar a API pela IDE
@@ -115,7 +115,7 @@ Rodando pela IDE ou com `dotnet run --project src/IdentityGateway.Api`, a API so
 `https://localhost:7206` e a raiz redireciona para a documentação Scalar.
 
 **Zero skips.** Os 6 que a fundação herdava do esqueleto (guardas de arquitetura sem tipo para inspecionar,
-e testes de `401` sem endpoint protegido) fecharam com a vertical de registro (PR #1) e com esta fatia.
+e testes de `401` sem endpoint protegido) fecharam com a vertical de registro (PR #1) e com a fatia C, o convite do admin inicial.
 
 ### Demonstração: o tenant é provisionado quando o Keycloak volta, e o admin recebe o convite
 

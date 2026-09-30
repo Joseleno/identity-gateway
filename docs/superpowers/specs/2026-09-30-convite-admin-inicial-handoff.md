@@ -48,7 +48,7 @@ EF), **Tarefas 11–12** (5 — 2 `test`, 2 `fix` de produção achados pelo tes
 **Aviso para quem já tem volumes do compose: rode `docker compose down -v` uma vez, depois
 `docker compose up -d --build`.** O realm só é importado na primeira subida (`IGNORE_EXISTING`), e num volume
 antigo faltam o papel `tenant-admin`, o `manage-users` do service account, o User Profile com o `tenant_id` e o
-SMTP. O `/health/ready` responde 503 mandando rodar `docker compose down -v`; o README e o corpo do PR repetem o
+SMTP. O `/health/ready` responde 503 com uma descrição neutra do que falta (o token sem `manage-users`); o README e o corpo do PR repetem o
 aviso.
 
 ## O que a fatia entregou
@@ -242,12 +242,10 @@ parado e religado — não foi executada nesta fatia; a parte do mailpit dela é
 
 **Para o autor decidir:**
 - **A prova por mutação da guarda `HttpSoEmDesenvolvimento`** — roteiro no topo deste handoff.
-- **A mensagem do `KeycloakHealthCheck` prescreve `docker compose down -v` em qualquer ambiente.** Quando o token do
-  service account vem sem `manage-users`, o `ready` responde 503, e a descrição afirma a causa ("o realm foi
-  importado antes da fatia C") e manda rodar `docker compose down -v` — um comando destrutivo, que apaga os volumes.
-  A mensagem só aparece no log (não no corpo do 503), mas fora do ambiente local a causa pode ser outra e o conselho
-  é errado. Decidir se a mensagem fica condicionada a Development ou vira uma descrição neutra. A mensagem também
-  cita "fatia C", um artefato do plano.
+- **(Resolvido na revisão final.)** A mensagem do `KeycloakHealthCheck` prescrevia `docker compose down -v` em
+  qualquer ambiente e citava "fatia C". Virou uma descrição neutra: o token sem `manage-users` em
+  `resource_access.realm-management.roles`, com a indicação de que, em desenvolvimento local, o realm só é importado
+  na primeira subida do compose (ver o README).
 - **A API (`8080`) e o Jaeger (`16686` e `4317`) continuam publicados em todas as interfaces** no compose. Postgres,
   Redis, Seq, Keycloak e mailpit ficaram só em `127.0.0.1`; a API e o Jaeger ficaram fora do escopo da fatia. Em falha,
   os traces do Jaeger podem carregar a URL de uma chamada; hoje a query `?email=` sai redigida (acima).
