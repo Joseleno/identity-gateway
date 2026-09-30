@@ -35,10 +35,14 @@ public static class DomainErrors
     /// <summary>Erros do value object <c>Email</c>.</summary>
     public static class Email
     {
-        /// <summary>Endereço fora de um formato aceitável.</summary>
-        public static Error Invalido(string valor) => Error.Validation(
+        /// <summary>Endereço fora do formato aceito.</summary>
+        /// <remarks>
+        /// Sem o valor na mensagem, ao contrário do slug: e-mail é dado pessoal, e a mensagem do erro vai para log e
+        /// para o corpo do 400 (D15).
+        /// </remarks>
+        public static Error Invalido() => Error.Validation(
             "Email.Invalido",
-            $"'{valor}' não é um endereço de e-mail válido.");
+            "O endereço de e-mail informado não é válido.");
     }
 
     /// <summary>Erros do value object <c>TenantSlug</c>.</summary>

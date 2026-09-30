@@ -23,4 +23,8 @@ public sealed record RegisterTenantCommand(
     string Name,
     string Slug,
     string PlanCode,
-    string InitialAdminEmail) : ICommand<TenantId>;
+    string InitialAdminEmail) : ICommand<TenantId>
+{
+    /// <summary>Sem o e-mail nem o nome: o <c>ToString</c> gerado do record os imprimiria em qualquer log (D15).</summary>
+    public override string ToString() => $"RegisterTenantCommand {{ Slug = {Slug}, PlanCode = {PlanCode} }}";
+}

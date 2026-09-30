@@ -18,4 +18,8 @@ public sealed record RegisterTenantRequest(
     string Name,
     string Slug,
     string PlanCode,
-    string InitialAdminEmail);
+    string InitialAdminEmail)
+{
+    /// <summary>Sem o e-mail: o <c>ToString</c> gerado do record o imprimiria em qualquer log (D15).</summary>
+    public override string ToString() => $"RegisterTenantRequest {{ Slug = {Slug}, PlanCode = {PlanCode} }}";
+}
