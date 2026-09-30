@@ -43,4 +43,15 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
   </ItemGroup>
 
+  <!--
+    OpenTelemetry só para o teste de vazamento do e-mail: as mesmas instrumentações que a Api liga (HttpClient e
+    Npgsql), exportando para uma lista em memória em vez do OTLP.
+  -->
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+    <PackageReference Include="OpenTelemetry.Exporter.InMemory" />
+    <PackageReference Include="Npgsql.OpenTelemetry" />
+  </ItemGroup>
+
 </Project>

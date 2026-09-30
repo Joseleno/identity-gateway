@@ -22,29 +22,42 @@ namespace IdentityGateway.Infrastructure.IntegrationTests.Provisioning;
 /// </remarks>
 internal static class ComposicaoDoProvisionamento
 {
+    /// <summary>A composição de produção sobre os containers do teste.</summary>
+    /// <remarks>
+    /// <paramref name="ajustar"/> registra por cima da composição de produção; <paramref name="extras"/> completa ou
+    /// sobrescreve as chaves de configuração padrão.
+    /// </remarks>
     internal static ServiceProvider Criar(
-        PostgresFixture postgres, KeycloakFixture keycloak, Action<IServiceCollection>? ajustar = null)
+        PostgresFixture postgres,
+        KeycloakFixture keycloak,
+        Action<IServiceCollection>? ajustar = null,
+        IReadOnlyDictionary<string, string?>? extras = null)
     {
-        IConfiguration configuracao = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Database:ConnectionString"] = postgres.ConnectionString,
-                ["Jwt:Issuer"] = "identitygateway",
-                ["Jwt:Audience"] = "identitygateway-api",
-                ["Jwt:SigningKey"] = new string('k', 32),
-                ["Keycloak:Admin:BaseUrl"] = keycloak.BaseUrl,
-                ["Keycloak:Admin:PublicBaseUrl"] = KeycloakFixture.HostnamePublico,
-                ["Keycloak:Admin:Realm"] = KeycloakFixture.Realm,
-                ["Keycloak:Admin:ClientId"] = "identity-gateway",
-                ["Keycloak:Admin:PrivateKeyPem"] = keycloak.Chaves.PemPrivado,
-                ["Keycloak:Admin:AllowInsecureHttp"] = "true",
-                ["HttpResilience:MaxRetryAttempts"] = "1",
-                ["Outbox:Enabled"] = "false",
-                ["Plans:free:tier"] = "Free",
-                ["Plans:free:maxUsers"] = "5",
-                ["Plans:free:maxClients"] = "1",
-            })
-            .Build();
+        Dictionary<string, string?> valores = new()
+        {
+            ["Database:ConnectionString"] = postgres.ConnectionString,
+            ["Jwt:Issuer"] = "identitygateway",
+            ["Jwt:Audience"] = "identitygateway-api",
+            ["Jwt:SigningKey"] = new string('k', 32),
+            ["Keycloak:Admin:BaseUrl"] = keycloak.BaseUrl,
+            ["Keycloak:Admin:PublicBaseUrl"] = KeycloakFixture.HostnamePublico,
+            ["Keycloak:Admin:Realm"] = KeycloakFixture.Realm,
+            ["Keycloak:Admin:ClientId"] = "identity-gateway",
+            ["Keycloak:Admin:PrivateKeyPem"] = keycloak.Chaves.PemPrivado,
+            ["Keycloak:Admin:AllowInsecureHttp"] = "true",
+            ["HttpResilience:MaxRetryAttempts"] = "1",
+            ["Outbox:Enabled"] = "false",
+            ["Plans:free:tier"] = "Free",
+            ["Plans:free:maxUsers"] = "5",
+            ["Plans:free:maxClients"] = "1",
+        };
+
+        foreach ((string chave, string? valor) in extras ?? new Dictionary<string, string?>())
+        {
+            valores[chave] = valor;
+        }
+
+        IConfiguration configuracao = new ConfigurationBuilder().AddInMemoryCollection(valores).Build();
 
         ServiceCollection services = new();
         services.AddLogging();

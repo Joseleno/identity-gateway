@@ -379,17 +379,6 @@ public sealed partial class KeycloakFixture : IAsyncLifetime
     [GeneratedRegex(@"http://keycloak\.test:8081/realms/identity-gateway/login-actions/action-token\?key=\S+")]
     private static partial Regex LinkDeAcoes();
 
-    private static string CaminhoDoRealm()
-    {
-        DirectoryInfo? pasta = new(AppContext.BaseDirectory);
-
-        while (pasta is not null && !File.Exists(Path.Combine(pasta.FullName, "IdentityGateway.slnx")))
-        {
-            pasta = pasta.Parent;
-        }
-
-        return Path.Combine(
-            pasta?.FullName ?? throw new InvalidOperationException("Raiz do repositório não encontrada."),
-            "keycloak", "bootstrap", "realm-identity-gateway.json");
-    }
+    private static string CaminhoDoRealm() =>
+        RaizDoRepositorio.Caminho("keycloak", "bootstrap", "realm-identity-gateway.json");
 }
