@@ -8856,4 +8856,3119 @@ Expected: `0`.
 
 ---
 
-> **Estado deste arquivo:** as Tarefas 1 a 11 da parte D1 estão completas acima. A Tarefa 12 (documentação da D1) e a parte D2 (Tarefas 13 a 17) entram nos próximos commits deste plano.
+<preencher|<n>|<hash|<N>|### Tarefa 12: Especificação v2.7, documento de negócio 1.4, README, CONTRIBUTING e handoff da D1
+
+Spec: §9 (a tabela "Onde / v2.6 / Mudança" e as erratas E1 a E8), §11 (entregáveis), §6 ("Documentos"), §8 (os
+limites que a v2.7 registra), D-l (a v2.7 só com o que a fatia implementa, mais as erratas).
+
+A D1 muda o mecanismo de autenticação inteiro, e a especificação, o documento de negócio e o README passam a
+afirmar coisas falsas em dezenas de lugares. Esta tarefa as corrige num commit só, de documentação. A v2.7 descreve
+o design inteiro da fatia, mas a `main` não pode descrever como existente uma rota que ainda não existe: o que só a
+D2 entrega fica marcado, e a Tarefa 17 tira as marcas.
+
+**Arquivos:**
+- Create: `docs/especificacao-arquitetural-v2.7.md` (cópia da v2.6, editada abaixo)
+- Modify: `docs/documentacao-negocio.md` (versão 1.4)
+- Modify: `README.md` (fora das seções `### Keycloak` e `### Demonstração: …`, que são da Tarefa 11)
+- Modify: `CONTRIBUTING.md`
+- Create: `docs/superpowers/specs/AAAA-MM-DD-tokens-keycloak-d1-handoff.md` (data do dia da entrega, `date +%F`)
+
+**Interfaces:**
+- Consome: tudo (Tarefas 1–11).
+- Produz: documentação.
+
+**Regra desta tarefa:** todo trecho "a localizar" abaixo existe literalmente no arquivo de origem e aparece **uma
+vez só** (conferido com `grep -cF` sobre a v2.6, o documento de negócio, o README e o CONTRIBUTING da branch, e
+aplicando o roteiro inteiro, na ordem, a uma cópia dos quatro arquivos). Na v2.7, que nasce como cópia da v2.6, os
+trechos são os mesmos, e as referências `v2.6:N` dão a linha **da v2.6** em que cada trecho começa — na v2.7 a linha
+desloca conforme as edições avançam, e por isso o `Edit` casa pelo texto, nunca pelo número. Quando o roteiro diz
+"a linha que começa com" ou "a linha que contém", o trecho mostrado identifica a linha; leia a linha inteira no
+arquivo e use-a como `old_string`. Quando diz "até a linha que contém", a troca vai do começo da primeira linha ao
+fim da última, inclusive. Se um `Edit` falhar por não achar o trecho, o arquivo foi alterado fora deste roteiro:
+pare e confira, não improvise. Todo texto novo está completo; copie como está. Um texto novo que traz blocos de
+código vem numa cerca de **quatro** crases: as cercas de três, dentro dela, fazem parte do texto. Os documentos
+levam acento; a mensagem de commit, não.
+
+**O que só a D2 entrega leva a marca `(D2, planejado)`, sempre com esse texto exato**, para a Tarefa 17 achar todas
+com um `grep`. Não reescreva a marca ("planejado para a D2", "D-g; D2, planejado"): copie.
+
+**A sequência de escape do "e comercial" nunca passa pelo `Edit` nem pelo `Write`.** Ela é formada por uma barra
+invertida seguida de `u0026`, e as ferramentas de edição a decodificam em silêncio e gravam um `&` no lugar — foi o
+que estragou a frase da v2.6 que a errata E1 corrige. Neste roteiro ela não aparece escrita em lugar nenhum: onde a
+v2.7 precisa dela, o texto novo traz o marcador `%%E1%%`, e o Passo 21 troca o marcador pela sequência **por shell**.
+Não troque o marcador à mão.
+
+- [ ] **Passo 1: Criar a v2.7 a partir da v2.6**
+
+Run: `cp docs/especificacao-arquitetural-v2.6.md docs/especificacao-arquitetural-v2.7.md`
+
+Run: `grep -c "(D2, planejado)" docs/especificacao-arquitetural-v2.7.md; grep -c "u0026" docs/especificacao-arquitetural-v2.7.md`
+Expected: `0` e `0` — a cópia ainda não tem nenhuma marca nem a sequência de escape.
+
+Na v2.7, cabeçalho (v2.6:4) — localizar:
+
+```markdown
+**Versão 2.6** · Status: aprovada para implementação
+```
+
+e substituir por:
+
+```markdown
+**Versão 2.7** · Status: aprovada para implementação
+```
+
+Renumerar as seções 0.x existentes, **de baixo para cima** (os títulos levam as versões, então cada um é único):
+
+| Título atual (localizar a linha inteira) | Título novo |
+|---|---|
+| `## 0.5. O que mudou da v2.0 para a v2.1` | `## 0.6. O que mudou da v2.0 para a v2.1` |
+| `## 0.4. O que mudou da v2.1 para a v2.2` | `## 0.5. O que mudou da v2.1 para a v2.2` |
+| `## 0.3. O que mudou da v2.2 para a v2.3` | `## 0.4. O que mudou da v2.2 para a v2.3` |
+| `## 0.2. O que mudou da v2.3 para a v2.4` | `## 0.3. O que mudou da v2.3 para a v2.4` |
+| `## 0.1. O que mudou da v2.4 para a v2.5` | `## 0.2. O que mudou da v2.4 para a v2.5` |
+| `## 0. O que mudou da v2.5 para a v2.6` | `## 0.1. O que mudou da v2.5 para a v2.6` |
+
+Nenhum texto da especificação cita essas seções pelo número (`grep -n "§0\.[0-9]" docs/especificacao-arquitetural-v2.6.md`
+não acha nada), então a renumeração não deixa referência quebrada.
+
+Depois, inserir a seção nova **antes** da linha que acabou de ser renumerada — localizar:
+
+```markdown
+## 0.1. O que mudou da v2.5 para a v2.6
+```
+
+e inserir **antes** dela o texto abaixo, que já termina com a linha `---` e uma linha em branco, como as demais
+seções 0.x (o prefixo `T` das mudanças não colide com os nomes dos PRs, D1 e D2; o marcador `%%E1%%` da errata E1
+fica como está até o Passo 21):
+
+```markdown
+## 0. O que mudou da v2.6 para a v2.7
+
+Esta versão registra o que a **fatia D (tokens do Keycloak)** decidiu e verificou, lendo o código-fonte do Keycloak
+na tag **26.7.4** e do ASP.NET Core (`Microsoft.AspNetCore.Authentication.JwtBearer` 10.0.12 e
+`Microsoft.IdentityModel` 8.19.2), e exercitando os dois ao vivo. Design da fatia:
+[`2026-09-30-tokens-keycloak-design.md`](superpowers/specs/2026-09-30-tokens-keycloak-design.md).
+**Nenhum ADR foi revogado:** o ADR-003 ganha um complemento, e entra o **ADR-011**.
+
+A fatia é entregue em dois PRs. A **D1** leva o Keycloak de ponta a ponta até o `POST /tenants`; a **D2** leva a
+primeira rota de tenant. Esta versão entra com a D1 e descreve o design inteiro: **o que só a D2 entrega está marcado
+"(D2, planejado)"**, e a D2 tira as marcas. A v2.7 registra só o que a fatia implementa, mais as erratas: a sequência
+das próximas fatias e as demais propostas do design não são norma.
+
+| # | Mudança | Onde |
+|---|---|---|
+| T1 | **A API aceita só access tokens do Keycloak.** RS256, validado por metadados lidos pelo endereço interno, sem `Authority`; emissor aceito só o público, por igualdade, num `IssuerValidator` próprio, porque o `ValidIssuer` não restringe; audiência `identity-gateway-api`; `ClockSkew` de 30 s; `IncludeErrorDetails` falso em todo ambiente. O JWT simétrico do template deixa de existir | §5, §10.1, §11.8, §13 |
+| T2 | **`AccessTokenValidationOptions`**, pública e neutra quanto ao provedor (seção `Keycloak:Auth`), preenchida pelo adaptador do Keycloak: a Api não conhece o Keycloak. O emissor aceito é a mesma propriedade que alimenta o `aud` do assertion | §7, §10.2, §11.8 |
+| T3 | **`azp`, `typ` e `sub` conferidos na autenticação**, e não numa policy: lista de clients permitidos por ambiente, fora do `appsettings.json` base, com o client de demonstração recusado fora de Development; claim `typ` igual a `Bearer`; `sub` GUID | §10.1, §11.8 |
+| T4 | **Keycloak fora com metadados frios responde `401`, com log**; o `503` fica registrado como alternativa. `BackchannelTimeout` de 5 s e `RefreshInterval` de 30 s | §11.8, §14, §19 |
+| T5 | **`FallbackPolicy` autenticada**, com `AllowAnonymous` explícito nas rotas anônimas, e **Problem Details em `401` e `403`**, um só para cada status | §8, §10.1 |
+| T6 | **O realm emite o token da §10.1.** Três client scopes fora dos defaults do realm — `gateway-roles`, `gateway-tenant` e `gateway-api`, este com o Audience Mapper —, o atributo `CreateDefaultClientScopes`, o catálogo de papéis completo e nunca composto, `offline_access` e `uma_authorization` fora do papel padrão, `defaultClientScopes` explícitos por client e nenhum grupo | §9.5, §12.1, §12.2, §15 |
+| T7 | **Device Authorization Grant no client de demonstração** `identity-gateway-demo`, público e só do ambiente local. ROPC continua proibido, e o alcance da proibição fica dito. O token não carrega e-mail nem nome, e `NameClaimType` é `sub` | ADR-003, §2.1, §9.2, §10.3, §17 |
+| T8 | **Access token de 300 s e rotação do refresh token** (`revokeRefreshToken`, `refreshTokenMaxReuse: 0`): reusar um refresh token derruba a sessão do client. `registrationAllowed` falso e `bruteForceProtected` | ADR-005, §10.3, §19 |
+| T9 | **O primeiro platform-admin nasce no JSON do realm, sem senha, e é convidado por e-mail uma vez só**, pelo one-shot `platform-admin-invite`: link de 4 horas e marcador no realm gravado antes do envio. A `api` depende dele. Sai a senha gerada e impressa no log, que a v2.6 previa | §10.2, §15, §16, §19 |
+| T10 | **Compose e CI:** `api` e Jaeger só em `127.0.0.1`; sai `Jwt__SigningKey`; o job `Compose` roda a jornada por um app C# de arquivo único (`tools/jornada-compose.cs`) — convite do platform-admin contado exato, device flow, a receita HS256 antiga com `401`, o convite do admin do tenant e o Keycloak parado com `stop`/`start`. Volume anterior exige `docker compose down -v` | §13, §15 |
+| T11 | **Projeto de suporte de testes** `tests/IdentityGateway.Testing.Keycloak`, uma biblioteca: o fixture do Keycloak, o cliente do mailpit e o harness de login por device flow, o mesmo nos testes, na CI e na demonstração. O ROPC do fixture sai | §7, §12.1, §13 |
+| T12 | **ADR-011: nas rotas de governança, a autorização da Gateway é token mais pertença no banco** (D2, planejado). Policy `TenantAdmin` = `tenant-admin` ∧ ¬`platform-admin` ∧ mesmo tenant ∧ `Member` em `{Invited, Active}`; leitura da pertença por `IMemberQueries`; a hierarquia de papéis é teto de atribuição, não herança de acesso | ADR-011, §6.3, §6.4, §10.1, §11.7, §11.9, §17 |
+| T13 | **`GET /tenants/{tenantId}`, a primeira rota de tenant** (D2, planejado): o admin lê o próprio tenant; todo outro caso é `403`, inclusive tenant inexistente e o platform-admin, até existir a auditoria | §8, §16 |
+| T14 | **O override do platform-admin passa a ser uma policy própria, `TenantReadAccess`**, entregue com a auditoria; o `Fail()` do `SameTenantRequirement` fica incondicional (errata E3) | §8, §10.1, §11.7 |
+| T15 | Fatia D no andamento; pendências do M0 revistas; as duas demonstrações com passos no navegador | §16 |
+
+**Erratas**, que corrigem texto de versões anteriores sem mudar decisão:
+
+- **E1** (§15): a frase "o JSON escapa o `&` como `&`" tinha perdido a sequência de escape que cita. O certo é "o JSON escapa o `&` como `%%E1%%`".
+- **E2** (§12.1): "o ROPC continua desabilitado também no realm de teste" era falso. O fixture de testes fazia ROPC num client criado em runtime, e o `admin-cli` embutido do realm tem direct grant. O fixture deixou de usar ROPC, e o ADR-003 passa a dizer o alcance da proibição.
+- **E3** (§10.1, §11.7): o `PlatformAdminOverrideHandler` que "satisfaz o `SameTenantRequirement`" nunca funcionaria, porque o `Fail()` do requirement veta qualquer `Succeed`. O override vira policy própria (T14), e o "segundo handler" deixa de ser o motivo do `Fail()`.
+- **E4** (§11.7): o `RegisterTenantCommand` do endpoint de referência estava sem o e-mail, desatualizado desde a v2.6.
+- **E5** (§12.1): "a lista substitui o conjunto padrão do realm" estava errado. Declarar `clientScopes` no JSON desliga a criação dos scopes embutidos, e a correção é o atributo `CreateDefaultClientScopes`.
+- **E6** (§12.1): os papéis padrão do realm "não interferem" — eles entravam no claim `roles`. Agora saem.
+- **E7** (§9.5, §15): o bootstrap era descrito com os client scopes, o Audience Mapper, o armazenamento de eventos e a remoção do `offline_access`, que o JSON não tinha. Os scopes, o mapper e a remoção entram nesta versão; o armazenamento de eventos continua pendente.
+- **E8** (§12.1, §12.2): os testes de referência chamavam métodos que não existem (`GetClientCredentialsTokenAsync`, `GetTokenForUserAsync`) e usavam a rota `/tenants/tenant-a/members`, com um slug no lugar do GUID.
+
+---
+```
+
+- [ ] **Passo 2: §2.1 e §3 — o device flow na seta (2); as regras de isolamento continuam três**
+
+Na v2.7, §2.1, no diagrama (v2.6:240) — localizar a linha dos rótulos das setas (os espaços contam: a marca `¹`
+entra no lugar de um dos dois espaços antes da barra, e a largura da caixa não muda):
+
+```text
+       │     REST + Bearer JWT    │     PKCE / Client Cred.  │     Bearer JWT
+```
+
+e substituir por:
+
+```text
+       │     REST + Bearer JWT    │     PKCE / Client Cred.¹ │     Bearer JWT
+```
+
+Na tabela logo abaixo do diagrama (v2.6:256), localizar a linha da seta (2):
+
+```markdown
+| (2) | Authorization Code + PKCE (interativo) ou Client Credentials (M2M), direto no Keycloak |
+```
+
+e substituir por:
+
+```markdown
+| (2) | Authorization Code + PKCE (interativo) ou Client Credentials (M2M), direto no Keycloak. ¹ Só no ambiente local, o client de demonstração `identity-gateway-demo` usa o Device Authorization Grant (RFC 8628), também direto no Keycloak (v2.7, ADR-003) |
+```
+
+Na §3, princípio 5 (v2.6:274), localizar o fim da linha:
+
+```markdown
+e escopo de client M2M (§10.1, §18).
+```
+
+e substituir por:
+
+```markdown
+e escopo de client M2M (§10.1, §18). **Continuam três na v2.7:** nas rotas de governança da Gateway, a primeira é reforçada pela pertença do ator ao tenant no banco (ADR-011), que não é uma quarta regra — é a mesma regra, conferida em duas fontes, o token e o banco (D2, planejado).
+```
+
+- [ ] **Passo 3: §4 — complemento do ADR-003, ADR-005 e o ADR-011 novo**
+
+Na v2.7, §4, ADR-003 (v2.6:298), localizar a linha que começa com:
+
+```markdown
+- **Consequências:** MFA e políticas do Keycloak valem para todos os fluxos
+```
+
+manter, e inserir logo depois dela, como mais dois itens da mesma lista:
+
+```markdown
+- **Fluxos permitidos (complemento da v2.7):** Authorization Code com PKCE para aplicações; Client Credentials para M2M; e **Device Authorization Grant (RFC 8628), no realm da aplicação, só no client `identity-gateway-demo`** — público, do ambiente local e fora do Terraform de produção. É o que deixa a demonstração obter um token de usuário pelo terminal com a senha digitada só na página do Keycloak. Nos testes, o `KeycloakFixture` cria em runtime um segundo client de device flow, sem o scope `gateway-api`, usado só para a Account REST API.
+- **Alcance da proibição do ROPC (v2.7):** nenhum client declarado no JSON do realm tem direct grant, e uma regra do `RegrasDoRealmTests` exige isso. O `admin-cli` embutido do realm mantém o direct grant, com que o Keycloak o cria; o token que ele emite é leve, sem audiência e sem `sub`, e a Gateway o recusa — há teste com o Keycloak real (§13). A garantia é: **nenhum client do realm emite, por senha, um token aceito pela Gateway.** Ficam fora do ADR-003, e declarados: o `kcadm` do one-shot do compose e o Testcontainers, que usam a senha do admin do realm `master`, infraestrutura fora do realm da aplicação (§15). O harness dos testes e da CI submete o formulário de login do próprio Keycloak com uma senha que ele mesmo definiu pelo link de ações; a credencial nunca passa pela Gateway, e isso não é ROPC.
+```
+
+No ADR-005 (v2.6:310), localizar o fim do item "Consequências":
+
+```markdown
+o access token tem vida curta (5 minutos).
+```
+
+e substituir por:
+
+```markdown
+o access token tem vida curta: 5 minutos, configurados explicitamente no realm (`accessTokenLifespan: 300`, v2.7). O claim `roles` traz **só** o catálogo: o client scope `gateway-roles` limita o mapper aos quatro papéis, e os papéis padrão do realm ficam fora do token (§12.1, v2.7).
+```
+
+Inserir o ADR novo no fim da §4, depois do ADR-010 — localizar o título da seção seguinte (v2.6:350):
+
+```markdown
+## 5. Responsabilidades: Keycloak × IdentityGateway
+```
+
+e inserir **antes** dessa linha, separado dela por uma linha em branco:
+
+```markdown
+### ADR-011 — Nas rotas de governança, autorização é token mais pertença no banco
+
+- **Estado:** decidido na v2.7; a implementação chega com a primeira rota de tenant (D2, planejado).
+- **Contexto:** o `tenant_id` do token vem de um mapper de atributo de usuário (§12.2). Quando o usuário não tem o atributo, esse mapper recua para o atributo de mesmo nome do primeiro grupo que o tiver, subindo aos pais, e não há configuração que desligue o recuo. O papel `manage-users`, que o service account da Gateway tem (§10.2), cria grupos e mapeia neles qualquer papel que não seja de administração. Verificado ao vivo no Keycloak 26.7.4: com o token do service account, foi criado um grupo com `tenant_id` e com `tenant-admin` e `platform-admin` mapeados, e um usuário novo posto nesse grupo recebeu um token com os dois papéis e o `tenant_id` forjado.
+- **Decisão:** nas rotas de governança de tenant, a Gateway não confia só no token. Além do papel e do `tenant_id` igual ao da rota, o `sub` precisa ser `Member` daquele tenant no banco da Gateway, em status `Invited` ou `Active`; todo outro estado nega, inclusive um que o enum ganhe depois. O realm não tem grupos, e os papéis do catálogo nunca são compostos; um teste confere as duas coisas no JSON do realm.
+- **Limites, ditos por inteiro:**
+  - **O Data Plane não tem a pertença.** As Resource APIs confiam no claim e na regra "nenhum grupo", que é conferida no JSON do bootstrap; um grupo criado em runtime não é visto. Decidir entre uma reconciliação que detecte grupos com `tenant_id` e um mapper que não recue é da fatia do Data Plane (§19).
+  - **A pertença não contém quem tem a chave da Gateway.** Com o `manage-users`, ele troca a senha ou o e-mail de um `Member` real e passa com a conta dele. A pertença protege contra o recuo do mapper e contra a forja por grupo, que é silenciosa; tomar a conta de alguém é ruidoso, porque o dono perde o acesso. A trilha desse ataque só existe com os eventos de administração ligados, sem representação (§10.3).
+- **Consequências:** a pertença é consultada só nas rotas de governança, e só para quem já passou nas camadas do token — nunca por requisição de negócio. **O ADR-002 continua valendo:** o Data Plane não chama a Gateway para autorizar. A consulta é a última camada da policy (§10.1, §11.7).
+```
+
+- [ ] **Passo 4: §5 e §6 — só RS256; a hierarquia é teto; a leitura da pertença com o tenant na assinatura**
+
+Na v2.7, §5 (v2.6:355), localizar a linha da tabela que começa com:
+
+```markdown
+| Emissão de tokens | Assinatura dos JWT (RS256/ES256), refresh token rotation |
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| Emissão de tokens | Assinatura dos JWT (RS256/ES256), refresh token rotation | Nenhuma. Provisiona os clients que solicitam tokens. Ao **validar** os tokens que recebe, aceita só o algoritmo do realm, RS256 (v2.7, §10.1) |
+```
+
+Na §6.3 (v2.6:437), no item da `RoleAssignmentPolicy`, localizar:
+
+```markdown
+A hierarquia é `platform-admin` > `tenant-admin` > `financial-manager` > `reader`.
+```
+
+e substituir por:
+
+```markdown
+A hierarquia é `platform-admin` > `tenant-admin` > `financial-manager` > `reader`. **Ela é o teto da atribuição, não herança de acesso** (v2.7): estar acima na hierarquia limita quais papéis o ator pode conceder, e não dá a ele o que o papel de baixo acessa. Um `platform-admin` não passa numa policy de `tenant-admin`, e a policy `TenantAdmin` nega quem acumula os dois papéis — separação de funções, §10.1 (D2, planejado).
+```
+
+Na §6.4 (v2.6:447), localizar o último parágrafo da seção, a linha que começa com:
+
+```markdown
+Um id que não pertence ao tenant da rota resulta em **404**
+```
+
+manter, e inserir logo depois, separado por uma linha em branco:
+
+```markdown
+**A leitura da pertença segue a mesma regra (v2.7) (D2, planejado).** A policy de tenant da Gateway confere se o ator é membro do tenant da rota (ADR-011) por uma porta de leitura com o tenant na assinatura: `IMemberQueries.GetStatusAsync(TenantId, ExternalUserId, CancellationToken)`, que devolve `MemberStatus?`. Não existe leitura de membro só pelo `sub`. É uma porta de consulta, no padrão `I*Queries` do repositório, e não um método novo do repositório do agregado: o `IMemberRepository` continua só com `Add` (§11.9).
+```
+
+- [ ] **Passo 5: §7 — as pastas novas da Api e da Infrastructure, o projeto de suporte e `tools/`**
+
+A árvore da §7 nunca listou a pasta `Security` do template, e por isso não há o que tirar dela. São quatro
+inserções na árvore e um parágrafo depois dela.
+
+Na v2.7, §7, na árvore (v2.6:474), localizar a linha:
+
+```text
+│   │   ├── Identity/Keycloak/                # KeycloakAdminClient, KeycloakIdentityProvider
+```
+
+manter, e inserir logo depois, na linha seguinte:
+
+```text
+│   │   ├── Configuration/                    # Options validadas na subida; AccessTokenValidationOptions (v2.7)
+```
+
+Localizar a linha (v2.6:481):
+
+```text
+│   │   ├── Authorization/                    # Policies, SameTenantHandler
+```
+
+e substituir por estas duas:
+
+```text
+│   │   ├── Authentication/                   # Validação do access token: JwtBearer, azp, typ e sub (v2.7)
+│   │   ├── Authorization/                    # Policies, requirements e o Problem Details de 401 e 403 (v2.7)
+```
+
+Localizar a última linha do bloco `tests/` (v2.6:495):
+
+```text
+│   └── IdentityGateway.ArchitectureTests/
+```
+
+e inserir **antes** dessa linha:
+
+```text
+│   ├── IdentityGateway.Testing.Keycloak/     # Suporte (biblioteca): fixture, mailpit e harness de login (v2.7)
+```
+
+Localizar a linha (v2.6:501):
+
+```text
+├── docs/adr/
+```
+
+e inserir **antes** dela estas três linhas (a terceira é a linha de separação, só com a barra vertical):
+
+```text
+├── tools/
+│   └── jornada-compose.cs                    # App de arquivo único: a jornada do compose na CI (v2.7)
+│
+```
+
+Depois da árvore, localizar a linha (v2.6:505):
+
+```markdown
+**Regras de dependência** (verificadas por testes de arquitetura):
+```
+
+e inserir **antes** dessa linha, separado dela por uma linha em branco:
+
+```markdown
+**O que a v2.7 acrescenta à árvore.** `Api/Authentication` guarda a configuração do JwtBearer e as checagens além da biblioteca (`ValidacaoDoAccessToken`, `FormaDoAccessToken`, `AutenticacaoLogs`, `AvisoDeClientsPermitidos`). `Api/Authorization` guarda as policies (`Policies`), as respostas de `401` e `403` em Problem Details (`RespostasDeAutorizacao`, `ProblemDetailsDeAutorizacao`) e, com a primeira rota de tenant, os requirements e o `AutorizacaoDaGateway` (D2, planejado). `Infrastructure/Configuration` ganha a `AccessTokenValidationOptions` (seção `Keycloak:Auth`), que o adaptador do Keycloak preenche e a Api só lê (§11.8). `tests/IdentityGateway.Testing.Keycloak` é uma **biblioteca** de suporte, e não um projeto de teste: não referencia `src/`, e é usada pelos projetos de integração e funcional e pelo app de `tools/` (§13, §15). A árvore nunca listou a pasta `Security` do template, que guardava o emissor de JWT simétrico e saiu com ele.
+```
+
+- [ ] **Passo 6: §8 — duas linhas no lugar de uma; a primeira rota de tenant; autenticação por padrão**
+
+Na v2.7, §8, na tabela de endpoints (v2.6:528), localizar a linha que começa com:
+
+```markdown
+| | `GET /tenants`, `GET /tenants/{tenantId}` |
+```
+
+e substituir a linha inteira por estas duas:
+
+```markdown
+| | `GET /tenants` (listagem) — chega com a auditoria | platform-admin, auditado (§10.1) |
+| | `GET /tenants/{tenantId}` (D2, planejado) | tenant-admin do próprio tenant **e** `Member` dele no banco (ADR-011). **Desvio declarado (v2.7):** o platform-admin recebe `403` até existir a policy `TenantReadAccess`, que chega com a auditoria (§10.1) |
+```
+
+Logo abaixo da tabela (v2.6:550), localizar o início do parágrafo:
+
+```markdown
+**Sem rota nova na v2.6.**
+```
+
+e substituir por:
+
+```markdown
+**Sem rota nova na v2.6; a primeira rota de tenant chega com a v2.7 (abaixo).**
+```
+
+No mesmo parágrafo (v2.6:550), localizar o fim dele:
+
+```markdown
+A operação fica para o M1/M2 (§19).
+```
+
+manter, e inserir logo depois do parágrafo, separados por uma linha em branco, estes dois:
+
+```markdown
+**A primeira rota de tenant (v2.7) (D2, planejado).** `GET /api/v1/tenants/{tenantId}` devolve o tenant a quem o administra. Responde `200` com **exatamente** estas chaves: `tenantId`, `name`, `slug`, `status`, `plan` (`tier`, `maxUsers`, `maxClients`), `occupiedSeats` e `registeredAt` — nunca o e-mail do admin inicial, e um teste trava o conjunto de chaves. Responde `401` sem token ou com token inválido. Responde `403` em todo o resto: platform-admin, tenant-admin de outro tenant, token sem `tenant-admin`, `sub` que não é `Member` com status aceito e **tenant inexistente** — a policy nega antes do handler, porque não há `Member` num tenant que não existe, e a rota não usa `404`. Todo `403` é o mesmo Problem Details, sem nada que distinga o motivo. Os nomes de `TenantStatus` passam a ser contrato público, e um teste os trava junto com os de `MemberStatus`. O `GET .../provisioning` continua respondendo `200` com o estado, para o platform-admin.
+
+**Autenticação por padrão (v2.7).** A `FallbackPolicy` exige usuário autenticado em todo endpoint que não declare outra coisa. As rotas anônimas — `/health/live`, `/health/ready`, o documento OpenAPI e o Scalar em Development, e o redirect da raiz — levam `AllowAnonymous` explícito, e um teste enumera os endpoints e exige, em cada um, policy nomeada ou anonimato declarado. Efeito visível: um caminho não mapeado, sem token, responde `401`, e não `404`. `401` e `403` saem em Problem Details (§10.1).
+```
+
+- [ ] **Passo 7: §9.2 e §9.5 — a demonstração usa device flow; `offline_access` fora do papel padrão (E7)**
+
+Na v2.7, §9.2 (v2.6:606), localizar o parágrafo depois da lista numerada, a linha que começa com:
+
+```markdown
+Para não permitir enumeração de tenants, a resposta tem sempre o mesmo formato
+```
+
+e inserir **antes** dessa linha, separado dela por uma linha em branco:
+
+```markdown
+> **Nota (v2.7).** A demonstração do README obtém o token de usuário pelo Device Authorization Grant, no client `identity-gateway-demo`, que só existe no ambiente local (ADR-003). É um atalho de terminal para quem avalia o repositório, não o fluxo das aplicações: elas usam sempre o Authorization Code com PKCE, descrito acima.
+```
+
+Na §9.5 (v2.6:630), no item 1, "Offline tokens", localizar a última frase:
+
+```markdown
+Por isso o realm de bootstrap **remove `offline_access` do `default-roles`** (§15): o projeto não usa offline tokens, e mantê-los ligados anularia a desativação.
+```
+
+e substituir por:
+
+```markdown
+Por isso o realm de bootstrap **tira `offline_access` do papel padrão** (§15): o projeto não usa offline tokens, e mantê-los ligados anularia a desativação. **Entregue na v2.7** — até a v2.6 este item descrevia como feito o que o JSON do realm não tinha (errata E7). O realm declara o papel `offline_access` e o client scope de mesmo nome só para tirá-los do padrão, e faz o mesmo com o papel `uma_authorization`; nenhum client oferece o scope, e o papel padrão fica `[manage-account, view-profile]`. Um teste contra o Keycloak real confere.
+```
+
+- [ ] **Passo 8: §10.1 — o que a validação confere; `TenantAdmin` em quatro camadas; o override como policy própria (E3)**
+
+Na v2.7, §10.1 (v2.6:709), localizar o primeiro item da lista, a linha que começa com:
+
+```markdown
+- Aceita apenas tokens do realm `identity-gateway` com audiência `identity-gateway-api`
+```
+
+e substituir a linha inteira por estes quatro itens:
+
+```markdown
+- Aceita apenas tokens do realm `identity-gateway` com audiência `identity-gateway-api`. **O `aud` vem do client scope `gateway-api`, que fica fora dos defaults do realm** (v2.7): só os clients que falam com a Gateway o recebem. Num scope default, todo client do realm — o service account, os clients de tenant do M6, qualquer client de teste — emitiria token aceito; foi reproduzido ao vivo, com um token ROPC de um client criado pela Admin API.
+- **O que a validação confere (v2.7), na autenticação:** assinatura RS256, e só RS256, com as chaves lidas dos metadados pelo endereço interno; emissor igual ao **emissor público** do realm, por igualdade ordinal, num `IssuerValidator` próprio, porque o `ValidIssuer` não restringe (§12.1); audiência; validade, com `ClockSkew` de 30 s; o **`azp`** numa lista de clients permitidos por ambiente (`Keycloak:Auth:AllowedClients`); o claim **`typ`** igual a `Bearer`, porque o cabeçalho não distingue access token de ID token; e o **`sub`** como GUID no formato `D`. As três últimas ficam em `OnTokenValidated`, e não numa policy: a policy padrão não se soma a uma policy nomeada, e uma rota com `PlatformAdmin` escaparia. `IncludeErrorDetails` é falso em todo ambiente, porque o `WWW-Authenticate` ecoaria o `iss` e o `aud` recusados, que vêm do token; o diagnóstico sai pelo log (§11.8).
+- **A lista de `azp` é estática e fica fora do `appsettings.json` base** (v2.7): o `IConfiguration` mescla arrays por índice, e um item do arquivo base sobreviveria à configuração de produção. O `identity-gateway-demo` só entra em Development, e a subida recusa a lista que o contenha fora dele. Lista vazia é permitida e fail-closed: a API sobe, registra um aviso e recusa todo token de usuário. A lista vale para os clients interativos que chamam a Gateway; os clients M2M de tenant não entram nela (abaixo).
+- **`401` e `403` em Problem Details (v2.7).** Um `IAuthorizationMiddlewareResultHandler` escreve um Problem Details fixo para cada status, com o `correlationId`. No `401`, mantém o `WWW-Authenticate` do desafio padrão; no `403`, `type`, `title` e `detail` são constantes, sem nada que distinga o motivo da negação.
+```
+
+Localizar o item das famílias de policies (v2.6:710), a linha que começa com:
+
+```markdown
+- **Quatro** famílias de policies:
+```
+
+e substituir a linha inteira por estes dois itens:
+
+```markdown
+- **Quatro** famílias de policies: `PlatformAdmin`; `TenantAdmin`; `StepUp`, para operações destrutivas; e escopos de client, tratados abaixo.
+- **`TenantAdmin` é a conjunção de quatro requirements** (v2.7) (D2, planejado): papel `tenant-admin` ∧ **não** `platform-admin` ∧ mesmo tenant ∧ `Member` do tenant da rota no banco, em `{Invited, Active}` (ADR-011). Cada um chama `Fail()` em todo caminho que não é sucesso. `InvokeHandlersAfterFailure` é falso, e o handler da pertença só consulta o banco para quem já passou nas três camadas do token — assim o tempo de resposta não vira oráculo do vínculo entre `sub` e tenant. Negar quem acumula `platform-admin` é separação de funções: o `manage-users` do service account atribui esse papel (§10.2), e sem a negação o desvio do platform-admin na leitura de tenant (abaixo) só valeria para a conta que não acumula papéis.
+```
+
+No item do `SameTenantRequirement` (v2.6:711), localizar o fim da linha:
+
+```markdown
+e só `Fail()` sobrevive a um `Succeed` alheio.
+```
+
+e substituir por:
+
+```markdown
+e só `Fail()` sobrevive a um `Succeed` alheio. **Na v2.7, a comparação é por `Guid`, e o claim precisa ter valor único** (D2, planejado): há exatamente um claim `tenant_id`, ele é um GUID no formato `D`, o valor da rota é um GUID, e os dois são iguais como `Guid` — a rota com o GUID em maiúsculas é o mesmo tenant, e um token com dois `tenant_id` é recusado, qualquer que seja a ordem.
+```
+
+Localizar o item do override (v2.6:714), a linha que começa com:
+
+```markdown
+- **Override do `platform-admin`: só leitura de tenant, e auditado** (I-3).
+```
+
+e substituir a linha inteira por (o bloco de citação logo abaixo dela, "O limite é o que sustenta a decisão 1 do
+brainstorm", fica como está):
+
+```markdown
+- **Override do `platform-admin`: só leitura de tenant, e auditado** (I-3) — **adiado, e como policy própria (v2.7, errata E3).** Até a v2.6, este item dizia que um `PlatformAdminOverrideHandler` satisfazia o `SameTenantRequirement` em `GET /tenants` e `GET /tenants/{tenantId}`. Nunca funcionaria: o `Fail()` do requirement veta qualquer `Succeed`, e a correção "natural" seria afrouxar o `Fail()`. O override passa a ser uma policy própria, **`TenantReadAccess`**, com **um** handler que decide os dois caminhos — platform-admin, com a auditoria gravada fora do handler; ou tenant-admin ∧ ¬platform-admin ∧ mesmo tenant ∧ `Member` —, e é entregue junto com a tabela de auditoria. O `SameTenantRequirement` e a `TenantAdmin` mantêm o `Fail()` incondicional. **Até lá, o platform-admin recebe `403` em `GET /tenants/{tenantId}`**, um desvio declarado em relação ao catálogo da §8: um override sem auditoria seria o único acesso cruzado entre tenants do produto sem trilha. Nas rotas internas do tenant — membros, clients, permission sets, domínios e IdPs — ele não terá acesso, com ou sem o override.
+```
+
+Na tabela "Clients de plataforma × clients de tenant" (v2.6:732), na linha do client de tenant, localizar:
+
+```markdown
+Recebe o atributo `tenant_id` do tenant que o criou, emitido como claim plano. Sujeito ao `SameTenantRequirement` como qualquer ator |
+```
+
+e substituir por:
+
+```markdown
+Recebe o atributo `tenant_id` do tenant que o criou, emitido como claim plano — **só se o adaptador do M6 anexar o scope `gateway-tenant` ao client** (v2.7): o scope não é default do realm (§12.2). Sujeito ao `SameTenantRequirement` como qualquer ator |
+```
+
+Localizar o parágrafo que fecha a subseção (v2.6:735), a linha que começa com:
+
+```markdown
+Essa distinção é necessária porque a Resource API serve todos os tenants
+```
+
+manter, e inserir logo depois, separado por uma linha em branco:
+
+```markdown
+**A lista de `azp` não cobre clients de tenant (v2.7).** A lista de clients permitidos é estática e vale para os clients interativos que chamam a Gateway. Um client M2M de tenant não entra nela e não recebe o scope `gateway-api`: o token dele não é aceito pela Gateway. Um client de tenant chamando a Gateway, no M6, exige decisão nova — uma consulta ao banco de "este client pertence a este tenant", nunca um prefixo de nome. Fora de Development, a lista fica vazia até existir um client administrativo.
+```
+
+- [ ] **Passo 9: §10.2 e §10.3 — o emissor aceito; o one-shot usa o master; rotação do refresh; token sem e-mail**
+
+Na v2.7, §10.2 (v2.6:790), localizar o parágrafo (uma linha só) que começa com:
+
+```markdown
+**Emissor público e transporte (errata da v2.6).**
+```
+
+manter, e inserir logo depois, separado por uma linha em branco:
+
+```markdown
+**O mesmo emissor público é o emissor aceito nos tokens (v2.7).** O `PublicBaseUrl` deixa de alimentar só o `aud` do assertion: `KeycloakAdminOptions.Issuer = {PublicBaseUrl ?? BaseUrl}/realms/{Realm}` é a propriedade única, `AssertionAudience` passa a ser `=> Issuer`, e o adaptador a copia para `AccessTokenValidationOptions.Issuer`, que a Api usa para validar o `iss` dos access tokens (§11.8). É uma derivação só, para as duas contas não divergirem. O `PublicBaseUrl` continua nunca discado: os metadados e as chaves são lidos pelo `BaseUrl`.
+```
+
+Localizar o último item da seção (v2.6:795):
+
+```markdown
+- A Gateway nunca usa o realm `master`.
+```
+
+e substituir a linha inteira por estes dois itens:
+
+```markdown
+- A Gateway nunca usa o realm `master`. **Quem usa, no ambiente local, é o one-shot `platform-admin-invite` do compose** (v2.7): ele faz login com o admin do `master` para enviar o convite do primeiro platform-admin (§15). Usar a chave da Gateway ali seria pior: o `manage-users` dela atribuiria `platform-admin`, e a criação da conta de plataforma apareceria nos eventos de administração como obra da Gateway.
+- **O raio de dano do `manage-users` é maior do que a v2.6 nomeava (v2.7).** Ele gerencia grupos e mapeia neles qualquer papel que não seja de administração: quem tem a chave da Gateway fabrica um `tenant_id` por grupo, que o mapper do claim aceita (§12.2), e toma a conta de um `Member` real, trocando a senha ou o e-mail dele. O primeiro caminho é o que o ADR-011 fecha na Gateway; o segundo, nenhuma checagem de pertença fecha (§19).
+```
+
+Na §10.3 (v2.6:805), localizar a linha que começa com:
+
+```markdown
+- **Tokens:** access token de 5 minutos, refresh token com rotação
+```
+
+e substituir a linha inteira por estes três itens:
+
+```markdown
+- **Tokens:** access token de 5 minutos (`accessTokenLifespan: 300`, explícito no realm), refresh token com rotação e *backchannel logout* habilitado. **A rotação está entregue desde a v2.7:** `revokeRefreshToken: true` e `refreshTokenMaxReuse: 0`. Um refresh token já usado é recusado, e **reusá-lo derruba a sessão inteira daquele client**: depois do reuso, até o refresh token novo é recusado, por desenho do Keycloak. Quem renova guarda o refresh token novo antes de qualquer outro passo e nunca repete uma renovação; se ela falhar, o caminho é um login novo. O refresh token vale 30 minutos de inatividade, o padrão do realm.
+- **O token não carrega e-mail nem nome (v2.7).** Os clients que chamam a Gateway não recebem os scopes `profile` nem `email`, e a validação usa `NameClaimType = "sub"`: o username é o e-mail, e `preferred_username` o levaria a logs, a histórico de shell e a proxies. O teste de vazamento do e-mail cobre tokens forjados que carreguem os dois claims (§13).
+- **Cadastro fechado e força bruta (v2.7).** `registrationAllowed: false` e `bruteForceProtected: true`, explícitos no realm e conferidos pelo `RegrasDoRealmTests`.
+```
+
+- [ ] **Passo 10: §11.7 — erratas E3 e E4; os quatro requirements no código de referência**
+
+Na v2.7, §11.7, no primeiro bloco de código (v2.6:1474), localizar a linha:
+
+```csharp
+            new RegisterTenantCommand(body.Name, body.Slug, body.PlanCode), ct);
+```
+
+e substituir por estas duas (errata E4):
+
+```csharp
+            // Errata E4 (v2.7): o e-mail do admin inicial está no command desde a v2.6 (§11.4).
+            new RegisterTenantCommand(body.Name, body.Slug, body.PlanCode, body.InitialAdminEmail), ct);
+```
+
+O segundo bloco de código da seção (o `SameTenantHandler`) é substituído inteiro. Localizar a última linha do
+primeiro bloco (v2.6:1484):
+
+```markdown
+    .WithName("RegisterTenant");
+```
+
+até a linha que contém (inclusive, a linha inteira):
+
+```markdown
+### 11.9. Repositório de sub-recurso: a assinatura que impede o erro
+```
+
+Substituir tudo — da linha `.WithName("RegisterTenant");` ao título `### 11.9. …`, inclusive os dois — pelo texto
+abaixo, que começa com a mesma linha `.WithName(...)` e a cerca que fecha o primeiro bloco, e termina com o mesmo
+título:
+
+````markdown
+    .WithName("RegisterTenant");
+```
+
+**Os quatro requirements da policy `TenantAdmin` (v2.7) (D2, planejado).** Até a v2.6, este trecho mostrava um `SameTenantHandler` cujo comentário justificava o `Fail()` por um "segundo handler" do platform-admin. A errata E3 tira esse motivo: o override é uma policy própria (§10.1), e o `Fail()` vale por si. O código abaixo é a referência da D2.
+
+```csharp
+// Authorization/SameTenantRequirement.cs (D2, planejado)
+
+/// <summary>
+/// Garante que o tenant do token é o mesmo tenant da rota.
+/// Sem esta verificação, qualquer tenant-admin operaria sobre qualquer tenant (BOLA/IDOR).
+/// </summary>
+/// <remarks>
+/// O requirement é o próprio handler. Todo caminho que não é sucesso chama Fail(): em ASP.NET Core, um
+/// requirement sem Succeed e sem Fail está só "ainda não satisfeito", e outro handler poderia satisfazê-lo.
+/// Fail() veta qualquer Succeed — e é por isso que o override do platform-admin NÃO é um segundo handler
+/// deste requirement (errata E3 da v2.7): ele é uma policy própria, TenantReadAccess (seção 10.1).
+/// </remarks>
+public sealed class SameTenantRequirement : AuthorizationHandler<SameTenantRequirement>, IAuthorizationRequirement
+{
+    protected override Task HandleRequirementAsync(
+        AuthorizationHandlerContext context, SameTenantRequirement requirement)
+    {
+        if (MesmoTenant(context))
+            context.Succeed(requirement);
+        else
+            context.Fail(new AuthorizationFailureReason(this, "Tenant da rota e do token não conferem."));
+
+        return Task.CompletedTask;
+    }
+
+    private static bool MesmoTenant(AuthorizationHandlerContext context)
+    {
+        // Com endpoint routing, o Resource é o próprio HttpContext.
+        if (context.Resource is not HttpContext http)
+            return false;
+
+        // GetRouteValue devolve o texto cru da URL, mesmo com a restrição :guid. Rota sem {tenantId} é erro
+        // de configuração; o teste de subida da seção 13 impede que chegue aqui.
+        if (!Guid.TryParse(http.GetRouteValue("tenantId")?.ToString(), out Guid daRota))
+            return false;
+
+        // Exatamente UM claim. O Keycloak nunca emite dois (multivalued=false, seção 12.2); aceitar "o
+        // primeiro", "o último" ou "algum" aceitaria um token forjado com o tenant da vítima numa das posições.
+        if (context.User.FindAll("tenant_id").Take(2).ToArray() is not [Claim claim])
+            return false;
+
+        // O claim, só no formato D. O tamanho antes do parse: Guid.TryParseExact tolera espaço nas pontas, e o
+        // formato D tem 36 caracteres. E a comparação é por Guid, não por texto: a rota com o GUID em maiúsculas
+        // é o mesmo tenant.
+        return claim.Value is { Length: 36 }
+            && Guid.TryParseExact(claim.Value, "D", out Guid doToken)
+            && doToken == daRota;
+    }
+}
+```
+
+```csharp
+// Authorization/RoleRequirement.cs e Authorization/NotPlatformAdminRequirement.cs (D2, planejado)
+
+/// <summary>
+/// Exige o papel no claim roles. Não é RequireClaim: ele só deixa de dar Succeed, e não chama Fail() — um
+/// handler que aprovasse tudo o satisfaria.
+/// </summary>
+public sealed class RoleRequirement(string role) : AuthorizationHandler<RoleRequirement>, IAuthorizationRequirement
+{
+    public string Role { get; } = role;
+
+    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, RoleRequirement requirement)
+    {
+        if (context.User.HasClaim("roles", requirement.Role))
+            context.Succeed(requirement);
+        else
+            context.Fail(new AuthorizationFailureReason(this, "Papel exigido ausente."));
+
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>Separação de funções: quem traz platform-admin não age como tenant-admin.</summary>
+public sealed class NotPlatformAdminRequirement
+    : AuthorizationHandler<NotPlatformAdminRequirement>, IAuthorizationRequirement
+{
+    protected override Task HandleRequirementAsync(
+        AuthorizationHandlerContext context, NotPlatformAdminRequirement requirement)
+    {
+        if (context.User.HasClaim("roles", "platform-admin"))
+            context.Fail(new AuthorizationFailureReason(this, "Conta de plataforma não age como tenant-admin."));
+        else
+            context.Succeed(requirement);
+
+        return Task.CompletedTask;
+    }
+}
+```
+
+```csharp
+// Authorization/MemberRequirement.cs e Authorization/MemberRequirementHandler.cs (D2, planejado)
+public sealed class MemberRequirement : IAuthorizationRequirement;
+
+/// <summary>
+/// A pertença no banco (ADR-011): o sub é Member do tenant da rota, em Invited ou Active.
+/// </summary>
+/// <remarks>
+/// Usa a porta IMemberQueries, e não o Mediator: a Api só fala com o Mediator dentro dos módulos. É o único dos
+/// quatro que precisa de DI — e por isso a ordem de registro importa (seção 11.8).
+/// </remarks>
+internal sealed class MemberRequirementHandler(IMemberQueries members) : AuthorizationHandler<MemberRequirement>
+{
+    protected override async Task HandleRequirementAsync(
+        AuthorizationHandlerContext context, MemberRequirement requirement)
+    {
+        // Só consulta o banco para quem já passou nas três camadas do token: o tempo de resposta não pode virar
+        // oráculo do vínculo (sub, tenant).
+        if (context.HasFailed
+            || context.Resource is not HttpContext http
+            || !Guid.TryParse(http.GetRouteValue("tenantId")?.ToString(), out Guid tenantId)
+            || context.User.FindFirst("sub")?.Value is not { Length: > 0 } sub)
+        {
+            context.Fail(new AuthorizationFailureReason(this, "Pertença não verificável."));
+            return;
+        }
+
+        // O sub vai como o Keycloak o emite, sem normalizar. O CancellationToken é o da requisição: o
+        // AuthorizationHandlerContext não tem um.
+        MemberStatus? status = await members.GetStatusAsync(
+            new TenantId(tenantId), ExternalUserId.From(sub), http.RequestAborted);
+
+        // Lista fechada: um estado que o enum ganhe depois nega, até alguém decidir.
+        if (status is MemberStatus.Invited or MemberStatus.Active)
+            context.Succeed(requirement);
+        else
+            context.Fail(new AuthorizationFailureReason(this, "O ator não é membro do tenant."));
+    }
+}
+```
+
+A rota usa a policy pela constante (`RequireAuthorization(Policies.TenantAdmin)`), e o registro dos quatro requirements, com a ordem que a pertença exige, está na §11.8. No módulo, o tenant não achado pelo handler da query — o que a policy já torna impossível — vira o **mesmo `403`** das demais negações, pela função `RespostasDeAutorizacao.Proibido`, e não um `404`. O teste de subida que o comentário acima cita ("rota sem `{tenantId}`") entra com esta rota: até a v2.6 não havia endpoint com policy de tenant em que ele pudesse falhar (§13).
+
+### 11.9. Repositório de sub-recurso: a assinatura que impede o erro
+````
+
+- [ ] **Passo 11: §11.9 e §11.8 — a porta `IMemberQueries`; a validação do access token e o registro da autorização**
+
+Na v2.7, §11.9 (v2.6:1567), localizar o parágrafo depois do bloco de código, a linha que começa com:
+
+```markdown
+Verificar o tenant da rota (§11.7) não cobre este vetor
+```
+
+manter, e inserir logo depois, separado por uma linha em branco:
+
+````markdown
+**A leitura da pertença (v2.7) (D2, planejado).** A policy `TenantAdmin` precisa saber se o ator é membro do tenant da rota (ADR-011). Ela não usa o repositório do agregado, que continua só com `Add`: usa uma porta de consulta, no padrão `I*Queries`, com o tenant na assinatura — a mesma regra da §6.4.
+
+```csharp
+namespace IdentityGateway.Application.Common.Abstractions;
+
+/// <summary>
+/// Leitura da pertença de um ator a um tenant. Não existe GetStatusAsync(ExternalUserId): o tenant está na
+/// assinatura, e o membro de outro tenant não é achado.
+/// </summary>
+public interface IMemberQueries
+{
+    /// <summary>O status do membro (tenant, sub), ou null se ele não for membro do tenant.</summary>
+    Task<MemberStatus?> GetStatusAsync(TenantId tenantId, ExternalUserId externalUserId, CancellationToken ct);
+}
+```
+
+A implementação (`Infrastructure/Persistence/Queries/MemberQueries.cs`) lê com `AsNoTracking()` e é registrada ao lado do `ITenantQueries`. Um teste de arquitetura proíbe o requirement de depender da Infrastructure.
+````
+
+Antes de editar a §11.8, conferir os nomes contra o código entregue pelas Tarefas 7 e 8:
+
+Run: `grep -n "static " src/IdentityGateway.Api/Authentication/ValidacaoDoAccessToken.cs src/IdentityGateway.Api/Authentication/FormaDoAccessToken.cs src/IdentityGateway.Api/Authentication/AutenticacaoLogs.cs`
+Expected: em `ValidacaoDoAccessToken`, `Categoria`, `Tolerancia`, `PrazoDosMetadados`, `IntervaloDeRefresh`,
+`SoRs256`, `Configurar`, `AoValidar`, `EmissorEstrito`, `AoFalhar` e `EhFalhaDeChaveOuDeMetadados`; em
+`FormaDoAccessToken`, `Recusar` e `Texto`; em `AutenticacaoLogs`, `ChavesIndisponiveis`, `TokenRecusado`,
+`FormaRecusada` e `NenhumClientPermitido` — são os nomes que as Tarefas 7 e 8 fixaram, e os blocos abaixo os usam.
+Se algum nome divergir, o código foi alterado fora do plano: pare e confira antes de colar.
+
+Os blocos abaixo são **referência**, e não cópia dos arquivos: trazem os tipos, as pastas, os nomes e os valores
+finais (RS256, 30 s, 5 s, 30 s), com os comentários XML e as guardas de argumento do código de fora. Copie como
+estão.
+
+Na v2.7, §11.8, no bloco do `AddKeycloakIdentity` (v2.6:1623), localizar a linha:
+
+```csharp
+    // A chave é importada para RSA uma vez; o cache do token é singleton porque o
+```
+
+e inserir **antes** dela, separado dela por uma linha em branco:
+
+```csharp
+    // v2.7: a validação dos access tokens é configurada por uma option NEUTRA, que a Api lê sem conhecer o
+    // Keycloak. Audience e AllowedClients vêm da seção Keycloak:Auth; o emissor, o endereço dos metadados e
+    // RequireHttpsMetadata são derivados aqui, das mesmas KeycloakAdminOptions (setters internal: o binder não
+    // os preenche).
+    services.AddOptions<AccessTokenValidationOptions>()
+        .Bind(configuration.GetSection("Keycloak:Auth"))
+        .Configure<IOptions<KeycloakAdminOptions>>((token, keycloak) =>
+        {
+            token.Issuer = keycloak.Value.Issuer;                    // {PublicBaseUrl ?? BaseUrl}/realms/{Realm}
+            token.MetadataAddress = keycloak.Value.MetadataAddress;  // {BaseUrl}/realms/{Realm}/.well-known/openid-configuration
+            token.RequireHttpsMetadata = !keycloak.Value.AllowInsecureHttp;
+        })
+        .Validate(token => !string.IsNullOrWhiteSpace(token.Audience), "Keycloak:Auth:Audience é obrigatório.")
+        // Fora de Development, o client de demonstração não pode estar na lista. Lista vazia sobe: a API recusa
+        // todo token de usuário e registra um aviso (fail-closed).
+        .Validate<IHostEnvironment>(
+            (token, ambiente) => ambiente.IsDevelopment() || !token.AllowedClients.Contains("identity-gateway-demo"),
+            "Keycloak:Auth:AllowedClients contém um client que só é aceito no ambiente Development.")
+        .ValidateOnStart();
+```
+
+No fim da §11.8 (v2.6:1654), localizar o parágrafo (uma linha só) que começa com:
+
+```markdown
+Critérios de tempo de vida: handlers de comando e repositórios são `Scoped`
+```
+
+manter, e inserir logo depois dele, separado por uma linha em branco, o texto abaixo (ele fica antes da linha
+`---` que fecha a seção):
+
+````markdown
+**Validação dos access tokens na Api (v2.7).** A Api configura o JwtBearer a partir da `AccessTokenValidationOptions`, e nunca das options do Keycloak, que ela não conhece (ADR-008). A configuração entra por `AddOptions<JwtBearerOptions>(scheme).Configure<IOptions<…>>`, que roda antes do `JwtBearerPostConfigureOptions`. O código fica em `Api/Authentication`, e o `DependencyInjection` da Api só o chama.
+
+```csharp
+// Api/Authentication/ValidacaoDoAccessToken.cs
+internal static class ValidacaoDoAccessToken
+{
+    internal const string Categoria = "IdentityGateway.Api.Authentication";
+
+    // Os padrões da biblioteca são 5 min, 60 s e 5 min. Cinco minutos de tolerância dobrariam a vida do token.
+    // Com o Keycloak fora e sem metadados, cada pedido tenta de novo, em fila: 60 s de timeout empilham os
+    // pedidos. E uma segunda rotação de chave dentro do intervalo de refresh ficaria em 401 até o fim dele.
+    internal static readonly TimeSpan Tolerancia = TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan PrazoDosMetadados = TimeSpan.FromSeconds(5);
+    internal static readonly TimeSpan IntervaloDeRefresh = TimeSpan.FromSeconds(30);
+
+    // Chamado, no DependencyInjection da Api, por
+    //   services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    //       .Configure<IOptions<AccessTokenValidationOptions>>((jwt, validacao) => Configurar(jwt, validacao.Value));
+    // que roda antes do JwtBearerPostConfigureOptions.
+    internal static void Configurar(JwtBearerOptions jwt, AccessTokenValidationOptions validacao)
+    {
+        // Metadados pelo endereço INTERNO, sem Authority: o discovery devolve o emissor público, e o jwks_uri no
+        // host da requisição.
+        jwt.MetadataAddress = validacao.MetadataAddress;
+        jwt.RequireHttpsMetadata = validacao.RequireHttpsMetadata;   // !AllowInsecureHttp, validado na subida
+        jwt.BackchannelTimeout = PrazoDosMetadados;
+        jwt.RefreshInterval = IntervaloDeRefresh;
+
+        // Mantém "sub", "roles" e "tenant_id" com os nomes do token (seção 12.1).
+        jwt.MapInboundClaims = false;
+
+        // Falso em todo ambiente: o WWW-Authenticate ecoaria o iss e o aud recusados, que vêm do token. Um iss
+        // com caractere de controle faria o Kestrel recusar o cabeçalho, e o 401 viraria 500.
+        jwt.IncludeErrorDetails = false;
+
+        jwt.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            // ValidIssuer NÃO restringe: com metadados, a biblioteca aceita também o issuer do discovery.
+            IssuerValidator = EmissorEstrito(validacao.Issuer),
+            ValidateAudience = true,
+            ValidAudience = validacao.Audience,
+            ValidateLifetime = true,
+            RequireExpirationTime = true,
+            ValidateIssuerSigningKey = true,
+            ValidAlgorithms = SoRs256,                          // [RS256]: só o algoritmo do realm
+            ClockSkew = Tolerancia,
+            NameClaimType = "sub",                              // o username é o e-mail; não vai a log
+            RoleClaimType = "roles",
+        };
+
+        jwt.Events = new JwtBearerEvents
+        {
+            // azp, typ e sub: o que a biblioteca não confere (abaixo).
+            OnTokenValidated = contexto => AoValidar(contexto, validacao.AllowedClients),
+            OnAuthenticationFailed = AoFalhar,
+        };
+    }
+
+    // Fail, e não exceção: o resultado é o mesmo 401 de qualquer token recusado, e o motivo — texto fixo, sem
+    // nenhum valor do token — vai para o log em Debug.
+    private static Task AoValidar(TokenValidatedContext contexto, IReadOnlyList<string> clientsPermitidos)
+    {
+        string? motivo = contexto.SecurityToken is JsonWebToken token
+            ? FormaDoAccessToken.Recusar(token, clientsPermitidos)
+            : "token que não é um JWT";
+
+        if (motivo is not null)
+        {
+            ILogger logger = contexto.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>().CreateLogger(Categoria);
+
+            AutenticacaoLogs.FormaRecusada(logger, motivo);               // EventId 2102
+            contexto.Fail(motivo);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    // Warning quando a falha é de chave ou de metadados — o Keycloak fora do ar chega assim. Nos demais casos, só
+    // o tipo da exceção, em Debug. Nunca o token nem a mensagem da exceção.
+    private static Task AoFalhar(AuthenticationFailedContext contexto)
+    {
+        ILogger logger = contexto.HttpContext.RequestServices
+            .GetRequiredService<ILoggerFactory>().CreateLogger(Categoria);
+        string tipo = contexto.Exception.GetType().Name;
+
+        if (EhFalhaDeChaveOuDeMetadados(contexto.Exception))
+            AutenticacaoLogs.ChavesIndisponiveis(logger, tipo);           // EventId 2100
+        else
+            AutenticacaoLogs.TokenRecusado(logger, tipo);                 // EventId 2101
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Só o emissor público exato, por igualdade ordinal. Internal para ter teste próprio.</summary>
+    internal static IssuerValidator EmissorEstrito(string esperado) => (issuer, _, _) =>
+        string.Equals(issuer, esperado, StringComparison.Ordinal)
+            ? issuer
+            : throw new SecurityTokenInvalidIssuerException("Emissor do token não é o do realm configurado.")
+            {
+                InvalidIssuer = issuer,
+            };
+
+    // EhFalhaDeChaveOuDeMetadados(Exception): com os metadados frios, a biblioteca engole a falha de busca, e
+    // ela chega como falta de chave. A lista dos tipos de exceção fica no código, com teste.
+}
+```
+
+```csharp
+// Api/Authentication/FormaDoAccessToken.cs
+internal static class FormaDoAccessToken
+{
+    /// <summary>
+    /// azp na lista, typ igual a Bearer e sub GUID. Devolve null se a forma é aceita; senão, o motivo, em texto
+    /// fixo, sem nenhum valor do token. Qualquer motivo é 401.
+    /// </summary>
+    /// <remarks>
+    /// Na autenticação, e não numa policy: a policy padrão não se soma a uma policy nomeada, e a rota com
+    /// PlatformAdmin escaparia. Lê o JSON do payload, e não os claims: o ClaimsPrincipal achata um array de um
+    /// elemento num claim só, e "typ": ["Bearer"] passaria. (Para azp e sub, a própria biblioteca recusa o token
+    /// em que eles não são texto, ao ler o JWT; para typ, não.)
+    /// </remarks>
+    internal static string? Recusar(JsonWebToken token, IReadOnlyList<string> clientsPermitidos)
+    {
+        using var documento = JsonDocument.Parse(Base64UrlEncoder.DecodeBytes(token.EncodedPayload));
+        JsonElement payload = documento.RootElement;
+
+        string? azp = Texto(payload, "azp");
+
+        // Lista vazia: recusa todo token.
+        if (string.IsNullOrEmpty(azp) || !clientsPermitidos.Contains(azp, StringComparer.Ordinal))
+            return "azp ausente, sem a forma de texto ou fora da lista de clients permitidos";
+
+        // O claim, e não o cabeçalho: o ID token traz "ID".
+        if (!string.Equals(Texto(payload, "typ"), "Bearer", StringComparison.Ordinal))
+            return "typ diferente de Bearer";
+
+        // O tamanho antes do parse: Guid.TryParseExact tolera espaço nas pontas, e o formato D tem 36 caracteres.
+        if (Texto(payload, "sub") is not { Length: 36 } sub || !Guid.TryParseExact(sub, "D", out _))
+            return "sub ausente ou fora do formato de GUID";
+
+        return null;
+    }
+
+    // Só texto: array, número, objeto e ausência devolvem null.
+    private static string? Texto(JsonElement payload, string claim) =>
+        payload.TryGetProperty(claim, out JsonElement valor) && valor.ValueKind == JsonValueKind.String
+            ? valor.GetString()
+            : null;
+}
+```
+
+Os quatro logs da autenticação são `LoggerMessage`, como o resto do projeto (`AutenticacaoLogs`): `ChavesIndisponiveis` (2100, `Warning`), quando a exceção é de chave ou de metadados — com os metadados frios, a falha de busca chega como falta de chave —; `TokenRecusado` (2101, `Debug`), com só o tipo da exceção, nos demais casos; `FormaRecusada` (2102, `Debug`), quando o `azp`, o `typ` ou o `sub` reprovam; e `NenhumClientPermitido` (2103, `Warning`), na subida, quando a lista de `azp` está vazia — registrado por um `IHostedService`, o `AvisoDeClientsPermitidos`. Nenhum deles leva o token. Sem o primeiro, o Keycloak fora do ar viraria `401` em silêncio, porque a biblioteca avisa só pelo `EventSource` dela (§14).
+
+**O registro da autorização (v2.7).** Desde a D1, a Api registra a `FallbackPolicy` autenticada, a policy `PlatformAdmin` pela constante `Policies.PlatformAdmin` e o `IAuthorizationMiddlewareResultHandler` do Problem Details (§10.1). Com a primeira rota de tenant, um método só passa a registrar tudo, na ordem que a pertença exige (D2, planejado):
+
+```csharp
+// Api/Authorization/AutorizacaoDaGateway.cs (D2, planejado)
+internal static class AutorizacaoDaGateway
+{
+    public static IServiceCollection AddAutorizacaoDaGateway(this IServiceCollection services)
+    {
+        services.AddAuthorization(options =>
+        {
+            // Todo endpoint exige usuário autenticado, a menos que declare AllowAnonymous ou outra policy.
+            options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+
+            // Global. Com ele falso, um handler que viesse depois de um Fail() não roda — e por isso a negação
+            // não pode ser auditada por handler: a auditoria nasce fora deles.
+            options.InvokeHandlersAfterFailure = false;
+
+            options.AddPolicy(Policies.PlatformAdmin, policy => policy.RequireClaim("roles", "platform-admin"));
+
+            options.AddPolicy(Policies.TenantAdmin, policy => policy.AddRequirements(
+                new RoleRequirement("tenant-admin"),
+                new NotPlatformAdminRequirement(),
+                new SameTenantRequirement(),
+                new MemberRequirement()));
+        });
+
+        // A ORDEM IMPORTA. Os três primeiros requirements são o próprio handler e rodam dentro do
+        // PassThroughAuthorizationHandler, que o AddAuthorization acabou de registrar. O handler da pertença
+        // entra DEPOIS dele: se entrasse antes, rodaria primeiro, com o contexto ainda sem falha, e consultaria
+        // o banco para qualquer tenantId.
+        services.AddScoped<IAuthorizationHandler, MemberRequirementHandler>();
+
+        return services;
+    }
+}
+```
+
+Produção e testes unitários usam o mesmo método. Um teste funcional, com a DI real e uma porta falsa que conta as chamadas, prova que a pertença não é consultada com o papel ausente, com outro tenant nem com `platform-admin` (§13).
+````
+
+- [ ] **Passo 12: §12.1 — o JSON real do realm (E5), só o catálogo no claim (E6), testes pelo harness (E2, E8), diagnóstico**
+
+A abertura da §12 (o código do pacote do Data Plane, com `Authority` e `NameClaimType = "preferred_username"`) **não
+muda**: rever a configuração do Data Plane é proposta do design, não decisão desta fatia.
+
+Na v2.7, §12.1, "Armadilha 1", no exemplo de token (v2.6:1718) — localizar as duas linhas:
+
+```json
+  "sub": "5f1c0a2e-7c1d-4a55-9b0e-2f6f3c9d1a10",
+  "preferred_username": "ana@empresa-a.com",
+```
+
+e substituir por uma só (sai o `preferred_username`):
+
+```json
+  "sub": "5f1c0a2e-7c1d-4a55-9b0e-2f6f3c9d1a10",
+```
+
+No parágrafo logo abaixo do exemplo (v2.6:1731), localizar o fim dele:
+
+```markdown
+Não existe um claim chamado `roles` no primeiro nível.
+```
+
+e substituir por:
+
+```markdown
+Não existe um claim chamado `roles` no primeiro nível. O exemplo deixou de trazer `preferred_username` (v2.7): os clients que chamam a Gateway não recebem o scope `profile`, e o token deles não carrega e-mail nem nome (§10.3).
+```
+
+Na "Solução A", na linha do caminho pelo console (v2.6:1778), localizar:
+
+```markdown
+(`gateway-roles`, tipo Default)
+```
+
+e substituir por:
+
+```markdown
+(`gateway-roles`, tipo **None**: desde a v2.7 o scope não é default do realm)
+```
+
+O JSON de bootstrap e o parágrafo que o segue são substituídos. Localizar a linha (v2.6:1780):
+
+```markdown
+O mesmo, no arquivo de bootstrap do realm:
+```
+
+até a linha que contém (inclusive, a linha inteira):
+
+```markdown
+O `defaultDefaultClientScopes` é importante para este projeto:
+```
+
+Substituir tudo — a linha, o bloco JSON inteiro e o parágrafo "O `defaultDefaultClientScopes` é importante…", que é
+uma linha só — por:
+
+````markdown
+O mesmo, no arquivo de bootstrap do realm (v2.7):
+
+```json
+{
+  "attributes": { "CreateDefaultClientScopes": "true" },
+  "clientScopes": [
+    {
+      "name": "gateway-roles",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "false", "display.on.consent.screen": "false" },
+      "protocolMappers": [
+        {
+          "name": "roles-plano",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "scopeMappings": [
+    { "clientScope": "gateway-roles", "roles": ["platform-admin", "tenant-admin", "financial-manager", "reader"] }
+  ],
+  "clients": [
+    {
+      "clientId": "identity-gateway",
+      "fullScopeAllowed": true,
+      "defaultClientScopes": ["basic", "roles"],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "identity-gateway-demo",
+      "publicClient": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": ["basic", "acr", "gateway-roles", "gateway-tenant", "gateway-api"],
+      "optionalClientScopes": []
+    }
+  ]
+}
+```
+
+**Errata da v2.7 (E5): declarar `clientScopes` desliga a criação dos scopes embutidos.** A v2.6 mandava listar o `gateway-roles` em `defaultDefaultClientScopes` ao lado dos scopes padrão, "porque ela substitui o conjunto padrão do realm". O efeito real é outro, e pior: quando o JSON do realm declara `clientScopes`, o import **não cria** os embutidos (`profile`, `email`, `roles`, `basic`, `acr`, `web-origins`…), sem erro — e um token de um client sem o scope `basic` sai **sem `sub`**. A correção é o atributo de realm `"CreateDefaultClientScopes": "true"`, que não aparece na documentação pública e não é persistido, porque o import o consome: a presença dos embutidos é provada contra o Keycloak real, e não no JSON, e precisa ser reverificada a cada troca de tag do Keycloak (§19).
+
+**Os scopes `gateway-*` ficam fora dos defaults do realm, e cada client declara os seus (v2.7).** Nenhum dos três — `gateway-roles`, `gateway-tenant` (§12.2) e `gateway-api`, que carrega o Audience Mapper — está em `defaultDefaultClientScopes`. Num scope default, todo client do realm emitiria token com a audiência da Gateway (§10.1). Todo client do JSON declara `defaultClientScopes` e `optionalClientScopes` explícitos. O service account `identity-gateway` fica com `basic` e `roles` — é do `roles` que vem o `resource_access` que o health check lê —, sem `gateway-*`, e mantém `fullScopeAllowed: true`, porque com `false` a Admin API passa a responder `403`. O client de demonstração fica com `basic`, `acr` e os três `gateway-*`, sem `profile` nem `email`, com `fullScopeAllowed: false`. **Consequência para o M6:** um client criado depois não recebe os scopes sozinho; o adaptador que provisiona clients de tenant anexa explicitamente os que o client deve ter (§12.2).
+````
+
+O token de exemplo e os dois parágrafos que o seguem também são substituídos. Localizar a linha (v2.6:1813):
+
+```markdown
+Com o mapper ativo, o token passa a ter:
+```
+
+até a linha que contém (inclusive, a linha inteira):
+
+```markdown
+Os papéis `default-roles-identity-gateway`, `offline_access` e `uma_authorization` aparecem em todos os usuários.
+```
+
+Substituir tudo — a linha, o bloco JSON, o parágrafo "O `realm_access` continua existindo…" e o parágrafo "Os
+papéis `default-roles-identity-gateway`…", cada um deles uma linha só — por:
+
+````markdown
+Com o scope associado ao client, o token passa a ter:
+
+```json
+{
+  "sub": "5f1c0a2e-7c1d-4a55-9b0e-2f6f3c9d1a10",
+  "aud": "identity-gateway-api",
+  "azp": "identity-gateway-demo",
+  "typ": "Bearer",
+  "acr": "1",
+  "roles": ["tenant-admin"],
+  "tenant_id": "0199a000-0000-7000-8000-00000000000a"
+}
+```
+
+**Só o catálogo no claim (v2.7, errata E6).** A v2.6 mostrava o claim `roles` com `default-roles-identity-gateway`, `offline_access` e `uma_authorization`, e dizia que eles "não interferem". Eles entravam no claim de todo usuário — e a `RoleAssignmentPolicy` lê esse claim (§6.3). Agora saem, por dois mecanismos: o client de demonstração tem `fullScopeAllowed: false`, e os scope mappings do `gateway-roles` são só os quatro papéis do catálogo. Um usuário sem papel do catálogo recebe o token **sem** o claim `roles`. Os papéis do catálogo **nunca são compostos**: o Keycloak decide o que o `manage-users` pode atribuir pelo nome do papel, e um papel do catálogo composto com papéis de `realm-management` seria atribuível pelo service account.
+
+**O scope `roles` fica fora dos clients de usuário (v2.7).** A v2.6 o mantinha por causa do mapper *audience resolve*. Com o `aud` vindo explícito do `gateway-api`, ele deixa de ser necessário, e o `realm_access` só duplicaria o `roles`: o token do client de demonstração não traz `realm_access` nem `resource_access`.
+````
+
+Na "Solução B" (v2.6:1886), localizar o parágrafo que a fecha, a linha que começa com:
+
+```markdown
+A Solução A continua sendo a preferida:
+```
+
+manter, e inserir logo depois, separado por uma linha em branco:
+
+```markdown
+**Nos clients que chamam a Gateway, a Solução B fica inerte (v2.7).** O token deles não traz `realm_access`, e não há o que achatar. Ela continua no pacote do Data Plane, para tokens de ambientes de terceiros.
+```
+
+Em "Como verificar", o item 3 e os dois testes são substituídos. Localizar a linha (v2.6:1910):
+
+```markdown
+3. **No CI, com teste de integração contra o Keycloak real (Testcontainers):**
+```
+
+até a linha que contém (inclusive, a linha inteira):
+
+```markdown
+O primeiro teste protege a configuração do Keycloak; o segundo protege a configuração do .NET.
+```
+
+Substituir tudo — a linha do item 3, o bloco de código com os dois testes e o parágrafo "O primeiro teste protege…",
+que é uma linha só — por:
+
+````markdown
+3. **No CI, com teste de integração contra o Keycloak real (Testcontainers), pelo harness de login (v2.7):**
+
+```csharp
+[Fact]
+public async Task TokenDoDemo_TrazRolesPlanoSoComOCatalogo()
+{
+    // O harness faz o device flow no client de demonstração: conclui o login e o consentimento nas páginas do
+    // próprio Keycloak, com uma senha que ele mesmo definiu pelo link de ações. Não é ROPC (ADR-003).
+    TokensDeUsuario tokens = await harness.TokenPorDispositivoAsync(adminDoTenant, senha, ct);
+
+    var jwt = new JsonWebToken(tokens.AccessToken);
+    string[] roles = [.. jwt.Claims.Where(c => c.Type == "roles").Select(c => c.Value)];
+
+    roles.Should().BeEquivalentTo(["tenant-admin"]);     // plano, e só o catálogo: nenhum default-roles-*
+    jwt.Claims.Should().NotContain(c => c.Type == "realm_access");
+}
+
+[Fact]
+public async Task PlatformAdminReal_RegistraTenant()
+{
+    // Atravessa a API com um token do Keycloak real: protege a configuração do .NET (MapInboundClaims,
+    // RoleClaimType, emissor, audiência e azp), que o teste acima não vê.
+    TokensDeUsuario tokens = await harness.TokenPorDispositivoAsync(platformAdmin, senha, ct);
+    client.DefaultRequestHeaders.Authorization = new("Bearer", tokens.AccessToken);
+
+    HttpResponseMessage resposta = await client.PostAsJsonAsync("/api/v1/tenants", novoTenant, ct);
+
+    resposta.StatusCode.Should().Be(HttpStatusCode.Accepted);
+}
+```
+
+> **Erratas da v2.7 (E2 e E8).** Os testes de referência da v2.6 chamavam um método que nunca existiu (`GetClientCredentialsTokenAsync`), contra a rota `/api/v1/tenants/tenant-a/members`, com um slug no lugar do GUID. E o comentário deles dizia que "o ROPC continua desabilitado também no realm de teste": era falso. O `KeycloakFixture` obtinha um token de usuário por ROPC, num client criado em runtime, e o `admin-cli` embutido do realm tem direct grant. A v2.7 tira o ROPC do fixture — os tokens de usuário dos testes vêm do device flow, pelo mesmo harness que a CI e a demonstração usam — e declara o alcance da proibição no ADR-003.
+
+O primeiro teste protege a configuração do Keycloak; o segundo protege a configuração do .NET. Se alguém remover o mapper ou voltar `MapInboundClaims` para o padrão, um dos dois quebra.
+````
+
+Em "Diagnóstico rápido" (v2.6:1945), localizar a primeira linha da tabela, a que começa com:
+
+```markdown
+| 403 com token válido; o papel aparece dentro de `realm_access` |
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| 403 com token válido; o papel aparece dentro de `realm_access` | Mapper plano ausente ou scope não associado ao client | Associar `gateway-roles` aos `defaultClientScopes` do client (v2.7: o scope não é default do realm) |
+```
+
+Na mesma tabela (v2.6:1952), localizar a última linha, a que começa com:
+
+```markdown
+| Papel recém-atribuído não funciona | Token emitido antes da atribuição |
+```
+
+manter, e inserir logo depois dela estas cinco linhas:
+
+```markdown
+| Token de outro emissor é aceito, apesar do `ValidIssuer` (v2.7) | Com metadados, a biblioteca aceita o `issuer` anunciado pelo discovery antes de olhar o `ValidIssuer` | `IssuerValidator` próprio, com igualdade ordinal contra o emissor público (§11.8) |
+| `401` com token válido; o `aud` é `account` ou não existe (v2.7) | O client não tem o scope `gateway-api`, que não é default do realm | Anexar `gateway-api` aos `defaultClientScopes` do client — só dos que falam com a Gateway |
+| `default-roles-identity-gateway` aparece no claim `roles` (v2.7) | `fullScopeAllowed: true` no client, ou scope mappings do `gateway-roles` além do catálogo | `fullScopeAllowed: false`, e scope mappings só com os quatro papéis |
+| `profile`, `email`, `roles` e `basic` sumiram do realm depois do import (v2.7) | O JSON declara `clientScopes` sem o atributo `CreateDefaultClientScopes` | `"CreateDefaultClientScopes": "true"` nos atributos do realm, e volume novo |
+| `401` com token válido; o token não tem `sub` (v2.7) | O client não tem o scope `basic` | `basic` nos `defaultClientScopes` do client |
+```
+
+- [ ] **Passo 13: §12.2 — `gateway-tenant` fora dos defaults; o recuo do mapper para o grupo; teste pelo harness (E8)**
+
+Na v2.7, §12.2, "Solução adotada" (v2.6:2005), localizar o parágrafo (uma linha só) que começa com:
+
+```markdown
+O mapper vai no client scope `gateway-tenant`, incluído em `defaultDefaultClientScopes`
+```
+
+e substituir a linha inteira por estes dois parágrafos:
+
+```markdown
+O mapper vai no client scope `gateway-tenant`, com `multivalued` e `aggregate.attrs` em `"false"`. **O scope fica fora dos defaults do realm (v2.7)**, como o `gateway-roles` e o `gateway-api` (§12.1): cada client recebe só o que declara. O client de demonstração declara os três. **No M6, o adaptador que provisiona clients de tenant anexa o `gateway-tenant` explicitamente** — e o `gateway-api`, só se o client for chamar a Gateway, o que exige decisão nova (§10.1). A v2.6 punha o scope em `defaultDefaultClientScopes`, para todo client criado depois o receber sozinho; com os scopes fora dos defaults, esse automatismo deixa de existir, de propósito.
+
+**O mapper recua para o atributo de grupo (v2.7).** Quando o usuário não tem o atributo `tenant_id`, o `oidc-usermodel-attribute-mapper` usa o atributo de mesmo nome do **primeiro grupo** que o tiver, subindo aos pais, e não há configuração que desligue isso — verificado no código e ao vivo, na 26.7.4. Com `multivalued` em `"false"`, o token nunca traz dois valores. O `manage-users` cria grupos (§10.2): o claim é forjável por quem tem a chave da Gateway. São duas defesas. **O realm não tem nenhum grupo**, e o `RegrasDoRealmTests` reprova `groups` e `defaultGroups` no JSON. E, nas rotas de governança, a Gateway exige também a pertença no banco (ADR-011) (D2, planejado). Um grupo criado em runtime não é visto pela regra do JSON, e o Data Plane continua exposto a ele (§19). Um teste de caracterização contra o Keycloak real afirma o recuo, para avisar se uma versão nova mudar o comportamento. Atributo de Organization não vaza para o claim.
+```
+
+Em "Teste que protege esta decisão" (v2.6:2024), localizar as duas linhas:
+
+```csharp
+    var token = await _keycloak.GetTokenForUserAsync("ana@empresa-a.com");
+    var jwt = new JsonWebToken(token);
+```
+
+e substituir por estas três (errata E8):
+
+```csharp
+    // Errata E8 (v2.7): GetTokenForUserAsync nunca existiu. O token vem do device flow, pelo harness de login.
+    TokensDeUsuario tokens = await harness.TokenPorDispositivoAsync(adminDoTenantA, senha, ct);
+    var jwt = new JsonWebToken(tokens.AccessToken);
+```
+
+- [ ] **Passo 14: §13 — as linhas novas da tabela de testes; as três regras continuam três**
+
+Na v2.7, §13, na linha "Autorização negativa" da tabela (v2.6:2048), localizar:
+
+```markdown
+Mais escalação de papel e token sem audiência correta
+```
+
+e substituir por:
+
+```markdown
+Mais escalação de papel e token sem audiência correta. **Continuam três (v2.7):** nas rotas de governança da Gateway, a regra (a) é conferida também pela pertença do ator ao tenant no banco (ADR-011), que a reforça e não é uma quarta regra (D2, planejado)
+```
+
+Localizar a linha "Configuração de endpoint" (v2.6:2049), a que começa com:
+
+```markdown
+| Configuração de endpoint | Teste de startup que varre o `EndpointDataSource`
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| Configuração de endpoint | Teste de startup que varre o `EndpointDataSource` e falha se um endpoint com policy de tenant **não** tiver `{tenantId}` no template — o inverso do teste acima. **Entra com a primeira policy de tenant, `TenantAdmin`** (v2.7) (D2, planejado): até a v2.6 não havia endpoint em que ele pudesse falhar | `EndpointDataSource` do host de teste |
+```
+
+Localizar a última linha da tabela (v2.6:2056), a que começa com:
+
+```markdown
+| Convite ponta a ponta, atomicidade e entrega concorrente (v2.6) |
+```
+
+manter, e inserir logo depois dela estas nove linhas:
+
+```markdown
+| OIDC falso com emissor divergente (v2.7) | Os testes funcionais sobem um Kestrel em loopback que serve discovery e JWKS de uma chave RSA de teste, só por configuração. O discovery anuncia um emissor **diferente** do configurado, e os tokens positivos usam o configurado: é o que prova o `IssuerValidator` estrito, porque com o `ValidIssuer` o emissor do discovery seria aceito. O emissor de teste imita o token real (`aud` texto, `sub` GUID, `typ` `Bearer`, `azp` do demo, `roles` array, `tenant_id` texto, 5 min) e aceita payload livre para os casos malformados | `WebApplicationFactory`, Kestrel em loopback |
+| Suíte negativa de autenticação, em tabela (v2.7) | Nas rotas protegidas: sem token, malformado, `Bearer` vazio, esquema `Basic`; vencido há 2 min, `nbf` no futuro, sem `exp`; `aud` errada ou ausente; `iss` forasteiro, interno, com barra final, sufixo ou maiúsculas, e o anunciado pelo discovery; outra chave RSA com o mesmo `kid`, `alg=none`, HS256 com a chave pública como segredo e a receita HS256 antiga; `typ` igual a `ID`; `azp` fora da lista, ausente, vazio, em array ou numérico; sem `sub`, `sub` não-GUID, no formato `N` ou em array. Todos `401`. Um caminho não mapeado, sem token, também `401` — a `FallbackPolicy` | `[Theory]` sobre o OIDC falso |
+| Opções do JwtBearer conferidas em execução (v2.7) | As `JwtBearerOptions` resolvidas do esquema têm `IssuerSigningKey` nulo, `IssuerSigningKeys` vazio, `SignatureValidator` e `IssuerSigningKeyResolver` nulos, as quatro validações ligadas, `ValidAlgorithms` igual a `[RS256]` e `IncludeErrorDetails` falso. É teste de execução, e não regra de arquitetura, porque o NetArchTest enxerga tipos, não propriedades | `IOptionsMonitor<JwtBearerOptions>` |
+| Host em `Production`, com pedidos (v2.7) | Uma factory em `Production`: a subida falha com o client de demonstração na lista de `azp`, com `BaseUrl` em `http` ou com `AllowInsecureHttp`. E, com pedidos: `RequireHttpsMetadata` verdadeiro e `BackchannelTimeout` de 5 s nas opções resolvidas; `aud` errada leva `401` sem `error_description`; com a lista de `azp` vazia, a API sobe, registra o aviso e recusa um token válido; com o endereço dos metadados num listener que aceita a conexão e nunca responde, o `401` sai em menos de ~7 s, com o `Warning` capturado e sem o token no log | `WebApplicationFactory` em `Production`, HTTPS em loopback |
+| Coleção com Keycloak real atravessando a API (v2.7) | Cada teste cria o próprio platform-admin, conclui o link de ações e obtém o token pelo device flow. **Ponte de contrato:** os tipos dos claims de um token real são os do emissor de teste — sem ela, os funcionais ficariam verdes sem provar nada sobre o Keycloak. Platform-admin real → `POST /tenants` → `202`. Token de um client com `azp` aceito e sem `gateway-api` → `401`, que só pode vir da audiência. Token do service account e **token ROPC do `admin-cli` do realm** → `401`, com a forma do token afirmada. `PublicBaseUrl` errado → `401`. Um refresh token já usado é recusado, e depois dele o novo também | Testcontainers, `ICollectionFixture`, harness de login |
+| Vazamento do e-mail no token (v2.7) | Tokens de forma Keycloak que carreguem `email` e `preferred_username`, forjados no OIDC falso: sucesso, `403`, expirado, `aud` errada e assinatura inválida, conferindo corpo, `WWW-Authenticate`, **log e trace**. A captura é um sink do Serilog em memória, em `Debug`, e um exportador OpenTelemetry em memória; procura o e-mail em texto e em base64url, nos três alinhamentos, o token cru e o segmento do payload | Serilog em memória, OpenTelemetry InMemory exporter |
+| Sem chave simétrica em produção, e as regras novas do realm (v2.7) | Arquitetura: nenhuma camada de produção usa `SymmetricSecurityKey`, e a Api não usa os tipos de `System.IdentityModel.Tokens.Jwt`; sem `ShowPII`, sem `IClaimsTransformation` nem segundo esquema de autenticação. No `RegrasDoRealmTests`: catálogo exato e nunca composto, `CreateDefaultClientScopes`, os três scopes fora dos defaults, o Audience Mapper só no `gateway-api`, todo client com `fullScopeAllowed`, `directAccessGrantsEnabled` falso e scopes explícitos, o demo só com device flow, nenhum grupo, `accessTokenLifespan` 300 e a rotação do refresh token | NetArchTest, leitura do JSON do realm |
+| Keycloak parado, na CI (v2.7) | O job `Compose` faz um `GET` autenticado, para o Keycloak com `docker compose stop`, registra um tenant (`202`, `Pending`), religa o Keycloak, renova o token e espera `Active`. É a demonstração nº 1 do README com prova automática, e trava o cache de metadados na topologia real (§15) | `tools/jornada-compose.cs` |
+| Autorização da rota de tenant (D2, planejado) | Unitário com a policy `TenantAdmin` real e um handler que aprova tudo: cada caminho de falha dos quatro requirements termina com `FailCalled`. `[Theory]` sobre todos os valores de `MemberStatus`, com a tabela esperada escrita à mão — um estado novo reprova até alguém decidir. Os nomes de `TenantStatus` e de `MemberStatus` travados. Com a DI real e uma porta falsa que conta chamadas, a pertença não é consultada com o papel ausente, com outro tenant nem com `platform-admin`. E o teste de subida da linha "Configuração de endpoint", que ganha objeto com a primeira policy de tenant | xUnit, `IAuthorizationService` montado pelo `AddAutorizacaoDaGateway` |
+```
+
+Depois da tabela, no parágrafo "O teste negativo de autorização é o mais importante do projeto" (v2.6:2060),
+localizar o fim dele:
+
+```markdown
+Assim, um endpoint novo não entra desprotegido por esquecimento.
+```
+
+e substituir por:
+
+```markdown
+Assim, um endpoint novo não entra desprotegido por esquecimento. A pertença no banco (ADR-011) entra como reforço da primeira regra nas rotas de governança, sem virar uma quarta (v2.7) (D2, planejado).
+```
+
+- [ ] **Passo 15: §14 — Keycloak fora do ar responde `401`, com log**
+
+Na v2.7, §14 (v2.6:2071), localizar o último item da lista, a linha que começa com:
+
+```markdown
+- **Health checks:** `live` verifica apenas o processo;
+```
+
+manter, e inserir logo depois dela, como mais um item da lista:
+
+```markdown
+- **Keycloak fora do ar e a autenticação (v2.7).** Com os metadados ainda não carregados e o Keycloak inalcançável, a API sobe, e um pedido com token responde **`401`** — nunca `500`. A biblioteca engole a falha de busca e reprova o token por falta de chave, avisando só pelo `EventSource` dela; sem um log próprio, o Keycloak fora viraria `401` em silêncio. Por isso `OnAuthenticationFailed` registra um `Warning` quando a exceção é de chave ou de configuração (`AutenticacaoLogs`, EventIds 2100 a 2103), e nunca o token. Com os metadados já carregados, a API continua validando tokens de `kid` conhecido com o Keycloak parado. **Alternativa registrada:** `503` com `Retry-After` na falha de configuração, coerente com o argumento da §9.6; não entrou porque exige distinguir, no evento de falha, configuração indisponível de token inválido. O `/health/ready` cobre o Keycloak inteiro fora do ar, mas não um `jwks_uri` inalcançável (§19).
+```
+
+- [ ] **Passo 16: §15 — a tabela de serviços e o que a fatia D acrescentou ao bootstrap (E7)**
+
+Na v2.7, §15, na tabela de serviços, linha do `keycloak` (v2.6:2103), localizar o fim da linha:
+
+```markdown
+conferidos por `test -n` no entrypoint); sobe depois do `mailpit` saudável (v2.6) |
+```
+
+e substituir pelo texto abaixo, que fecha a linha do `keycloak` e acrescenta, na linha seguinte, a do one-shot:
+
+```markdown
+conferidos por `test -n` no entrypoint); sobe depois do `mailpit` saudável (v2.6). Recebe também `PLATFORM_ADMIN_EMAIL` (padrão `platform-admin@identity-gateway.local`), que o import põe no usuário do bootstrap; o entrypoint recusa valor vazio ou com maiúsculas (v2.7) |
+| `platform-admin-invite` | One-shot (v2.7): a imagem do Keycloak, com o `kcadm.sh`, depois do `keycloak` saudável. Envia **uma vez** o e-mail de ações do primeiro platform-admin, com link de 4 horas, e grava antes o marcador `platformAdminInviteSentAt` no realm; nas subidas seguintes, sai com `0` sem reenviar. Num volume anterior à v2.7, sai com `1` e manda rodar `docker compose down -v`. Reenvio só por comando: `docker compose run --rm -e REENVIAR=1 platform-admin-invite` |
+```
+
+Na mesma tabela (v2.6:2109), localizar a linha do `jaeger`:
+
+```markdown
+| `jaeger` | Traces do OpenTelemetry |
+```
+
+e substituir por:
+
+```markdown
+| `jaeger` | Traces do OpenTelemetry; portas publicadas só em `127.0.0.1` (v2.7: agora circulam tokens reais, e um trace pode carregar a URL de uma chamada) |
+```
+
+Na mesma tabela (v2.6:2110), localizar a linha da `api`, a que começa com:
+
+```markdown
+| `api` | A API, com `Keycloak__Admin__PublicBaseUrl=http://localhost:8081`
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| `api` | A API, com `Keycloak__Admin__PublicBaseUrl=http://localhost:8081`, que alimenta o `aud` do assertion (§10.2, v2.6) **e o emissor aceito nos access tokens** (v2.7). Publicada só em `127.0.0.1:8080`; sobe depois do `migrate` e do `platform-admin-invite` concluídos; sem `Jwt__SigningKey`, que saiu com o JWT simétrico; a lista de `azp` vem do `appsettings.Development.json` (v2.7) |
+```
+
+No parágrafo "O arquivo de bootstrap contém o mínimo para o ambiente local" (v2.6:2117), localizar:
+
+```markdown
+client scopes `gateway-roles` (§12.1) e `gateway-tenant` (§12.2) em `defaultDefaultClientScopes`, Audience Mapper, catálogo de papéis e armazenamento de eventos ativado.
+```
+
+e substituir por:
+
+```markdown
+os client scopes `gateway-roles` (§12.1), `gateway-tenant` (§12.2) e `gateway-api`, este com o Audience Mapper, **fora** dos defaults do realm, o catálogo de papéis, o client de demonstração e o usuário do primeiro platform-admin (v2.7). **Errata da v2.7 (E7):** até a v2.6, esta frase dava como presentes os scopes em `defaultDefaultClientScopes`, o Audience Mapper, o catálogo e o armazenamento de eventos, que o JSON não tinha. Os três primeiros entraram com a fatia D, na forma descrita abaixo; **o armazenamento de eventos do realm continua pendente** (§16).
+```
+
+Localizar o parágrafo (uma linha só) que começa com (v2.6:2119):
+
+```markdown
+**O que a fatia C acrescentou ao bootstrap (v2.6):**
+```
+
+manter, e inserir logo depois, separado por uma linha em branco:
+
+```markdown
+**O que a fatia D acrescentou ao bootstrap (v2.7):** o catálogo de papéis completo — `platform-admin`, `tenant-admin`, `financial-manager` e `reader`, nunca compostos —, mais `offline_access` e `uma_authorization`, declarados só para sair do papel padrão; os três client scopes `gateway-roles`, `gateway-tenant` e `gateway-api`, nenhum deles default do realm, com os scope mappings do `gateway-roles` iguais ao catálogo; o atributo de realm `CreateDefaultClientScopes` igual a `"true"`, sem o qual declarar `clientScopes` apaga os scopes embutidos (§12.1); `defaultClientScopes` e `optionalClientScopes` explícitos em todo client, o service account com `basic` e `roles`; o client `identity-gateway-demo`, público, só com Device Authorization Grant, com `basic`, `acr` e os três `gateway-*`, `fullScopeAllowed: false` e código de dispositivo de 300 s, descrito como de demonstração local e fora do Terraform de produção; `accessTokenLifespan: 300`, `registrationAllowed: false`, `bruteForceProtected: true`, `revokeRefreshToken: true` e `refreshTokenMaxReuse: 0`; e o usuário do primeiro platform-admin, com `username` e `email` iguais a `${PLATFORM_ADMIN_EMAIL}`, só o papel `platform-admin`, sem credencial, sem atributos e sem grupos, com `UPDATE_PASSWORD` e `VERIFY_EMAIL`. As descrições são texto puro: as chaves de i18n do Keycloak (`${...}`) reprovariam a regra de placeholders. O `RegrasDoRealmTests` ganhou uma regra para cada item, cada uma provada por mutação, e o `NenhumaChaveDeCredencial` passou a percorrer também o JSON embutido do User Profile.
+```
+
+Localizar o parágrafo (uma linha só) que começa com (v2.6:2121):
+
+```markdown
+**Placeholder de SMTP sem valor derruba o import (v2.6).**
+```
+
+manter, e inserir logo depois, separado por uma linha em branco:
+
+```markdown
+**`PLATFORM_ADMIN_EMAIL` vazio ou com maiúsculas não sobe (v2.7).** Uma variável ausente ficaria gravada como texto literal no `username` e no `email` do usuário do bootstrap, sem erro; e o import grava o e-mail em minúsculas, de modo que um valor com maiúsculas não seria achado depois por uma comparação exata. O entrypoint do `keycloak` confere as duas coisas antes de subir, e o one-shot ainda compara o e-mail em minúsculas. O padrão, `platform-admin@identity-gateway.local`, é o mesmo no compose, no app da CI e no README, e um teste de arquitetura confere que é igual nos três e minúsculo.
+```
+
+No parágrafo "Endereço público do Keycloak (v2.6)" (v2.6:2123), localizar:
+
+```markdown
+que alimenta só o `aud` do assertion (§10.2). A porta `8081` aparece em três lugares
+```
+
+e substituir por:
+
+```markdown
+que alimenta o `aud` do assertion e, desde a v2.7, o emissor aceito nos access tokens (§10.2). A porta `8081` aparece em três lugares
+```
+
+Em "Credenciais do ambiente local" (v2.6:2130), localizar o item que começa com:
+
+```markdown
+- **Admin master do Keycloak.**
+```
+
+e substituir a linha inteira por:
+
+```markdown
+- **Admin master do Keycloak.** A senha também é gerada pelo `gateway-keys` e exibida **uma vez** no log; o entrypoint a exporta para `KC_BOOTSTRAP_ADMIN_PASSWORD`. Com a porta publicada só em `127.0.0.1`, o console não fica exposto à rede local. **A senha ganhou um segundo consumidor (v2.7):** o one-shot `platform-admin-invite` monta, só para leitura, a subpasta do volume que tem o `/keys/admin-password`, e faz login no `master` com ela a cada subida, antes de qualquer outro passo. A senha nunca vira variável declarada no compose, que apareceria no `docker inspect`. **Consequência:** trocar a senha ou apagar o admin do `master` do compose — o console da 26.x o chama de temporário e sugere a troca — quebra toda subida seguinte, e a `api` não sobe; o one-shot sai com uma mensagem própria, e a saída é `docker compose down -v` (§19). O log do `gateway-keys` imprime essa senha, e por isso nunca entra no log da CI.
+```
+
+No item "Chave e realm andam juntos" (v2.6:2132), localizar o fim dele:
+
+```markdown
+o `docker compose down -v` fica a cargo de quem lê, só no ambiente local.
+```
+
+e substituir por:
+
+```markdown
+o `docker compose down -v` fica a cargo de quem lê, só no ambiente local. **Um volume anterior à v2.7 falha ainda mais cedo (v2.7):** o one-shot `platform-admin-invite` confere se o realm tem o scope `gateway-api`; sem ele, sai com `1` e a instrução do `down -v`. Como a `api` depende do one-shot, o `docker compose up` falha com a causa no log, em vez de a API subir e todo token dar `401`. O `KeycloakHealthCheck` não muda: ele pega o volume de antes da v2.6, e o one-shot, o de antes da v2.7.
+```
+
+- [ ] **Passo 17: §15 — a CI com o app C# (E1), `offline_access` (E7), o bootstrap do platform-admin e o Scalar**
+
+O parágrafo da CI é o que traz a frase da errata E1. O texto novo leva o marcador `%%E1%%` no lugar da sequência de
+escape; ele é trocado por shell no Passo 21.
+
+Na v2.7, §15 (v2.6:2136), localizar o parágrafo (uma linha só) que começa com:
+
+```markdown
+**O compose sobe na CI.**
+```
+
+e substituir a linha inteira por estes dois parágrafos:
+
+```markdown
+**O compose sobe na CI.** Um job próprio executa `docker compose up --wait` até a API ficar `ready` — o que, pelo health check da §14, prova chave, realm e `private_key_jwt` —, registra um tenant e espera o provisionamento chegar a `Active` — o que prova as migrations e o Outbox, que o `ready` não olha —, derruba sem apagar volumes e sobe de novo, provando a idempotência dos one-shots. A promessa "funciona na primeira tentativa" do M0 passa a ser verificada a cada PR, não só no dia em que alguém a testou à mão. **Desde a v2.6, o job também confere o convite do admin do tenant:** depois do `Active`, consulta o mailpit pelo destinatário exato, exigindo ao menos uma mensagem, nunca exatamente uma — a entrega "pelo menos uma vez" pode mandar duas (§11.5) —, lê o campo `Text` da mensagem (porque o JSON escapa o `&` como `%%E1%%` e o HTML traz `&amp;`), exige o prefixo `http://localhost:8081/realms/identity-gateway/login-actions/action-token?key=` e faz um `GET` no link, exigindo `200` com a página de ações, sem a de erro — o que prova que o link abre, e não só o formato dele. O e-mail e o slug são únicos por execução (`admin+<timestamp>@acme.test`), porque e-mail em uso por outra conta é falha permanente (§9.1).
+
+**Desde a v2.7, quem roda a jornada é um app C#, e o token vem do Keycloak.** O job deixou de montar à mão um JWT simétrico e de ler o mailpit com `jq`: chama `tools/jornada-compose.cs`, um app de arquivo único que usa o mesmo harness de login dos testes (§13) — o device flow no client de demonstração, pelas páginas do próprio Keycloak. As fases, na ordem: (1) **o convite do platform-admin sai uma vez só** — a contagem de mensagens para o e-mail dele é **exata**, uma; o one-shot é executado de novo com o convite ainda pendente (`docker compose run --rm --no-deps platform-admin-invite`, saída `0`), e a contagem continua uma. Contar zero depois de um `down` e um `up` seria vacuoso, porque o mailpit volta vazio; (2) **a jornada** — o link do platform-admin, o device flow com login num passo só, a receita HS256 antiga respondendo `401`, `POST /tenants` → `202` → `Active` e o convite do admin do tenant, como acima; (3) **o Keycloak parado** — um `GET` autenticado, `docker compose stop keycloak`, `POST /tenants` → `202` e `Pending`, `docker compose start keycloak`, a renovação do token e a espera do `Active`. É a demonstração nº 1 do README (§16), e trava o cache de metadados na topologia real; fica `stop` e `start`, e não `pause`, porque é a sequência que o README manda fazer; (4) **a segunda subida** sobre os mesmos volumes, com o one-shot saindo `0` e dizendo que o convite já foi enviado. Toda asserção de status é exata, nunca "diferente de `200`": com 5 minutos de token, um `401` por vencimento viraria verde. O workflow roda com `pipefail`, cada passo longo tem o próprio prazo, o app compila antes de o Docker subir, e os endereços discados usam `127.0.0.1` — `localhost` fica só como endereço público do Keycloak. Em falha, o job grava os logs do one-shot, da `api` e do `keycloak` — nunca o do `gateway-keys`, que imprime a senha do master — e, do mailpit, só metadados. O app nunca imprime token, código de dispositivo, link, senha nem HTML.
+```
+
+Localizar o parágrafo (uma linha só) que começa com (v2.6:2138):
+
+```markdown
+**`offline_access` é removido do `default-roles` do realm.**
+```
+
+e substituir a linha inteira por:
+
+```markdown
+**`offline_access` fica fora do papel padrão do realm.** O papel vem ligado por padrão para todo usuário, e sessões offline **não** são encerradas por `POST .../users/{id}/logout` — o que permitiria a um usuário desativado continuar renovando acesso depois da revogação (§9.5). O projeto não usa offline tokens. **Entregue na v2.7 (errata E7):** até a v2.6, este parágrafo descrevia a remoção como feita, e o JSON não a tinha. E não é "hardening de uma linha": o import recria o papel no padrão se faltar o papel **ou** o client scope de mesmo nome. O JSON declara os dois — o papel, e o scope sem mappers, fora dos defaults e sem nenhum client que o ofereça —, e faz o mesmo com o papel `uma_authorization`. O papel padrão fica `[manage-account, view-profile]`, e um teste contra o Keycloak real confere que ele não voltou.
+```
+
+Localizar o parágrafo (uma linha só) que começa com (v2.6:2140):
+
+```markdown
+**Bootstrap do primeiro `platform-admin`.**
+```
+
+e substituir a linha inteira por estes dois parágrafos:
+
+```markdown
+**Bootstrap do primeiro `platform-admin`: sem senha, por convite (v2.7).** O papel não é atribuível pela API (§11.2) e é exigido por `POST /tenants`, então precisa nascer no bootstrap — mas o `realm-identity-gateway.json` é versionado num repositório público. **O usuário nasce no próprio JSON do realm, sem credencial nenhuma:** `username` e `email` iguais a `${PLATFORM_ADMIN_EMAIL}`, só o papel `platform-admin`, e as ações `UPDATE_PASSWORD` e `VERIFY_EMAIL`. A senha é definida pela própria pessoa, no Keycloak, pelo link de um e-mail de ações — o mesmo mecanismo do convite de qualquer membro (ADR-003). A v2.6 previa gerar uma senha aleatória e exibi-la uma vez no log: uma credencial num log contraria o próprio ADR-003, e isso nunca foi implementado.
+
+Quem dispara o e-mail é o one-shot `platform-admin-invite`, **uma vez só**. Os passos: (0) login no `master`, antes de tudo; (1) o realm tem o scope `gateway-api`? Senão, é um volume anterior à v2.7, e ele sai com `1`; (2) o realm tem o atributo `platformAdminInviteSentAt`? Então o convite já saiu, e ele sai com `0`; (3) busca o usuário pelo e-mail, com `exact=true`, exige exatamente um e confere a forma do bootstrap — só o papel `platform-admin`, nenhum papel de client, nenhum `tenant_id`, nenhum grupo, o e-mail igual ao configurado, em minúsculas; qualquer divergência sai com `1`; (4) sem `UPDATE_PASSWORD` pendente, o convite já foi concluído, e ele sai com `0`; (5) **grava o marcador no realm antes de enviar**, e só então manda o `execute-actions-email`, com `lifespan=14400` (4 horas). **O one-shot nunca atribui papel nem cria usuário:** a primeira versão dele "garantia o papel", e promoveu um `tenant-admin` a `platform-admin`, ao vivo. O marcador é um atributo do realm, e não um arquivo num volume: o arquivo falhou por permissão depois do envio, e cada subida reenviava o convite — o equivalente a um reset periódico de senha. As respostas do `kcadm` são lidas sem `--fields`: com ele, os objetos aninhados vêm vazios, e as travas ficariam vacuosas. O link vale 4 horas porque um link de ações continua trocando a senha da conta até expirar, mesmo depois de o convite ter sido aceito por outro link (§19). O reenvio é só por comando explícito (`docker compose run --rm -e REENVIAR=1 platform-admin-invite`), que pula só a checagem do marcador e recusa rodar se o convite já foi concluído. Um teste de CI falha se o JSON de bootstrap contiver qualquer credencial literal. **Isto é o bootstrap do ambiente local**, como o resto do compose; o bootstrap de produção não está decidido nesta versão.
+```
+
+Localizar o último parágrafo da seção (v2.6:2142), a linha que começa com:
+
+```markdown
+A documentação interativa usa o suporte nativo a OpenAPI 3.1 do .NET 10
+```
+
+e substituir a linha inteira por:
+
+```markdown
+A documentação interativa usa o suporte nativo a OpenAPI 3.1 do .NET 10 e a interface Scalar. **O esquema de segurança OAuth2 no documento (Authorization Code com PKCE e Client Credentials) segue pendente (v2.7)**, com destino no M7': até lá, o Scalar não obtém token sozinho, e a demonstração usa o device flow pelo terminal.
+```
+
+- [ ] **Passo 18: §16 — a fatia D no andamento; as pendências do M0 revistas; as demonstrações**
+
+Na v2.7, §16, na linha do M0 da tabela de marcos (v2.6:2152), localizar:
+
+```markdown
+bootstrap do realm com os dois client scopes e sem `offline_access`, platform-admin com senha gerada,
+```
+
+e substituir por:
+
+```markdown
+bootstrap do realm com os três client scopes (`gateway-roles`, `gateway-tenant` e `gateway-api`, v2.7) e sem `offline_access`, platform-admin convidado por e-mail, sem senha gerada (v2.7),
+```
+
+Na linha do M2 (v2.6:2154), localizar o fim dela:
+
+```markdown
+| Suíte de autorização negativa verde **nas três regras de isolamento** |
+```
+
+e substituir por:
+
+```markdown
+| Suíte de autorização negativa verde **nas três regras de isolamento** — continuam três: na Gateway, a pertença no banco reforça a primeira (v2.7) (D2, planejado) |
+```
+
+Localizar (v2.6:2161):
+
+```markdown
+**Andamento do M0 e do M1 (v2.6).**
+```
+
+e substituir por:
+
+```markdown
+**Andamento do M0 e do M1 (v2.7).**
+```
+
+Na tabela de fatias (v2.6:2168), localizar a linha da fatia C, a que começa com:
+
+```markdown
+| **C · Convite do admin inicial**:
+```
+
+e substituir a linha inteira por estas duas (a da fatia C ganha o número do PR; a da D é nova — o número do PR da
+D1 entra quando o PR for aberto, não inventar):
+
+```markdown
+| **C · Convite do admin inicial**: `EnsureInvitedUserAsync`, o `Member` mínimo, a vaga do admin na ativação, o e-mail pelo SMTP do Keycloak e o `mailpit` no compose | M1 | Entregue (PR #5) |
+| **D · Tokens do Keycloak**, em dois PRs. **D1:** a API aceita só access tokens do Keycloak (RS256, emissor, audiência, `azp`, `typ` e `sub`), o realm emite o token da §10.1, o primeiro platform-admin é convidado por e-mail, e a demonstração e a CI obtêm o token pelo device flow. **D2:** `GET /tenants/{tenantId}`, com a policy `TenantAdmin` e a pertença no banco (ADR-011) | M0 + M1 | D1 entregue; D2 (D2, planejado) |
+```
+
+Localizar o parágrafo (uma linha só) que começa com (v2.6:2170):
+
+```markdown
+**Pendente do M0 depois da fatia A:**
+```
+
+e substituir a linha inteira por:
+
+```markdown
+**Pendente do M0 depois da fatia D (v2.7):** a tabela de auditoria — que o M0 promete "desde já" —, o armazenamento de eventos do realm e o RabbitMQ. Saíram da lista, entregues pela D1: os client scopes `gateway-roles`, `gateway-tenant` e `gateway-api`, o Audience Mapper, o catálogo de papéis completo, o `offline_access` fora do papel padrão, o primeiro platform-admin (sem senha gerada, por convite), a rotação do refresh token e a API validando tokens do Keycloak. **O critério "primeiro `curl`" do M0, com token do Keycloak, está fechado:** o JWT simétrico do template não existe mais. O armazenamento de eventos custa outro `docker compose down -v` quando entrar, e os eventos de login guardariam o username, que é o e-mail: a retenção é decidida junto.
+```
+
+No parágrafo "Pendente do M1 depois da fatia C (v2.6)" (v2.6:2172), localizar o fim dele:
+
+```markdown
+e a fatia C deixa prontos para ele o `Member`, `EnsureInvitedUserAsync` com o papel na porta e a `IInvitationPolicy`.
+```
+
+e substituir por:
+
+```markdown
+e a fatia C deixa prontos para ele o `Member`, `EnsureInvitedUserAsync` com o papel na porta e a `IInvitationPolicy`. Do M1, a fatia D entrega a leitura do próprio tenant, `GET /tenants/{tenantId}` (v2.7) (D2, planejado); a listagem e o override do platform-admin chegam com a auditoria.
+```
+
+As demonstrações (v2.6:2176) — localizar a linha que começa com:
+
+```markdown
+**A demonstração é por README com `curl`**
+```
+
+até a linha que contém (inclusive, a linha inteira):
+
+```markdown
+2. **Isolamento multi-tenant:** com token do tenant A
+```
+
+Substituir tudo — o parágrafo, a linha em branco e os dois itens numerados — por:
+
+```markdown
+**A demonstração é por README com `curl`**, o que promove o M0 a peça crítica — é o primeiro contato do avaliador, e uma falha ali encerra a leitura antes dos ADRs. **Desde a v2.7, ela tem passos no navegador**, e isso é consequência do próprio ADR-003: a senha só é digitada no Keycloak. O avaliador abre o mailpit, conclui o convite pelo link e aprova o código do device flow numa página do Keycloak; todas as chamadas à API continuam sendo `curl`. Duas demonstrações que o README deve conter, porque provam competências difíceis em poucos comandos:
+
+1. **Consistência sem transação distribuída:** obter o token e fazer **um `GET` autenticado antes de parar o Keycloak** — a API guarda as chaves do realm ao validar o primeiro token, e sem isso o pedido seguinte responderia `401` — → `docker compose stop keycloak` → `POST /tenants` responde `202` normalmente, **dentro dos 5 minutos de vida do token** → `docker compose start keycloak` → renovar o token → o tenant vira `Active` sozinho. O job `Compose` da CI roda a mesma sequência (§15).
+2. **Isolamento multi-tenant:** com token do tenant A, tentar a rota do tenant B (403), e tentar um `memberId` do tenant B dentro da rota do tenant A (404). **O `403` já é demonstrável com a primeira rota de tenant** (v2.7) (D2, planejado): o admin convidado lê o próprio tenant (`200`) e recebe `403` em qualquer outro. O `404` de sub-recurso chega com as rotas de membro, no M2.
+```
+
+- [ ] **Passo 19: §17 e §18 — a exceção nomeada do device flow; a pertença no anti-pattern 7 e no critério de pronto**
+
+Na v2.7, §17, anti-pattern 1 (v2.6:2185), localizar:
+
+```markdown
+O login interativo usa sempre Authorization Code com PKCE.
+```
+
+e substituir por:
+
+```markdown
+O login interativo das aplicações usa sempre Authorization Code com PKCE. **Exceção nomeada (v2.7):** o client de demonstração `identity-gateway-demo`, só do ambiente local, usa o Device Authorization Grant — que também não é ROPC: a senha continua digitada só na página do Keycloak (ADR-003).
+```
+
+No anti-pattern 7 (v2.6:2197), localizar o fim dele:
+
+```markdown
+cujo acesso é irrestrito por desenho e auditado por chamada.
+```
+
+e substituir por:
+
+```markdown
+cujo acesso é irrestrito por desenho e auditado por chamada. **Na Gateway, o claim e a rota iguais também não bastam (v2.7) (D2, planejado):** nas rotas de governança, o ator precisa ser `Member` do tenant no banco, porque o `tenant_id` do token é forjável por grupo (ADR-011).
+```
+
+Na §18 (v2.6:2210), no item do teste negativo, localizar o fim dele:
+
+```markdown
+essa formulação deixava passar sub-recursos, rotas sem `{tenantId}` e clients de plataforma;
+```
+
+e substituir por:
+
+```markdown
+essa formulação deixava passar sub-recursos, rotas sem `{tenantId}` e clients de plataforma. As regras continuam três: nas rotas de governança da Gateway, o teste da primeira cobre também o ator que tem o claim certo e não é `Member` do tenant no banco (v2.7) (D2, planejado);
+```
+
+- [ ] **Passo 20: §19 — os limites da fatia D**
+
+Três itens que já existem são **reescritos**, para não duplicar; os demais entram no fim da lista.
+
+Na v2.7, §19 (v2.6:2235), localizar o item que começa com:
+
+```markdown
+- **O `depends_on` do Keycloak na API é conveniência do ambiente local**
+```
+
+e substituir a linha inteira por:
+
+```markdown
+- **O `depends_on` do Keycloak na API é conveniência do ambiente local**, para que o primeiro `curl` funcione. Ele não é garantia de disponibilidade: a demonstração do M1 exige que a API responda com o Keycloak parado, e o provisionamento é que espera por ele (§9.1). **Desde a v2.7, a `api` depende de um one-shot que depende do Keycloak saudável:** `docker compose up` com o Keycloak parado não sobe a API. A demonstração nº 1 para o Keycloak **depois** do `up`, e não quebra.
+```
+
+Localizar o item que começa com (v2.6:2248):
+
+```markdown
+- **Um link de convite duplicado continua válido depois do aceite**
+```
+
+e substituir a linha inteira por:
+
+```markdown
+- **Um link de ações anterior continua válido depois do aceite, e troca a senha de uma conta ativa** (v2.6; confirmado ao vivo e estendido na v2.7). Cada link é de uso único, mas os outros emitidos para o mesmo usuário valem até expirar: com cinco e-mails e o quinto link concluído, o primeiro ainda levou ao formulário de senha, e a senha nova passou a valer. Não reenviar depois do aceite (§11.6, passo 5) não invalida um link enviado antes. Vale para o convite do admin do tenant — link de 7 dias, mais os reenvios do Outbox — **e para o do platform-admin** — no máximo um link automático, de 4 horas, mais os reenvios manuais. Depois do aceite, **revogam de fato:** remover o usuário (no compose, `down -v`), ou desabilitar ou remover a chave HMAC antiga do realm, o que derruba também todos os refresh tokens; rebaixá-la a passiva não basta, porque chave passiva continua verificando. **Só bloqueiam enquanto durarem, e são reversíveis:** desabilitar o usuário (reabilitado, todo link antigo volta a funcionar) e trocar o e-mail (voltar ao antigo ressuscita os links). **O link de 7 dias do convite do admin do tenant é risco aceito nesta versão;** a operação de plataforma que trocar ou reenviar esse convite trata a revogação e avalia encurtar o prazo.
+```
+
+Localizar o item que começa com (v2.6:2252):
+
+```markdown
+- **E-mail digitado errado entrega o tenant a um estranho**
+```
+
+e substituir a linha inteira por:
+
+```markdown
+- **E-mail digitado errado entrega o tenant a um estranho**, e não há revogação pela API: o platform-admin não opera rotas de membro (§10.1). O runbook provisório é desabilitar o usuário no Keycloak; uma operação de plataforma para trocar ou reenviar o convite do admin inicial fica para o M1/M2 (§8). **Agravado na v2.7:** com a primeira rota de tenant, o destinatário errado passa a ler o tenant pela API, porque a pertença no banco o reconhece como `Member` (D2, planejado).
+```
+
+Localizar o último item da lista, que é também a última linha do arquivo (v2.6:2260), a que começa com:
+
+```markdown
+- **Quem perde a corrida de slug no `POST /tenants` recebe `500`, e não `409`**
+```
+
+manter, e inserir logo depois dela estes dezessete itens:
+
+```markdown
+- **O platform-admin recebe `403` na leitura de tenant** (v2.7) (D2, planejado), até o override virar a policy `TenantReadAccess`, com a auditoria (§10.1). É desvio declarado em relação ao catálogo da §8.
+- **O Data Plane continua exposto ao `tenant_id` por grupo** (v2.7, ADR-011). A regra "nenhum grupo" é conferida no JSON do bootstrap; um grupo criado em runtime, inclusive por quem tem a chave da Gateway, não é visto. Decidir entre uma reconciliação que detecte grupos com `tenant_id` e um mapper que não recue é da fatia do Data Plane.
+- **A pertença não contém quem tem a chave da Gateway** (v2.7, ADR-011): com o `manage-users`, ele troca a senha ou o e-mail de um `Member` real e passa na policy com a conta dele. A trilha do ataque só existe com os eventos de administração ligados, sem representação.
+- **`Invited` passa na checagem de pertença** (v2.7) (D2, planejado), porque o aceite do convite só chega à Gateway pela sincronização do ADR-007. Sai da lista de status aceitos quando o aceite for detectado.
+- **O device flow força o consentimento, e é o vetor clássico de phishing de código de dispositivo** (v2.7). Por isso o client público de demonstração fica só no ambiente local, e só na lista de `azp` de Development.
+- **`CreateDefaultClientScopes` não é documentado** (v2.7). É o atributo que mantém os scopes embutidos quando o JSON declara `clientScopes` (§12.1); reverificar a cada troca de tag do Keycloak.
+- **O `ValidIssuer` do JwtBearer não restringe** (v2.7): com metadados, a biblioteca aceita o emissor anunciado pelo discovery. A Gateway usa um `IssuerValidator` próprio, e o caso está na tabela de diagnóstico da §12.1.
+- **Rotação de chave do realm: cada réplica recusa o primeiro pedido com o `kid` novo** (v2.7), porque a recarga dos metadados roda em segundo plano. Runbook: publicar a chave nova como passiva, esperar as réplicas recarregarem (o intervalo automático, 12 horas por padrão, ou um reinício), ativá-la, e manter a antiga habilitada por pelo menos a vida do token mais o `ClockSkew`.
+- **Keycloak fora com metadados frios responde `401`** (v2.7), o que aponta o sintoma para o token, e não para a dependência, contra o argumento da §9.6; o `503` fica registrado como alternativa (§14). O `/health/ready` cobre o Keycloak inteiro fora do ar, mas não um `jwks_uri` inalcançável.
+- **O one-shot do convite faz login no `master` a cada subida, antes de ler o marcador** (v2.7): trocar a senha ou apagar o admin do `master` do compose quebra toda subida seguinte, e a `api` não sobe, mesmo com o convite concluído há semanas. Não trocar nem apagar esse admin; se mudou, `docker compose down -v` (§15).
+- **`PLATFORM_ADMIN_EMAIL` fica fixado no primeiro import** (v2.7, `IGNORE_EXISTING`). Sem "esqueci a senha" no realm, a recuperação do platform-admin só existe pelo console do `master`. O bootstrap de produção não está decidido.
+- **O marcador do convite vive no realm** (v2.7): se o usuário for recriado à mão num realm que já tem o marcador, só o reenvio manual envia. O mesmo vale para um envio que falhou — o marcador já estava gravado, a subida seguinte sai `0` sem e-mail, e o convite só sai pelo comando de reenvio.
+- **A lista de `azp` é estática** (v2.7): vale para os clients interativos que chamam a Gateway. Clients M2M de tenant não entram nela nem recebem `gateway-api`, e um client de tenant chamando a Gateway, no M6, exige decisão nova (§10.1). Fora de Development, a lista fica vazia até existir um client administrativo.
+- **Reusar um refresh token derruba a sessão do client** (v2.7): depois do reuso, até o refresh token novo é recusado. Nenhuma renovação pode ser repetida automaticamente; se falhar, o caminho é um login novo (§10.3).
+- **Volume do compose anterior à v2.7 exige `docker compose down -v`**, pela quarta vez na história do projeto: scopes, clients, catálogo e o usuário do bootstrap só entram no primeiro import (§15).
+- **O mailpit local não tem autenticação** (v2.7), em `127.0.0.1:8025`: o link do platform-admin toma a conta enquanto não expira, 4 horas.
+- **Não verificado na v2.7:** o cache de metadados do JwtBearer além de ~9 minutos com o Keycloak fora — o que foi observado: tokens de `kid` conhecido aceitos durante 8 min 8 s de Keycloak pausado, e depois com ele parado —; e se o mailpit valida o cabeçalho `Host` contra *DNS rebinding*.
+```
+
+- [ ] **Passo 21: Errata E1 — gravar a sequência de escape por shell**
+
+Os Passos 1 e 17 deixaram dois marcadores `%%E1%%` na v2.7: um na lista de erratas da §0 e um no parágrafo da CI,
+na §15. Trocar os dois pela sequência de escape (barra invertida seguida de `u0026`) **sem passar pelo `Edit`**: o
+comando abaixo monta a barra invertida com `chr(92)`, e por isso a sequência não aparece escrita nem no comando.
+
+Run: `grep -c '%%E1%%' docs/especificacao-arquitetural-v2.7.md`
+Expected: `2`.
+
+Run:
+
+```bash
+perl -pi -e 'BEGIN { $e = chr(92) . "u0026" } s/%%E1%%/$e/g' docs/especificacao-arquitetural-v2.7.md
+```
+
+Run: `grep -c '%%E1%%' docs/especificacao-arquitetural-v2.7.md`
+Expected: `0`.
+
+Run: `grep -c 'u0026' docs/especificacao-arquitetural-v2.7.md`
+Expected: `2`.
+
+Run: `grep -cF -- "$(printf '\134u0026')" docs/especificacao-arquitetural-v2.7.md`
+Expected: `2` — as duas linhas trazem a barra invertida antes do `u0026` (o `printf '\134'` escreve a barra, de novo
+sem que a sequência passe por uma ferramenta de edição).
+
+Run: `grep -cF -- "$(printf '\134u0026')" docs/superpowers/specs/2026-09-30-tokens-keycloak-design.md`
+Expected: `1` — a linha da errata E1, na §9 da spec de design. Se der `0`, a sequência se perdeu lá também: corrigir
+a linha da errata E1 pelo mesmo caminho (um `Edit` que ponha o marcador `%%E1%%` no lugar do `&` solto, depois o
+`perl`), e incluir o arquivo no commit. O `.github/workflows/ci.yml` tinha a sequência num comentário do bloco em
+`jq`, que a Tarefa 11 tirou do YAML: lá, a contagem pode ser `0`, e não é erro.
+
+Run: `git diff --stat -- docs/especificacao-arquitetural-v2.6.md`
+Expected: vazio. A v2.6 fica intocada, com a frase errada: a correção é da v2.7.
+
+Daqui em diante, **nenhum `Edit` nas duas linhas que têm a sequência** (a da errata E1, na §0, e o parágrafo "O
+compose sobe na CI", na §15): um `Edit` que as reescreva decodifica a sequência de novo. Se for preciso mexer nelas,
+repita o caminho — marcador e `perl`.
+
+- [ ] **Passo 22: Conferir a v2.7**
+
+Run: `grep -n "^## 0" docs/especificacao-arquitetural-v2.7.md`
+Expected, nesta ordem: `## 0. O que mudou da v2.6 para a v2.7`, `## 0.1. … v2.5 para a v2.6`,
+`## 0.2. … v2.4 para a v2.5`, `## 0.3. … v2.3 para a v2.4`, `## 0.4. … v2.2 para a v2.3`,
+`## 0.5. … v2.1 para a v2.2`, `## 0.6. … v2.0 para a v2.1`.
+
+Run: `grep -c "(D2, planejado)" docs/especificacao-arquitetural-v2.7.md`
+Expected: `33` — é a lista que a Tarefa 17 vai fechar. Um número menor é marca reescrita ou edição pulada: achar
+com `grep -n "planejad" docs/especificacao-arquitetural-v2.7.md` e corrigir.
+
+Run: `grep -n "é removido do .default-roles.\|com senha gerada\|Pendente do M0 depois da fatia A\|Andamento do M0 e do M1 (v2.6)\|único override, auditado\|tipo Default\|com os dois client scopes\|O login interativo usa sempre" docs/especificacao-arquitetural-v2.7.md`
+Expected: nenhuma linha. (Cobre o `offline_access` descrito como já removido, o platform-admin com senha gerada, as
+pendências antigas do M0, a marca "(v2.6)" do andamento, a linha única do catálogo da §8, o scope criado como
+default, os "dois client scopes" do M0 e o "sempre PKCE" sem a exceção.)
+
+Run: `grep -n "senha gerada\|senha aleatória" docs/especificacao-arquitetural-v2.7.md`
+Expected: quatro linhas, todas dizendo que a senha gerada **saiu** — o item T9 da §0, o parágrafo "Bootstrap do
+primeiro `platform-admin`" da §15, a linha do M0 e o parágrafo "Pendente do M0" da §16.
+
+Run: `grep -n "PlatformAdminOverrideHandler\|GetClientCredentialsTokenAsync\|GetTokenForUserAsync\|tenant-a/members" docs/especificacao-arquitetural-v2.7.md`
+Expected: cinco linhas, todas de errata — E3 e E8 na §0, o item do override na §10.1, a citação "Erratas da v2.7 (E2
+e E8)" na §12.1 e o comentário "Errata E8" no teste da §12.2. Nenhuma chamada a esses métodos e nenhum
+`PlatformAdminOverrideHandler` em código.
+
+Run: `grep -n "defaultDefaultClientScopes" docs/especificacao-arquitetural-v2.7.md`
+Expected: quatro linhas, todas dizendo que os scopes ficam **fora** dele ou citando o que a v2.6 dizia (E5 e o
+parágrafo seguinte, na §12.1; o parágrafo do `gateway-tenant`, na §12.2; a errata E7, na §15). Nenhum JSON com a
+chave.
+
+Run: `grep -n "fatia E\|fatia F\|fatia G\|fatia H" docs/especificacao-arquitetural-v2.7.md`
+Expected: nenhuma linha. A v2.7 não nomeia as fatias seguintes: a sequência é proposta do design, não norma.
+
+Run: `grep -c "especificacao-arquitetural-v2" docs/especificacao-arquitetural-v2.7.md`
+Expected: `0` — a especificação não aponta para outra versão dela.
+
+Run: `grep -c "v2\.7" docs/especificacao-arquitetural-v2.7.md`
+Expected: `121` linhas (cada mudança marcada). Um número diferente é edição pulada ou repetida.
+
+Se algum grep mostrar sobra, corrigir com o texto da v2.7 deste roteiro e repetir.
+
+- [ ] **Passo 23: Documento de negócio 1.4, alinhado à v2.7**
+
+Arquivo: `docs/documentacao-negocio.md`. Os números de linha são os da versão atual da branch e servem só de
+referência; o `Edit` casa pelo texto. Os blocos Mermaid seguem o estilo do documento: texto entre aspas, sem acento.
+O que só a D2 entrega leva a marca `(D2, planejado)`, como na v2.7. O documento explica nove ADRs e não ganha ficha
+para o ADR-010 nem para o ADR-011: as regras novas citam o ADR-011 pelo número, como já citam os demais.
+
+**23.1 — Cabeçalho, sumário e rastreabilidade.**
+
+Localizar (linha 3):
+
+```markdown
+> **Versão:** 1.3 · **Data:** 2026-09-30
+```
+
+e substituir por (com a data do dia, `date +%F`, no lugar de `AAAA-MM-DD`):
+
+```markdown
+> **Versão:** 1.4 · **Data:** AAAA-MM-DD
+```
+
+Localizar (linha 4):
+
+```markdown
+> **Fonte da verdade:** [`especificacao-arquitetural-v2.6.md`](especificacao-arquitetural-v2.6.md)
+```
+
+e substituir por:
+
+```markdown
+> **Fonte da verdade:** [`especificacao-arquitetural-v2.7.md`](especificacao-arquitetural-v2.7.md)
+```
+
+Localizar a linha que começa com (linha 5):
+
+```markdown
+> **Estado do projeto:** implementação em andamento
+```
+
+e substituir a linha inteira por:
+
+```markdown
+> **Estado do projeto:** implementação em andamento — registro de tenant, fundação Keycloak, consumidor do provisionamento, convite do admin inicial e tokens do Keycloak (primeira parte, D1) entregues.
+```
+
+Localizar a linha que começa com (linha 7):
+
+```markdown
+> **Nota da versão 1.3.**
+```
+
+e inserir **antes** dela (a última linha do trecho é a linha de citação vazia, só com `>`, que separa as duas notas):
+
+```markdown
+> **Nota da versão 1.4.** Alinha à v2.7 os trechos que a fatia D (tokens do Keycloak) tornou falsos: a API passa a
+> aceitar só tokens do Keycloak; o primeiro platform-admin nasce **sem senha**, convidado por e-mail, e não com
+> senha gerada e exibida em log; a demonstração obtém o token pelo device flow, com passos no navegador; e o
+> override do platform-admin na leitura de tenant fica adiado, como autorização própria. Entram duas regras, a
+> RN-028 (pertença do ator ao tenant) e a RN-029 (separação de funções). O que só a segunda parte da fatia
+> entrega — a rota `GET /tenants/{tenantId}` e as regras que a protegem — está marcado **"(D2, planejado)"**. As
+> citações `§N` continuam válidas.
+>
+```
+
+Localizar (linha 24):
+
+```markdown
+remete a uma seção da spec vigente (v2.6),
+```
+
+e substituir por:
+
+```markdown
+remete a uma seção da spec vigente (v2.7),
+```
+
+No sumário (linha 50), localizar:
+
+```markdown
+27 regras transversais (RN-001..RN-027)
+```
+
+e substituir por:
+
+```markdown
+29 regras transversais (RN-001..RN-029)
+```
+
+**23.2 — Personas: o platform-admin e o tenant-admin.**
+
+Na persona do platform-admin, em "O que faz" (linha 122), localizar:
+
+```markdown
+consulta qualquer tenant e o status do provisionamento;
+```
+
+e substituir por:
+
+```markdown
+consulta o status do provisionamento de qualquer tenant (a leitura do tenant em si, `GET /tenants/{tenantId}`, responde `403` a ele **temporariamente**, até existir o override auditado — §10.1) (D2, planejado);
+```
+
+Em "O que NÃO pode" (linha 128), localizar o item que começa com:
+
+```markdown
+- Ser criado pela API: o papel **não é atribuível**
+```
+
+e substituir a linha inteira por estes dois itens:
+
+```markdown
+- Ser criado pela API: o papel **não é atribuível** pela `RoleAssignmentPolicy` e nasce no bootstrap do realm, **sem senha** — a pessoa recebe um e-mail de convite, uma vez, e define a própria senha no Keycloak pelo link, que vale 4 horas. Nenhuma senha é gerada nem exibida em log (§11.2, §15, achado C13; v2.7).
+- **Agir como tenant-admin.** Uma conta que traga `platform-admin` é negada nas rotas de tenant, mesmo que acumule o papel `tenant-admin`: é a separação de funções (RN-029) (D2, planejado).
+```
+
+Na persona do tenant-admin (linha 134), localizar o parágrafo (uma linha só) que começa com:
+
+```markdown
+**O que faz, sempre dentro do próprio tenant:** convida membros,
+```
+
+manter, e inserir logo depois, separado por uma linha em branco:
+
+```markdown
+**A primeira rota dele já tem dono (v2.7) (D2, planejado).** `GET /tenants/{tenantId}` devolve ao administrador o próprio tenant — nome, slug, status, plano, vagas ocupadas e data de registro, nunca o e-mail. Quatro condições a protegem, e todas precisam valer: o token traz o papel `tenant-admin`; **não** traz `platform-admin`; o `tenant_id` do token é o da rota; e a pessoa é membro daquele tenant no banco da Gateway (RN-001, RN-028, RN-029). Qualquer outra combinação recebe `403`.
+```
+
+**23.3 — F-02: sem o "segundo handler"; `403` no lugar do `404`.**
+
+Na ficha F-02 (linha 537), localizar a linha que começa com:
+
+```markdown
+| **Ator** | `platform-admin` (lista completa e `GET /tenants/{tenantId}/provisioning`)
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| **Ator** | `platform-admin`: o status do provisionamento (`GET /tenants/{tenantId}/provisioning`); a lista completa chega com a auditoria. `tenant-admin`: apenas o próprio tenant, por `GET /tenants/{tenantId}` (§8) (D2, planejado). |
+```
+
+Localizar a linha que começa com (linha 539):
+
+```markdown
+| **Regras de negócio** | O `tenant-admin` só enxerga o próprio tenant
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| **Regras de negócio** | O `tenant-admin` só enxerga o próprio tenant, e quatro condições precisam valer juntas: o papel `tenant-admin`, a ausência de `platform-admin` (RN-029), o tenant do token igual ao da rota (RN-001) e a pertença do ator ao tenant no banco da Gateway (RN-028) (D2, planejado). **O `platform-admin` recebe `403` nesta rota, temporariamente** (v2.7): o acesso dele à carteira de clientes será uma autorização própria, entregue junto com a trilha de auditoria — e não uma segunda verificação que "aprova por cima" da de tenant, que nunca funcionaria, porque a negação explícita da RN-001 veta qualquer aprovação alheia (§10.1). A resposta traz exatamente os campos do contrato, e nunca o e-mail do administrador inicial. |
+```
+
+Localizar a linha que começa com (linha 541):
+
+```markdown
+| **Erros de negócio** | Tenant inexistente ou fora do escopo do ator
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| **Erros de negócio** | Tenant de outro cliente, **tenant inexistente**, ator sem o papel, ator que não é membro e `platform-admin`: todos `403`, com a mesma resposta, sem nada que distinga o motivo (v2.7) (D2, planejado). A rota não usa `404`: não há membro num tenant que não existe, e a negação acontece antes de qualquer consulta ao tenant — uma resposta diferente para "não existe" diria, a quem não é do tenant, quais identificadores existem. O `404` continua valendo para **sub-recurso** de outro tenant (RN-003). |
+```
+
+**23.4 — Regras: RN-001, as duas novas (RN-028 e RN-029), RN-010, RN-011, RN-019 e RN-025.**
+
+Na abertura da seção 4.1, "Isolamento entre tenants — as três regras" (linha 966), localizar a última linha do
+parágrafo:
+
+```markdown
+princípio que ela deveria provar é pior que nenhuma suíte, porque produz confiança.
+```
+
+manter, e inserir logo depois, separado por uma linha em branco:
+
+```markdown
+As regras continuam três na v2.7. A pertença do ator ao tenant no banco (RN-028) reforça, na
+Gateway, a primeira delas — não é uma quarta regra (D2, planejado).
+```
+
+Na RN-001 (linha 975), localizar as duas últimas linhas:
+
+```markdown
+apenas deixa de aprovar não é *fail closed*: o projeto registra um segundo handler para o
+`platform-admin`, e só uma negação explícita sobrevive a uma aprovação alheia (C11).
+```
+
+e substituir por estas quatro:
+
+```markdown
+apenas deixa de aprovar não é *fail closed*: outra verificação registrada para o mesmo requisito
+poderia aprová-lo, e só uma negação explícita sobrevive a uma aprovação alheia (C11). Na v2.7, a
+comparação é por identificador, não por texto, e o token precisa trazer **um** `tenant_id` só:
+dois valores são recusados, qualquer que seja a ordem (§10.1) (D2, planejado).
+```
+
+No fim da RN-004 (linha 1004), localizar a última linha dela:
+
+```markdown
+`private_key_jwt`, rotação documentada e **auditoria por chamada**.
+```
+
+manter, e inserir logo depois dela, separadas por uma linha em branco, as duas regras novas (elas ficam antes da
+linha `---` que fecha a seção 4.1):
+
+```markdown
+**RN-028 — O ator precisa ser membro do tenant no banco da Gateway.** (D2, planejado)
+Nas rotas de governança de tenant, o token certo não basta: quem chama precisa ser `Member`
+daquele tenant no banco da Gateway, em status `Invited` ou `Active` (ADR-011, §10.1). Todo outro
+status nega — `Deactivated`, `Expired`, `Revoked`, `Erased` e qualquer um que venha a existir. O
+motivo: o `tenant_id` do token pode ser fabricado no Keycloak, por um grupo com esse atributo,
+por quem tiver a chave da Gateway; a pertença no banco não depende do Keycloak. **Não é uma
+quarta regra de isolamento:** é a RN-001 conferida em duas fontes, o token e o banco. A pertença
+só é consultada nas rotas de governança, nunca por requisição de negócio (RN-025). `Invited` é
+aceito porque o aceite do convite ainda não chega à Gateway (ADR-007).
+*Quando violada:* `403 Forbidden`, igual ao de qualquer outra negação da rota. *Limite declarado:*
+a regra não contém quem tem a chave da Gateway e toma a conta de um membro real (§19).
+
+**RN-029 — Separação de funções: conta de plataforma não age como tenant-admin.** (D2, planejado)
+Um token que traga o papel `platform-admin` é negado nas rotas de tenant, mesmo que traga também
+`tenant-admin` e o `tenant_id` certo (§10.1). Sem a regra, o `403` temporário do platform-admin
+na leitura de tenant só valeria para a conta que não acumula papéis.
+*Quando violada:* `403 Forbidden`.
+```
+
+Na RN-010 (linha 1071), localizar a linha:
+
+```markdown
+A hierarquia é `platform-admin` > `tenant-admin` > `financial-manager` > `reader` (§6.3, §11.2).
+```
+
+e substituir por estas três:
+
+```markdown
+A hierarquia é `platform-admin` > `tenant-admin` > `financial-manager` > `reader` (§6.3, §11.2).
+**Ela é teto de atribuição, não herança de acesso** (v2.7): estar acima limita o que o ator pode
+conceder, e não lhe dá o que o papel de baixo acessa (RN-029).
+```
+
+Na RN-011 (linha 1075), localizar a linha:
+
+```markdown
+Ele nasce exclusivamente no bootstrap do realm, com senha gerada aleatoriamente, exibida uma
+```
+
+até a linha que contém (inclusive, a linha inteira):
+
+```markdown
+de bootstrap contiver qualquer credencial literal.
+```
+
+Substituir as três linhas por estas seis:
+
+```markdown
+Ele nasce exclusivamente no bootstrap do realm, **sem senha** (v2.7): o usuário vem no arquivo do
+realm só com o papel, e a pessoa recebe **um** e-mail de convite, com link de 4 horas, pelo qual
+define a senha no Keycloak — o mesmo mecanismo do convite de qualquer membro (§15, C13). Nenhuma
+senha é gerada nem exibida em log, e o processo que envia o convite nunca atribui o papel a uma
+conta que já exista. Um teste de CI falha se o JSON de bootstrap contiver qualquer credencial
+literal.
+```
+
+Na RN-019 (linha 1145), localizar a linha:
+
+```markdown
+retenção deles. O e-mail também não vai a log, mensagem de erro nem resposta.
+```
+
+e substituir por estas três:
+
+```markdown
+retenção deles. O e-mail também não vai a log, mensagem de erro nem resposta. **O token também
+não carrega e-mail nem nome** (v2.7): as aplicações que chamam a Gateway recebem um token só com o
+identificador (`sub`), os papéis e o tenant, e é o `sub` que aparece nos logs (§10.3).
+```
+
+Na RN-025 (linha 1186), localizar o fim da terceira linha:
+
+```markdown
+ADR-002, anti-pattern 2).
+```
+
+e substituir por (o texto continua na linha seguinte):
+
+```markdown
+ADR-002, anti-pattern 2). A pertença no banco (RN-028) não muda isso: ela é consultada só nas
+rotas de governança da própria Gateway, nunca por uma API de negócio (ADR-011) (D2, planejado).
+```
+
+**23.5 — Matriz de permissões: F-02 do platform-admin e as notas 1 e 9.**
+
+Na matriz (linha 1198), localizar a linha da F-02:
+
+```markdown
+| **F-02** Consultar tenant / status de provisionamento | ✅ | ⚠️ ¹ | ❌ | ❌ |
+```
+
+e substituir por:
+
+```markdown
+| **F-02** Consultar tenant / status de provisionamento | ⚠️ ⁹ | ⚠️ ¹ | ❌ | ❌ |
+```
+
+Nas notas (linha 1224), localizar a nota 1:
+
+```markdown
+1. ⚠️ **Somente o próprio tenant** (§8). Garantido pela RN-001.
+```
+
+e substituir por estas duas linhas:
+
+```markdown
+1. ⚠️ **Somente o próprio tenant** (§8). Garantido pela RN-001 e, na Gateway, pela pertença do
+   ator ao tenant no banco (RN-028) e pela separação de funções (RN-029) (D2, planejado).
+```
+
+Localizar a última linha da nota 8 (linha 1244):
+
+```markdown
+   sempre o mesmo formato, para não permitir enumeração de tenants (§9.2).
+```
+
+manter, e inserir logo depois dela a nota 9:
+
+```markdown
+9. ⚠️ **Temporário** (v2.7) (D2, planejado): o `platform-admin` consulta o status do provisionamento
+   de qualquer tenant, mas a leitura do tenant (`GET /tenants/{tenantId}`) responde `403` a ele até
+   existir o override auditado, que chega com a trilha de auditoria (§10.1).
+```
+
+**23.6 — Roadmap, demonstrações e a decisão 7.7.**
+
+No roadmap (linha 1280), localizar a linha:
+
+```markdown
+**As duas demonstrações que o README precisa conter**, porque provam competências difíceis em
+```
+
+até a linha que contém (inclusive, a linha inteira):
+
+```markdown
+   RN-003, lado a lado — a segunda é a que a maioria dos projetos não testa.
+```
+
+Substituir tudo — o parágrafo e os dois itens numerados — por:
+
+```markdown
+**As duas demonstrações que o README precisa conter**, porque provam competências difíceis em
+poucos comandos (§16). Desde a v2.7, elas têm **passos no navegador** — abrir o e-mail de convite,
+definir a senha e aprovar o código do dispositivo no Keycloak —, porque a senha só é digitada lá
+(ADR-003); as chamadas à API continuam sendo `curl`.
+
+1. **Consistência sem transação distribuída.** Obter o token e fazer **uma chamada autenticada
+   antes** de parar o Keycloak (a API guarda as chaves do realm no primeiro token que valida) →
+   parar o Keycloak → `POST /tenants` responde `202` normalmente, dentro dos 5 minutos de vida do
+   token → subir o Keycloak → renovar o token → o tenant vira `Active` sozinho.
+2. **Isolamento multi-tenant.** Com token do tenant A, tentar a rota do tenant B (`403`); e
+   tentar um `memberId` do tenant B **dentro da rota do tenant A** (`404`). São a RN-001 e a
+   RN-003, lado a lado — a segunda é a que a maioria dos projetos não testa. O `403` já é
+   demonstrável com a primeira rota de tenant (D2, planejado); o `404` chega com as rotas de
+   membro, no M2.
+```
+
+Na decisão 7.7 (linha 471), localizar a linha que começa com:
+
+```markdown
+| **Decisão** | O cenário de demonstração é um README com comandos `curl`
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| **Decisão** | O cenário de demonstração é um README que qualquer avaliador percorre sozinho: as chamadas à API são comandos `curl`, e a identidade é provada no Keycloak, pelo navegador — abrir o e-mail de convite, definir a senha e aprovar o código do dispositivo (§0, §16; v2.7) |
+```
+
+Localizar a linha que começa com (linha 473):
+
+```markdown
+| **Por quê** | `curl` é verificável por quem lê
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| **Por quê** | `curl` é verificável por quem lê, sem depender do autor estar presente. Vídeo e conversa não são auditáveis. Os passos no navegador não enfraquecem isso: são consequência do ADR-003 — a senha só é digitada no Keycloak —, e a alternativa seria um atalho de login por senha, que o projeto proíbe. O job de CI percorre a mesma jornada a cada PR |
+```
+
+Localizar a linha que começa com (linha 475):
+
+```markdown
+| **O que o README precisa provar** |
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| **O que o README precisa provar** | Duas demonstrações, porque provam competências difíceis em poucos comandos: (1) **consistência sem transação distribuída** — um `GET` autenticado, `docker compose stop keycloak` → `POST /tenants` responde `202` normalmente, dentro dos 5 minutos do token → `docker compose start keycloak` → o tenant vira `Active` sozinho; (2) **isolamento multi-tenant** — com token do tenant A, rota do tenant B responde 403, e um `memberId` do tenant B dentro da rota do tenant A responde 404. O 403 já é demonstrável com a primeira rota de tenant (D2, planejado), e o 404 chega no M2 (§16) |
+```
+
+**23.7 — A seta (2) dos diagramas ganha o device flow de demonstração.**
+
+No diagrama de contexto C4 da Parte I (linha 194), localizar:
+
+```text
+    APP -->|"2. login OIDC: PKCE ou Client Credentials"| KC
+```
+
+e substituir por:
+
+```text
+    APP -->|"2. login OIDC: PKCE ou Client Credentials; device flow so na demonstracao local"| KC
+```
+
+No diagrama de contexto da Parte III (linha 1411), localizar:
+
+```text
+    APP -->|"(2) Login OIDC: PKCE ou Client Credentials"| KC
+```
+
+e substituir por:
+
+```text
+    APP -->|"(2) Login OIDC: PKCE ou Client Credentials; device flow so na demonstracao local"| KC
+```
+
+Na tabela das setas, logo abaixo (linha 1425), localizar a linha que começa com:
+
+```markdown
+| (2) | Authorization Code + PKCE (interativo) ou Client Credentials (M2M), **direto no Keycloak** |
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| (2) | Authorization Code + PKCE (interativo) ou Client Credentials (M2M), **direto no Keycloak**. Só no ambiente local, a demonstração usa o Device Authorization Grant, num client próprio — também direto no Keycloak (v2.7, ADR-003) | A Gateway não vê senha nem token |
+```
+
+Depois do diagrama de containers da Parte IV (linha 2342), localizar:
+
+```markdown
+É essa ausência que o ADR-002 protege.
+```
+
+e substituir por:
+
+```markdown
+É essa ausência que o ADR-002 protege. Na demonstração local, a seta **2** é o device flow de um client de demonstração, também direto no Keycloak (v2.7).
+```
+
+**23.8 — Limites: a seção 7.3 e o resumo "Limites conhecidos (§19)".** O resumo fica na Parte IV, em "Qualidade e
+verificabilidade", e não no apêndice.
+
+No fim da seção 7.3 (linha 1377), localizar a última linha do item "Do encerramento":
+
+```markdown
+  permanece reservado.
+```
+
+manter, e inserir logo depois dela, separados por uma linha em branco, estes dois grupos (eles ficam antes da linha
+`---` que fecha a Parte II):
+
+```markdown
+**Do provisionamento e do convite (§19)**
+
+- **`ProvisioningFailed` não tem saída automática:** até existirem o retry manual e a
+  reconciliação, sair dele exige intervenção.
+- **O e-mail de convite pode sair mais de uma vez**, quando algo falha entre o envio e a gravação
+  no banco — é o preço da entrega "pelo menos uma vez".
+- **O administrador inicial fica `Invited` na Gateway mesmo depois de aceitar o convite**, até a
+  sincronização de eventos do Keycloak existir (M4). A expiração de convite não pode chegar antes
+  dela.
+- **Admin órfão:** se o e-mail sai e o provisionamento desiste antes de gravar, fica no Keycloak
+  um usuário com o papel de administrador e link válido, de um tenant que falhou.
+- **A mesma pessoa não administra dois tenants**, e um tenant registrado antes do convite por
+  e-mail só sai da falha pelo retry manual.
+- **Quem tem a chave da Gateway tem muito poder no Keycloak:** atribui papéis, inclusive o de
+  plataforma, e troca senhas. O acesso que ele criar sobrevive à rotação da chave.
+- **Rotacionar a chave da Gateway causa indisponibilidade**, até a chave ser publicada por JWKS.
+- **O e-mail apagado do banco não some de imediato do disco:** cópias de segurança e registros
+  internos guardam o valor pela retenção deles (RN-019).
+
+**Da autenticação e do bootstrap (v2.7, §19)**
+
+- **O `platform-admin` não lê um tenant pela API, por enquanto.** `GET /tenants/{tenantId}`
+  responde `403` a ele até existir o override auditado (D2, planejado).
+- **A pertença no banco tem um limite declarado** (RN-028): ela não contém quem tem a chave da
+  Gateway e toma a conta de um membro real, trocando a senha ou o e-mail dele. E as APIs de
+  negócio não têm essa checagem: confiam no token e na regra de que o realm não tem grupos.
+- **Um link de convite antigo continua valendo até expirar, mesmo depois do aceite**, e troca a
+  senha da conta. Por isso o link do platform-admin vale só 4 horas e é enviado uma vez; o link
+  de 7 dias do administrador do tenant é risco aceito, a tratar pela operação que trocar ou
+  reenviar esse convite.
+- **E-mail digitado errado no registro do tenant** entrega o tenant a quem o recebe, e agora essa
+  pessoa também lê o tenant pela API (D2, planejado).
+- **Com o Keycloak fora do ar e a API recém-iniciada, um pedido com token responde `401`**, e não
+  `503`: o sintoma aponta para o token, não para a dependência. Depois de validar o primeiro
+  token, a API segue validando com o Keycloak parado.
+- **Renovar o acesso duas vezes com o mesmo refresh token derruba a sessão:** o segundo uso é
+  recusado, e depois dele o token novo também. O caminho é um login novo.
+- **O ambiente local depende do administrador do Keycloak criado pelo compose:** trocar a senha
+  dele ou apagá-lo impede a subida seguinte. E um ambiente criado antes desta versão precisa ser
+  recriado (`docker compose down -v`).
+- **O client de demonstração só existe no ambiente local.** O device flow é o vetor clássico de
+  phishing de código de dispositivo, e por isso a API só aceita esse client em desenvolvimento.
+```
+
+No resumo "Limites conhecidos (§19) — a seção que mais credibilidade dá" (linha 2751), localizar o parágrafo (uma
+linha só) que começa com:
+
+```markdown
+A spec declara onze limites reais
+```
+
+e substituir a linha inteira por:
+
+```markdown
+A §19 da spec declara os limites reais, e a lista cresce a cada fatia, porque cada uma devolve a ela o que a execução encontrou. Entre eles: política de senha igual para todos os tenants; um usuário pertence a um único tenant, com o custo comercial nomeado; a queda do Keycloak degrada o Data Plane em até 5 minutos; a desativação de um membro não invalida o token já emitido; a sincronização pode perder eventos sob indisponibilidade prolongada; há uma janela sem `tenant_id` no primeiro login federado; um link de convite antigo continua trocando a senha até expirar; quem tem a chave da Gateway pode tomar a conta de um membro real, e a checagem de pertença não o contém; o platform-admin fica, por enquanto, sem ler um tenant pela API (D2, planejado); e, com o Keycloak fora e a API recém-iniciada, a resposta é `401`, e não `503` (v2.7).
+```
+
+**23.9 — ADR-003, "Por que a Gateway nunca vê uma senha" e a checagem adversarial.**
+
+Na ficha do ADR-003 (linha 2380), localizar a linha que começa com:
+
+```markdown
+| **Alternativa rejeitada** | Um `POST /auth/login` "de conveniência" na Gateway.
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| **Alternativa rejeitada** | Um `POST /auth/login` "de conveniência" na Gateway. Rejeitado inclusive **nos testes** — e a revisão registrou isso como o ponto que faz a decisão valer, porque o ROPC costuma voltar pela porta dos testes. **Dito com precisão (v2.7):** até a v2.6, a suíte obtinha um token de usuário por senha, num client criado só para um teste; isso saiu. Hoje nenhum client declarado no realm aceita login por senha, e o único que o Keycloak cria sozinho com essa opção emite um token que a Gateway recusa — há teste |
+```
+
+Localizar a linha que começa com (linha 2381):
+
+```markdown
+| **Custo aceito** | Nenhum fluxo de login pode ser simplificado para demonstração
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| **Custo aceito** | Nenhum fluxo de login pode ser simplificado **a ponto de a senha passar pela API**: a demonstração tem passos no navegador, porque a senha só é digitada no Keycloak. Toda aplicação integra pelo Authorization Code com PKCE. **Exceção de demonstração (v2.7):** um client público, só do ambiente local, usa o device flow — o avaliador aprova um código numa página do Keycloak, e o terminal recebe o token. Os testes e a CI fazem o mesmo caminho, por um programa que preenche as páginas do próprio Keycloak com uma senha que ele mesmo definiu: a credencial nunca passa pela Gateway, e isso não é ROPC |
+```
+
+Em "Por que a Gateway nunca vê uma senha" (linha 2497), localizar a última frase do parágrafo:
+
+```markdown
+O ROPC, único fluxo que colocaria a senha dentro da API, é o anti-pattern nº 1 (§17) e está proibido inclusive no realm de testes.
+```
+
+e substituir por:
+
+```markdown
+O ROPC, único fluxo que colocaria a senha dentro da API, é o anti-pattern nº 1 (§17). **Com precisão (v2.7):** nenhum client declarado no realm aceita login por senha; o único que o Keycloak cria sozinho com essa opção emite um token que a Gateway recusa; e a suíte de testes, que até a v2.6 usava esse atalho num client temporário, deixou de usá-lo. A demonstração e os testes obtêm o token pelo device flow, em que a senha continua sendo digitada só no Keycloak.
+```
+
+Em "O que a revisão NÃO conseguiu atacar" (linha 2602), localizar o item que começa com:
+
+```markdown
+- **ROPC (ADR-003):** procurados os três caminhos
+```
+
+e substituir a linha inteira por:
+
+```markdown
+- **ROPC (ADR-003):** procurados os três caminhos por onde uma senha encostaria na Gateway. Nenhum existe. O terceiro — realm de teste com ROPC ligado "para facilitar a suíte" — é o que importa, porque é por onde o ROPC volta na prática, e a spec o fecha explicitamente. *"Antecipar o atalho de teste é o que faz a decisão valer."* **A execução mostrou que a frase precisava ser mais exata (v2.7):** a suíte chegou a obter um token de usuário por senha, num client criado em runtime só para um teste, e o realm tem um client embutido com essa opção. Nenhum dos dois encostava uma senha na Gateway — o que a revisão procurou continua não existindo —, mas "ROPC desligado no realm de teste" era falso. A v2.7 tirou o atalho da suíte e passou a provar, por teste, que nenhum token obtido por senha é aceito pela Gateway.
+```
+
+**23.10 — Modelo de segurança: a pertença como reforço da regra 1; o override adiado, com a negação intacta.**
+
+Em "Como o isolamento multi-tenant é garantido — e verificado" (linha 2509), localizar a linha:
+
+```markdown
+**O override do `platform-admin` é estreito e auditado** (§10.1, I-3).
+```
+
+até a linha que contém (inclusive, a linha inteira):
+
+```markdown
+entrada de auditoria.
+```
+
+Substituir o parágrafo inteiro — as cinco linhas, de "**O override do `platform-admin`…" a "entrada de
+auditoria." — por estes dois (o parágrafo seguinte, "O limite não é zelo excessivo…", fica como está):
+
+```markdown
+**Na Gateway, a regra 1 é conferida em duas fontes (v2.7) (D2, planejado).** O `tenant_id` do token pode
+ser fabricado no Keycloak por quem tiver a chave da Gateway — por um grupo com esse atributo. Por isso,
+nas rotas de governança, além do token, o ator precisa ser membro do tenant no banco da Gateway (RN-028),
+e uma conta de plataforma não age como tenant-admin (RN-029). As regras continuam três: a pertença
+reforça a primeira, não é uma quarta.
+
+**O override do `platform-admin` é estreito e auditado — e está adiado** (§10.1, I-3; v2.7). O provedor
+da plataforma precisa enxergar a própria carteira de clientes, mas **só** em `GET /tenants` e
+`GET /tenants/{tenantId}`, e **em nenhuma rota interna do tenant**: membros, clients, permission sets,
+domínios e IdPs permanecem inacessíveis a ele. A spec previa um segundo handler de autorização que o
+dispensaria da regra 1. Não funcionaria: a negação explícita da regra 1 veta qualquer aprovação alheia —
+que é exatamente a propriedade que a correção C11 quis —, e o conserto "natural" seria afrouxar a negação.
+A v2.7 corrige o desenho: o override será uma **autorização própria**, entregue junto com a trilha de
+auditoria, e a negação da regra 1 fica intacta. Até lá, o platform-admin recebe `403` na leitura de
+tenant (D2, planejado) — um acesso cruzado entre tenants sem trilha seria pior que a espera.
+```
+
+**23.11 — "Ambiente como código" e o fluxo 9.1 sem RabbitMQ nem MassTransit** (o fluxo é dívida da fatia C: o
+transporte do provisionamento é em processo desde a v2.5).
+
+Em "Ambiente como código (§15)" (linha 2724), localizar o parágrafo (uma linha só) que começa com:
+
+```markdown
+Um `docker compose up` sobe o ambiente inteiro:
+```
+
+e substituir a linha inteira por:
+
+```markdown
+Um `docker compose up` sobe o ambiente inteiro: Keycloak com Organizations habilitado no realm, PostgreSQL com os dois bancos, Redis, um capturador de e-mails (mailpit), Seq, Jaeger e a API. **O RabbitMQ e a API de exemplo ainda não estão no compose** (v2.7): entram com a fatia do broker e com o Data Plane. O realm é importado de arquivo versionado; a evolução da configuração usa Terraform, **porque arquivos de export não produzem diffs revisáveis nem aplicam mudanças incrementais**.
+```
+
+Na lista "Três detalhes" (linha 2729), localizar o item que começa com:
+
+```markdown
+2. **`offline_access` é removido do realm.**
+```
+
+e substituir a linha inteira por:
+
+```markdown
+2. **`offline_access` fica fora do papel padrão do realm.** O papel vem ligado por padrão, e sessões offline **não** são encerradas pelo logout — um usuário desativado continuaria renovando acesso depois da "revogação". Entregue na v2.7: o realm declara o papel e o scope só para tirá-los do padrão, com teste contra o Keycloak real garantindo que não voltaram (achado C8).
+```
+
+Localizar o item que começa com (linha 2730):
+
+```markdown
+3. **Nenhuma credencial literal no repositório.**
+```
+
+e substituir a linha inteira por:
+
+```markdown
+3. **Nenhuma credencial literal no repositório — e nenhuma no log.** O primeiro `platform-admin` precisa nascer no bootstrap, mas o arquivo é versionado publicamente. Ele nasce **sem senha**: o `docker compose up` envia, uma vez, um e-mail de convite — que cai no capturador de e-mails local —, e a pessoa define a senha no Keycloak pelo link, que vale 4 horas (v2.7). A versão anterior previa gerar uma senha e exibi-la no log, o que contrariava o próprio ADR-003. Um teste de CI falha se o arquivo contiver qualquer credencial literal (achado C13).
+```
+
+No fluxo 9.1, em "Atores e sistemas" (linha 1446), localizar a segunda linha:
+
+```markdown
+· PostgreSQL · RabbitMQ · Keycloak.
+```
+
+e substituir por:
+
+```markdown
+· PostgreSQL · Keycloak. O evento é despachado em processo, pelo próprio Outbox; o RabbitMQ entra com a fatia do
+broker (v2.5).
+```
+
+No diagrama do fluxo 9.1 (linha 1452), localizar as três linhas:
+
+```text
+    participant PG as "PostgreSQL"
+    participant MQ as "RabbitMQ"
+    participant CONS as "Consumidor de provisionamento"
+```
+
+e substituir por estas duas (sai o participante `MQ`):
+
+```text
+    participant PG as "PostgreSQL"
+    participant CONS as "Consumidor de provisionamento"
+```
+
+No mesmo diagrama (linha 1461), localizar as duas linhas:
+
+```text
+    PG->>MQ: "Publicacao do evento pelo Outbox"
+    MQ->>CONS: "TenantRegistered"
+```
+
+e substituir por uma só:
+
+```text
+    PG->>CONS: "O Outbox despacha TenantRegistered, em processo"
+```
+
+Na tabela "Pontos de falha" do fluxo 9.1 (linha 1512), localizar a linha que começa com:
+
+```markdown
+| **RabbitMQ** (após o commit) |
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| **O despacho do evento** (após o commit) | O evento **já está no Outbox**, dentro do banco, e hoje é despachado em processo, pelo próprio Outbox — não há broker no caminho do provisionamento (v2.5). Se o processo cair, o evento é despachado quando ele voltar. Nenhuma perda; só atraso. É exatamente o problema que o Outbox existe para resolver (ADR-006). O RabbitMQ entra com a fatia do broker. |
+```
+
+Localizar a linha que começa com (linha 1513):
+
+```markdown
+| **Keycloak** (durante os três passos) |
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| **Keycloak** (durante os três passos) | O consumidor falha, e o Outbox repete a entrega, com espera crescente. Persistindo a falha além da janela de provisionamento (24 horas por padrão), `ProvisioningFailed` + retry manual. O tenant fica visivelmente incompleto, nunca silenciosamente quebrado. |
+```
+
+Em "Consistência eventual", "O problema que o Outbox resolve" (linha 2205), localizar as duas linhas:
+
+```markdown
+**A solução do ADR-006:** o comando grava o aggregate em estado `Pending` **e** o evento no Outbox do
+MassTransit **na mesma transação**. Um consumidor executa o provisionamento em passos idempotentes
+```
+
+e substituir por:
+
+```markdown
+**A solução do ADR-006:** o comando grava o aggregate em estado `Pending` **e** o evento no Outbox,
+**na mesma transação**. Um consumidor executa o provisionamento em passos idempotentes
+```
+
+**23.12 — Linha evolutiva: a v2.7 é a vigente.**
+
+No diagrama da linha evolutiva (linha 2652), localizar:
+
+```text
+    G --> H["Especificação v2.6<br/>VIGENTE"]
+```
+
+e substituir por estas duas linhas:
+
+```text
+    G --> H["Especificação v2.6<br/>convite do admin inicial"]
+    H --> I["Especificação v2.7<br/>VIGENTE"]
+```
+
+No mesmo diagrama (linha 2660), localizar a linha que termina com:
+
+```text
+o convidado nasce habilitado"| H
+```
+
+manter, e inserir logo depois, na linha seguinte:
+
+```text
+    H -.->|"a fatia D troca a validacao do token:<br/>so tokens do Keycloak, e oito erratas"| I
+```
+
+Em "O que mudou em cada salto" (linha 2686), localizar o parágrafo (uma linha só) que termina com:
+
+```markdown
+além de uma exceção declarada e limitada à regra de dados pessoais (RN-019). **Nenhum ADR foi revogado.**
+```
+
+manter, e inserir logo depois, separado por uma linha em branco:
+
+```markdown
+**v2.6 → v2.7: a API passa a aceitar só tokens do Keycloak.** A v2.7 registrou a fatia D. O token de acesso passou a ser o do Keycloak, validado pelas chaves públicas do realm, com emissor, audiência, aplicação de origem e forma conferidos, e o JWT simétrico do template deixou de existir. O primeiro platform-admin passou a nascer sem senha, convidado por e-mail. Entrou o ADR-011 — nas rotas de governança, a Gateway exige, além do token, que o ator seja membro do tenant no banco — e saíram oito erratas, a mais séria delas sobre o override do platform-admin, que como estava descrito nunca funcionaria. **Nenhum ADR foi revogado**; o ADR-003 ganhou um complemento, com o device flow como exceção de demonstração.
+```
+
+Localizar o parágrafo (uma linha só) que começa com (linha 2688):
+
+```markdown
+**Como ler os documentos.** A **v2.6 é a fonte da verdade**
+```
+
+e substituir a linha inteira por:
+
+```markdown
+**Como ler os documentos.** A **v2.7 é a fonte da verdade** — é a única aprovada para implementação. Da v2.0 à v2.6, as versões são preservadas como estavam, **intocadas**, porque o valor delas agora é mostrar a evolução; e a revisão crítica é o registro do que produziu a v2.1. O documento de origem mostra de onde tudo partiu.
+```
+
+Conferir o documento de negócio:
+
+Run: `grep -n "especificacao-arquitetural-v2.6\|(v2.6),\|27 regras\|consulta qualquer tenant\|gerada aleatoriamente\|PlatformAdminOverrideHandler\|onze limites\|v2.6 é a fonte\|MassTransit\|inclusive no realm de testes" docs/documentacao-negocio.md`
+Expected: nenhuma linha.
+
+Run: `grep -c "(D2, planejado)" docs/documentacao-negocio.md`
+Expected: `21`.
+
+Run: `grep -c "RN-028\|RN-029" docs/documentacao-negocio.md`
+Expected: `14` linhas — as duas regras, a nota da versão, as personas, a F-02, a RN-010, a RN-025, a matriz, os limites e o
+modelo de segurança.
+
+Run: `grep -n "AAAA-MM-DD" docs/documentacao-negocio.md`
+Expected: nenhuma linha — a data do cabeçalho foi trocada pela do dia.
+
+**Fora do escopo desta tarefa, registrar no handoff:** o documento de negócio continua descrevendo o RabbitMQ como
+destino da arquitetura fora do fluxo 9.1 (diagramas de contexto e de containers, a tabela de infraestrutura, os
+fluxos 9.4 a 9.8 e 9.6), o que está certo como destino e não como estado; e a frase "sem código escrito até esta
+versão", da nota "Natureza do artefato", está desatualizada desde a vertical de registro.
+
+- [ ] **Passo 24: README**
+
+As seções `### Keycloak` e `### Demonstração: …` já foram reescritas pela Tarefa 11: **não editar dentro delas**. Os
+trechos abaixo ficam todos fora das duas. Se algum deles passar a aparecer duas vezes por causa daquela reescrita,
+a ocorrência a editar é a que está fora das duas seções.
+
+**24.1 — Estado do projeto** (linha 17). Localizar a linha:
+
+```markdown
+**M0/M1 em andamento — vertical de registro, fundação Keycloak, consumidor do provisionamento e convite do
+```
+
+até a linha que contém (inclusive, a linha inteira):
+
+```markdown
+[handoff do convite do admin inicial](docs/superpowers/specs/2026-09-30-convite-admin-inicial-handoff.md).
+```
+
+Substituir tudo — o título em negrito, a linha em branco e o parágrafo inteiro, até o link do handoff — por (trocar
+`AAAA-MM-DD` pela data do handoff do Passo 27):
+
+```markdown
+**M0/M1 em andamento — vertical de registro, fundação Keycloak, consumidor do provisionamento, convite do
+admin inicial e tokens do Keycloak (D1) entregues.**
+
+O repositório parte do template [CleanStart](https://github.com/Joseleno/CleanStart) e já traz a fundação
+funcionando — Clean Architecture em quatro camadas, Outbox transacional, cache de dois níveis, middlewares
+de correlação e segurança, testes de arquitetura e CI. **O domínio do IdentityGateway já existe:** o
+agregado `Tenant` e `POST /api/v1/tenants` (PR #1) gravam o tenant e publicam `TenantRegistered` no
+Outbox; a fundação Keycloak (PR #2) acrescentou o realm `identity-gateway` com Organizations e a autenticação
+`private_key_jwt` do service account; o consumidor do provisionamento (PR #3) consome o evento pelo próprio
+Outbox e decide entre repetir e desistir pela janela de provisionamento; o convite do admin inicial (PR #5)
+fechou o provisionamento da §9.1 — o tenant só fica `Active` depois que o admin é convidado no Keycloak —; e
+esta branch troca a autenticação: **a API aceita só access tokens do Keycloak** (RS256, com emissor, audiência,
+client de origem e forma conferidos), o JWT simétrico do template deixou de existir, o primeiro platform-admin
+nasce sem senha e é convidado por e-mail, e a demonstração obtém o token pelo device flow. Fecha o critério do
+M0 "primeiro `curl` com token do Keycloak". **Próximo passo:** a D2, a primeira rota de tenant
+(`GET /api/v1/tenants/{tenantId}`), em que o admin convidado lê o próprio tenant.
+O roadmap está em [`docs/especificacao-arquitetural-v2.7.md`](docs/especificacao-arquitetural-v2.7.md) §16
+(referência normativa atual — as anteriores ficam como registro histórico), e o estado detalhado no
+[handoff da D1](docs/superpowers/specs/AAAA-MM-DD-tokens-keycloak-d1-handoff.md).
+```
+
+**24.2 — Contagem de testes** (linha 53). Localizar:
+
+```bash
+# Toda a suíte — 491 testes, 0 skips (160 domínio, 70 application, 41 arquitetura, 189 integração, 31 funcional)
+```
+
+e substituir por (com os números reais do Passo 26, no mesmo formato; exemplo do formato final:
+`# Toda a suíte — NNN testes, 0 skips (NNN domínio, NN application, NN arquitetura, NNN integração, NN funcional)`):
+
+```bash
+# Toda a suíte — <números reais do passo da suíte>
+```
+
+**24.3 — O convite do platform-admin também pela IDE** (linha 104). Com só as dependências de pé, ninguém envia o
+convite do platform-admin: o one-shot precisa entrar no comando. Localizar:
+
+```powershell
+docker compose up -d postgres redis mailpit keycloak
+```
+
+e substituir por:
+
+```powershell
+docker compose up -d postgres redis mailpit keycloak platform-admin-invite
+```
+
+**24.4 — Tabela "Por onde começar a ler"** (linha 180). Localizar a linha que começa com:
+
+```markdown
+| [**Especificação arquitetural v2.6**](docs/especificacao-arquitetural-v2.6.md) |
+```
+
+e substituir a linha inteira por:
+
+```markdown
+| [**Especificação arquitetural v2.7**](docs/especificacao-arquitetural-v2.7.md) | A referência de implementação: domínio, endpoints, ADRs, código de referência |
+```
+
+**24.5 — ADRs: de dez para onze** (linha 208). Localizar:
+
+```markdown
+Dez ADRs, com o texto completo na [especificação §4](docs/especificacao-arquitetural-v2.6.md#4-decisões-arquiteturais-adrs).
+```
+
+e substituir por:
+
+```markdown
+Onze ADRs, com o texto completo na [especificação §4](docs/especificacao-arquitetural-v2.7.md#4-decisões-arquiteturais-adrs).
+```
+
+Na tabela logo abaixo (linha 221), localizar a última linha:
+
+```markdown
+| 010 | Um só executor por job de fundo, via advisory lock |
+```
+
+manter, e inserir logo depois, na linha seguinte:
+
+```markdown
+| 011 | Nas rotas de governança, autorização é token mais pertença no banco (decidido; a rota que o usa chega com a D2) |
+```
+
+**24.6 — Linha evolutiva** (linha 232). Localizar:
+
+```text
+ideia → v2.0 → [revisão crítica: 33 achados] → v2.1 → [documentação de negócio] → v2.2 → v2.3 → v2.4 → v2.5 → v2.6
+```
+
+e substituir por:
+
+```text
+ideia → v2.0 → [revisão crítica: 33 achados] → v2.1 → [documentação de negócio] → v2.2 → v2.3 → v2.4 → v2.5 → v2.6 → v2.7
+```
+
+Localizar a última linha do item da v2.6 (linha 248):
+
+```markdown
+  client assertion é o endereço público do Keycloak, não o de transporte.
+```
+
+manter, e inserir logo depois dela o item da v2.7:
+
+```markdown
+- **v2.7** registrou a fatia D, os tokens do Keycloak: a API valida só tokens RS256 do realm, o primeiro
+  platform-admin é convidado por e-mail, e entram o ADR-011 e oito erratas — entre elas a do override do
+  platform-admin, que, como estava descrito, nunca funcionaria.
+```
+
+**24.7 — Stack: o RabbitMQ como pendência** (linha 262). Localizar:
+
+```markdown
+**Entra no M0:** RabbitMQ
+```
+
+e substituir por:
+
+```markdown
+**Pendente do M0:** RabbitMQ — a especificação o mantém entre as pendências do M0. O design da fatia D propõe, sem
+decidir, levá-lo para antes do M5, quando existir o primeiro consumidor fora do processo
+([§7 do design](docs/superpowers/specs/2026-09-30-tokens-keycloak-design.md)).
+```
+
+Conferir:
+
+Run: `grep -n "v2\.6\|491 testes\|Dez ADRs\|Entra no M0\|convite-admin-inicial-handoff" README.md`
+Expected: só a linha evolutiva (`→ v2.6 → v2.7`) e o item `- **v2.6** registrou a fatia C…`.
+
+Run: `grep -n "v2\.7\|Onze ADRs\|| 011 |\|platform-admin-invite\|Pendente do M0" README.md`
+Expected: o parágrafo de estado (duas vezes o caminho da v2.7), a tabela "Por onde começar a ler", "Onze ADRs" com o
+link, a linha `| 011 |`, a linha evolutiva e o item da v2.7, "Pendente do M0", o comando da IDE com o
+`platform-admin-invite` — e as ocorrências de `platform-admin-invite` que a Tarefa 11 pôs nas seções `Keycloak` e
+`Demonstração`.
+
+Run: `grep -c "chave-de-desenvolvimento-nao-use-em-producao\|HS256" README.md`
+Expected: `0` — a receita HS256 saiu com a Tarefa 11. Se der outro número, a Tarefa 11 não foi concluída: parar.
+
+- [ ] **Passo 25: CONTRIBUTING**
+
+Localizar (linha 108):
+
+```markdown
+A [especificação arquitetural v2.6](docs/especificacao-arquitetural-v2.6.md) descreve as camadas, os
+```
+
+e substituir por:
+
+```markdown
+A [especificação arquitetural v2.7](docs/especificacao-arquitetural-v2.7.md) descreve as camadas, os
+```
+
+Na tabela "Teste no nível certo" (linha 75), localizar a última linha:
+
+```markdown
+| Estrutura ou convenção | `ArchitectureTests` |
+```
+
+manter, e inserir logo depois dela a linha do projeto de suporte:
+
+```markdown
+| Infraestrutura de teste contra o Keycloak, usada por mais de um projeto | `tests/IdentityGateway.Testing.Keycloak` — biblioteca de suporte, sem testes próprios |
+```
+
+Logo abaixo da tabela (linha 77), localizar a primeira linha da nota:
+
+```markdown
+> **O provider InMemory do EF Core é proibido** em teste de integração.
+```
+
+e inserir **antes** dessa linha, separado dela por uma linha em branco:
+
+```markdown
+> **`tests/IdentityGateway.Testing.Keycloak` é biblioteca, não projeto de teste.** Guarda o que mais de um projeto
+> precisa para falar com um Keycloak real — o fixture do Keycloak, o cliente do mailpit e o harness de login por
+> device flow —, não referencia `src/`, e é usada pelos projetos de integração e funcional e pelo app de CI em
+> `tools/`. Teste novo vai num dos cinco projetos acima; para lá, só infraestrutura de teste compartilhada.
+```
+
+Run: `grep -n "especificacao-arquitetural\|Testing.Keycloak" CONTRIBUTING.md`
+Expected: três linhas — o link, apontando `docs/especificacao-arquitetural-v2.7.md`, a linha nova da tabela e a nota.
+
+- [ ] **Passo 26: Suíte completa**
+
+Docker Desktop ligado (sem ele, integração e funcionais falham com `DockerUnavailableException` — ambiente, não
+regressão). A suíte roda **depois** das edições dos documentos, e não antes: há regras de arquitetura que leem o
+`README.md` (o padrão de `PLATFORM_ADMIN_EMAIL` igual no compose, no app e no README), e uma edição de texto pode
+reprová-las.
+
+Run: `dotnet build IdentityGateway.slnx`
+Expected: `0 Aviso(s)`, `0 Erro(s)`.
+
+Run: `dotnet build -c Release tools/jornada-compose.cs`
+Expected: compila, sem avisos — é o que o job `Compose` faz antes de subir o Docker.
+
+Run: `dotnet test`
+Expected: 0 falhas, 0 skips em todos os projetos. Anotar o total por projeto — são **cinco** projetos de teste
+(`IdentityGateway.Domain.UnitTests`, `IdentityGateway.Application.UnitTests`, `IdentityGateway.ArchitectureTests`,
+`IdentityGateway.Infrastructure.IntegrationTests`, `IdentityGateway.Api.FunctionalTests`) — e o total geral: entram
+no README (Passo 24, item 24.2) e no handoff (Passo 27). O `IdentityGateway.Testing.Keycloak` é biblioteca e não
+aparece na lista: se aparecer como projeto de teste, com zero testes, o `IsTestProject=false` da Tarefa 1 se perdeu.
+Se algum teste falhar, parar e diagnosticar; não commitar documentação sobre suíte vermelha.
+
+Voltar ao README e trocar `<números reais do passo da suíte>` pelos números anotados, no formato
+`NNN testes, 0 skips (NNN domínio, NN application, NN arquitetura, NNN integração, NN funcional)`.
+
+Run: `grep -n "<números reais" README.md`
+Expected: nenhuma linha.
+
+Run: `dotnet test tests/IdentityGateway.ArchitectureTests`
+Expected: verde de novo, depois da troca dos números no README.
+
+- [ ] **Passo 27: Handoff da D1**
+
+Run: `date +%F` — a data do dia é o prefixo do arquivo.
+
+Criar `docs/superpowers/specs/AAAA-MM-DD-tokens-keycloak-d1-handoff.md` com o conteúdo abaixo, no formato do
+[handoff da fatia C](../specs/2026-09-30-convite-admin-inicial-handoff.md). Preencher cada `<…>` com o que foi
+**observado** — commits (`git log --oneline main..HEAD`), números da suíte do Passo 26, o resultado de cada mutação
+registrado nas mensagens de commit das Tarefas 1–11, e a verificação ao vivo das Tarefas 10 e 11. Nada de valor
+esperado no lugar de valor observado; o que não foi feito fica escrito como não feito. Trocar também `AAAA-MM-DD` no
+link do README (Passo 24, item 24.1) e no cabeçalho do documento de negócio (Passo 23, item 23.1) pela data real.
+
+**A seção "Pendente para o autor" só fica se a mutação da guarda `HttpSoEmDesenvolvimento` não foi observada
+vermelha na Tarefa 8 (mutação 15).** Se foi, apagar a seção inteira (do título à linha `---` que a fecha) e preencher a linha
+correspondente da tabela de mutações com o teste e a mensagem observados.
+
+````markdown
+# Handoff — tokens do Keycloak, parte D1 entregue
+
+> **Data:** AAAA-MM-DD · **Marco:** M0 + M1 (fatia D, primeira parte) · **Status:** implementada, build e suíte
+> completa verdes, verificação ao vivo confirmada. Push e PR aguardam autorização do autor.
+> **Onde parou:** as 12 tarefas da D1 estão commitadas na branch `feat/tokens-keycloak`; falta a revisão final da
+> branch, enviar a branch, abrir o PR contra `main`, acompanhar a CI e mesclar. A D2 (Tarefas 13–17) começa depois
+> do merge, a partir da `main`.
+>
+> Sucede o [handoff do design da fatia D](2026-10-01-tokens-keycloak-design-handoff.md) e o
+> [handoff do convite do admin inicial](2026-09-30-convite-admin-inicial-handoff.md) (fatia C, PR #5). Design da
+> fatia: [`2026-09-30-tokens-keycloak-design.md`](2026-09-30-tokens-keycloak-design.md). Plano:
+> [`2026-09-30-tokens-keycloak.md`](../plans/2026-09-30-tokens-keycloak.md). Referência normativa:
+> [`especificacao-arquitetural-v2.7.md`](../../especificacao-arquitetural-v2.7.md).
+
+---
+
+## Pendente para o autor: uma prova por mutação que não foi executada
+
+**A mutação da guarda `HttpSoEmDesenvolvimento` não foi provada, pela segunda vez.** A guarda recusa
+`AllowInsecureHttp` e `PublicBaseUrl` em `http` fora de `Development`. Na fatia C, a proteção automática do ambiente
+de execução negou rodar os testes com a verificação de https enfraquecida; na Tarefa 8 desta fatia, <o que
+aconteceu: a mensagem da recusa, colada>. Ninguém a contornou, e ela **não** é critério de aceite da D1. A guarda
+commitada está correta — conferida por leitura: só `IsDevelopment()` passa. Roteiro para fechar, à mão:
+
+1. Em `src/IdentityGateway.Infrastructure/Identity/Keycloak/KeycloakServiceCollectionExtensions.cs`, pôr `return true;`
+   na primeira linha do corpo de `HttpSoEmDesenvolvimento`.
+2. `dotnet test tests/IdentityGateway.Infrastructure.IntegrationTests --filter-class "*KeycloakAdminOptionsTests"`
+   — ver vermelhos `AllowInsecureHttpForaDeDevelopment_FalhaAoValidar` e
+   `PublicBaseUrlHttpForaDeDevelopment_FalhaAoValidar` (o controle positivo `HttpsEmProducao_Aceita` continua verde).
+3. `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-class "*HostEmProducaoTests"` — ver vermelho o
+   teste da subida em `Production` com `BaseUrl` em `http` ou com `AllowInsecureHttp`: a subida deixa de falhar.
+4. Reverter e conferir `git diff --stat` vazio.
+
+---
+
+## Estado do repositório
+
+| O quê | Estado |
+|---|---|
+| Branch | `feat/tokens-keycloak`, 4 commits de planejamento sobre `main` (`8537d76`, `833a9cc`, `0294b90`, `677adba`), os commits do plano (`<hashes>`, de `git log --oneline -- docs/superpowers/plans/2026-09-30-tokens-keycloak.md`) e **<N> commits** das Tarefas 1–12 sobre `main` (`5b0113c`, o merge do PR #5) |
+| `main` | Não tocada — recebe o merge pelo PR |
+| Working tree | Limpa depois do commit desta tarefa |
+| Docker | Rodando; usado nas tarefas com Testcontainers (PostgreSQL, Redis, Keycloak 26.7.4 e mailpit reais), na verificação ao vivo das Tarefas 10 e 11 (projeto isolado `igverif`, derrubado com `down -v` no fim) e na suíte completa da Tarefa 12. Os volumes `identitygateway_*` do autor não foram tocados |
+| Push / PR | **Pendentes de autorização.** Nada foi enviado |
+
+<Uma linha por frente de commits, como no handoff da fatia C: planejamento, Tarefas 1–11 (quantos `feat`, `fix`,
+`test`, `refactor`, `chore`, `ci`), Tarefa 12 (`docs`).>
+
+**Aviso para quem já tem volumes do compose: rode `docker compose down -v` uma vez, depois
+`docker compose up -d --build`. É a quarta vez que o projeto pede isso.** O realm só é importado na primeira subida
+(`IGNORE_EXISTING`), e num volume antigo faltam os client scopes `gateway-roles`, `gateway-tenant` e `gateway-api`, o
+client de demonstração, o catálogo de papéis e o usuário do primeiro platform-admin. O one-shot
+`platform-admin-invite` detecta o volume antigo e sai com `1`, mandando rodar o `down -v`; como a `api` depende dele,
+o `docker compose up` falha com a causa no log, em vez de a API subir e todo token dar `401`. O README e o corpo do
+PR repetem o aviso. **O mesmo vale se a senha do admin do `master` do compose foi trocada, ou se ele foi apagado:** o
+one-shot faz login com ele a cada subida.
+
+## O que a D1 entregou
+
+A API passou a aceitar só access tokens do Keycloak, e o JWT simétrico do template deixou de existir. O realm emite
+o token que a §10.1 da especificação descreve, o primeiro platform-admin nasce sem senha e é convidado por e-mail
+uma única vez, e a demonstração, os testes e a CI obtêm o token pelo device flow. Fecha o critério do M0 "primeiro
+`curl` com token do Keycloak". A rota de tenant e a policy `TenantAdmin` são da D2.
+
+| Camada | Entregue |
+|---|---|
+| Projeto de suporte de testes | `tests/IdentityGateway.Testing.Keycloak`, biblioteca (`IsTestProject=false`, sem referência a `src/`): `KeycloakFixture`, `ChavesDeTeste` e `RaizDoRepositorio` (movidos do projeto de integração), `FamiliaDeFalha`, `FalhaDoHarnessException`, `ClienteDoMailpit`, `HarnessDeLogin`, `TokensDeUsuario`, `UsuarioDeTeste`, `SenhasDeTeste`; `xunit.v3.extensibility.core` no `Directory.Packages.props`; o ROPC do fixture removido |
+| Realm | Catálogo `platform-admin`, `tenant-admin`, `financial-manager` e `reader`, nunca compostos, mais `offline_access` e `uma_authorization` fora do papel padrão; scopes `gateway-roles`, `gateway-tenant` e `gateway-api`, nenhum default do realm; `CreateDefaultClientScopes`; `identity-gateway` com `basic` e `roles`; `identity-gateway-demo` público, só device flow; `accessTokenLifespan` 300; `registrationAllowed` falso; `bruteForceProtected`; rotação do refresh token; o usuário do platform-admin com `${PLATFORM_ADMIN_EMAIL}`, sem credencial; `RegrasDoRealmTests` com as regras novas |
+| Infrastructure | `AccessTokenValidationOptions` (seção `Keycloak:Auth`: `Audience`, `AllowedClients`; `Issuer`, `MetadataAddress` e `RequireHttpsMetadata` derivados pelo adaptador); `KeycloakAdminOptions.Issuer` e `MetadataAddress`, com `AssertionAudience => Issuer`; a recusa do client de demonstração fora de Development; `JwtOptions` removido |
+| Api | `Authentication/ValidacaoDoAccessToken` (JwtBearer por metadados internos, `IssuerValidator` estrito, RS256, `ClockSkew` 30 s, `BackchannelTimeout` 5 s, `RefreshInterval` 30 s, `IncludeErrorDetails` falso), `FormaDoAccessToken` (`azp`, `typ`, `sub`), `AutenticacaoLogs` (EventIds 2100–2103), `AvisoDeClientsPermitidos`; `Authorization/Policies`, `RespostasDeAutorizacao` e `ProblemDetailsDeAutorizacao` (Problem Details em `401` e `403`); `FallbackPolicy` autenticada e `AllowAnonymous` explícito nas rotas anônimas; `HttpCurrentUser` com `"sub"`; `Security/JwtTokenService` e a seção `Jwt` dos appsettings removidos; `AllowedClients` só no `appsettings.Development.json` |
+| Compose | One-shot `platform-admin-invite` (`kcadm`, marcador `platformAdminInviteSentAt` no realm antes do envio, link de 4 h, saída `0` ou `1`, reenvio por `REENVIAR=1`); a `api` depende dele; `PLATFORM_ADMIN_EMAIL` com padrão e recusa de vazio ou maiúsculas; `api` e Jaeger só em `127.0.0.1`; sem `Jwt__SigningKey` |
+| CI e ferramentas | `tools/jornada-compose.cs` (app de arquivo único, `#:project`, sem AOT) com as fases `convites`, `jornada`, `antes-de-parar`, `com-keycloak-parado` e `depois-de-voltar`; job `Compose` com `pipefail`, prazo por passo, o convite contado exato, a receita HS256 antiga com `401`, o convite do admin do tenant e o Keycloak parado com `stop`/`start` |
+| Testes | OIDC falso com emissor divergente na `IdentityGatewayApiFactory`; suíte negativa de autenticação; opções do JwtBearer conferidas em execução; `ApiEmProducaoFactory` com pedidos; coleção com Keycloak real atravessando a API e a ponte de contrato; vazamento do e-mail no token, com log e trace; regras de arquitetura novas (`RegrasDaApiTests`, `RegrasDoAmbienteLocalTests`, `RegrasDeFerramentasTests`) |
+| Documentos | Especificação v2.7 (§0 nova, com T1–T15 e as erratas E1–E8, o ADR-011 e as seções que a fatia tocou; o que é da D2 marcado "(D2, planejado)"); documento de negócio 1.4; README (andamento, v2.7, contagem, onze ADRs, linha evolutiva; a demonstração por device flow e as notas fixas, da Tarefa 11); CONTRIBUTING apontando a v2.7 e o projeto de suporte; este handoff |
+
+## O que mudou em relação ao plano
+
+<Uma entrada numerada por desvio que a execução encontrou, como no handoff da fatia C: o que o plano supunha, o que
+a execução achou, o commit e onde a v2.7 registra. Se nada mudou, dizer "nada".>
+
+## Suíte completa
+
+`dotnet build IdentityGateway.slnx`: **<0> avisos, <0> erros.** `dotnet build -c Release tools/jornada-compose.cs`:
+**<resultado>.**
+
+`dotnet test` (solução inteira, Docker rodando, HEAD `<hash>`, antes do commit desta tarefa, que só muda
+documentação): **<total> total, <0> falhas, <0> skips.**
+
+| Projeto | Total | Falhas | Skips |
+|---|---|---|---|
+| `IdentityGateway.Domain.UnitTests` | <n> | 0 | 0 |
+| `IdentityGateway.Application.UnitTests` | <n> | 0 | 0 |
+| `IdentityGateway.ArchitectureTests` | <n> | 0 | 0 |
+| `IdentityGateway.Infrastructure.IntegrationTests` | <n> | 0 | 0 |
+| `IdentityGateway.Api.FunctionalTests` | <n> | 0 | 0 |
+| **Total** | **<n>** | **0** | **0** |
+
+`IdentityGateway.Testing.Keycloak` é biblioteca de suporte e não tem testes. A fatia C terminou com 491 testes; o
+design estimava de 50 a 55 novos na D1. Depois das edições desta tarefa, `IdentityGateway.ArchitectureTests` rodou
+de novo: <n>/<n>.
+
+## Prova por mutação
+
+Toda mutação executada foi aplicada, confirmada vermelha (erro de compilação não conta), revertida byte a byte
+(`git diff --stat` vazio) e reconfirmada verde antes do commit. As linhas são as da §5.3 do design marcadas D1; a
+coluna "Resultado" traz o observado nas mensagens de commit das tarefas — o teste que ficou vermelho e a mensagem —,
+ou "não executada", com o motivo. `F` = funcional com o OIDC falso; `K` = Keycloak real; `P` = host em `Production`.
+
+| Mutação | Deve ser pega por | Resultado |
+|---|---|---|
+| Remover o `IssuerValidator` (manter `ValidIssuer`) | F: `iss` do discovery ≠ configurado (entre os F, só ele); K: `PublicBaseUrl` errado | <preencher> |
+| Validador frouxo: comparar com o `BaseUrl`, `StartsWith` ou `OrdinalIgnoreCase` | F: todos os sucessos; barra final, sufixo e maiúsculas | <preencher> |
+| `ValidateAudience=false` | F: `aud` errada; K: token do client de device flow do fixture, com `azp` aceito e sem `identity-gateway-api`; opções resolvidas | <preencher> |
+| `ClockSkew` padrão, ou `ValidateLifetime=false` | F: vencido há 2 min | <preencher> |
+| Tirar a checagem do `azp`, ou aceitar qualquer `azp` com a lista vazia | F: `azp` fora da lista; P: lista vazia com token válido | <preencher> |
+| Ler a forma pelos claims, e não pelo JSON (aceita o array de um elemento) | F: `typ` em array. Para o `azp`, a mutação é equivalente e **não foi executada**: a biblioteca recusa, ao ler o token, o `azp` que não é texto, e o caso `azp` em array leva `401` com ou sem a checagem | <preencher> |
+| Aceitar o demo fora de Development (tirar a recusa do `ValidateOnStart`) | P | <preencher> |
+| Tirar a checagem do `typ`, ou a do `sub`; `TryParse` no lugar de `TryParseExact("D")` | F: `typ` = `ID`; sem `sub`; `sub` no formato `N` | <preencher> |
+| `SymmetricSecurityKey` de volta em produção | Arquitetura, e só ela | <preencher> |
+| `IssuerSigningKey`, `IssuerSigningKeys`, `SignatureValidator` ou `IssuerSigningKeyResolver` fixos | Configuração: opções resolvidas em execução | <preencher> |
+| `RequireHttpsMetadata=false` fixo | P: opções resolvidas em `Production` | <preencher> |
+| A guarda `HttpSoEmDesenvolvimento` sempre verdadeira | P: a subida com `BaseUrl` `http` deixa de falhar | <preencher, ou "não executada — ver o destaque no topo"> |
+| `IncludeErrorDetails=true` | Configuração: opções resolvidas; P: `error_description` no `WWW-Authenticate` | <preencher> |
+| `BackchannelTimeout` padrão | P: metadados frios passam de ~7 s | <preencher> |
+| Tirar o log do `OnAuthenticationFailed`, ou logar o token | P: metadados frios sem o `Warning`; vazamento: o token no log | <preencher> |
+| `MapInboundClaims=true` | F: todos os `202` | <preencher> |
+| Tirar a `FallbackPolicy` | F: caminho não mapeado sem token deixa de levar `401` | <preencher> |
+| `aud` num scope default do realm, ou `gateway-*` nos defaults do service account | Regras do realm; K: o token do client de device flow do fixture sem `identity-gateway-api`, e a forma do token do service account | <preencher> |
+| Tirar `CreateDefaultClientScopes` | Regra do realm; K: scopes embutidos presentes e `sub` no token | <preencher> |
+| `fullScopeAllowed=true` no demo | Regra do realm; K: `roles` ⊆ catálogo, com o usuário que tem `default-roles-*` | <preencher> |
+| `revokeRefreshToken` falso, ou `refreshTokenMaxReuse: 1` | Regra do realm; K: refresh token reusado recusado | <preencher> |
+| Tirar o scope `offline_access` do JSON | Regra do realm; K: papel padrão `[manage-account, view-profile]` | <preencher> |
+| One-shot sem o marcador, ou lendo o marcador com `--fields attributes` | CI: `convites --esperado 1` depois do `run`; ao vivo, no `igverif` | <preencher> |
+
+**Demais mutações executadas nas tarefas**, além das da §5.3:
+
+| Tarefa | Mutação | Resultado |
+|---|---|---|
+| <T1…T11> | <uma linha por mutação registrada nas mensagens de commit: as regras novas do realm, as do harness, as do compose e as das travas do one-shot (`tenant_id`, grupo ou papel extra no usuário → saída `1`)> | <o teste vermelho e a mensagem> |
+
+## Verificação ao vivo
+
+**Antes da execução, ao escrever o plano (2026-10-01), contra um Keycloak 26.7.4 com mailpit v1.31.3, num ambiente
+descartável:**
+
+- O realm final importa, e a leitura pelo master confere: scopes embutidos presentes, `gateway-*` fora dos defaults
+  do realm, papel padrão `[manage-account, view-profile]`, o client de demonstração com os cinco scopes e o service
+  account com `basic` e `roles`.
+- O script do one-shot roda como está: a primeira execução envia um e-mail, com link de `exp − iat = 14400`; a
+  segunda sai `0` com "convite já enviado em …" e continua um e-mail; `REENVIAR=1` envia outro; e o e-mail
+  configurado em maiúsculas é comparado em minúsculas.
+- O harness de login roda como está: o link de ações em 4 páginas; o device flow em 5,2 s; o platform-admin, sem
+  Organization no realm, entra em **1** passo de login, e um usuário com Organization, em **2**; um segundo login na
+  mesma instância, 0 passos (cookie de SSO); a renovação devolve um refresh token novo; e **o refresh token reusado
+  leva `invalid_grant` e, depois dele, o novo também** — o reuso derruba a sessão do client.
+- **O spike do marcador** (fim da §3 do design): `platformAdminInviteSentAt` como atributo do realm funciona — o
+  `kcadm update -s` só acrescenta o atributo, a segunda e a terceira execução saem `0` sem e-mail, o marcador
+  sobrevive a `stop`/`start` e não aparece em nenhum token, no userinfo nem no discovery.
+
+**Na execução — o one-shot e o compose (Tarefa 10), no projeto isolado `igverif`** (`docker compose -p igverif …`,
+volumes próprios, sem tocar os do projeto padrão):
+
+| Passo | Horário | Resultado |
+|---|---|---|
+| `docker compose -p igverif up -d --build --wait api` | <hh:mm:ss> | <serviços `healthy`; o one-shot com saída `0`; `/health/ready` → `Healthy`> |
+| E-mails para o `PLATFORM_ADMIN_EMAIL` no mailpit | <hh:mm:ss> | <quantos — o esperado é 1> |
+| `docker compose -p igverif run --rm --no-deps platform-admin-invite`, com o convite pendente | <hh:mm:ss> | <saída e mensagem; quantos e-mails depois> |
+| Volume antigo (realm sem o scope `gateway-api`) | <hh:mm:ss> | <saída `1` e a mensagem> |
+| `PLATFORM_ADMIN_EMAIL` vazio e com maiúsculas | <hh:mm:ss> | <o `keycloak` não sobe; a mensagem> |
+| Reenvio depois de `down` e `up` (`-e REENVIAR=1`) | <hh:mm:ss> | <enviado; o aviso dos links anteriores> |
+| Travas do usuário (`tenant_id`, grupo, papel extra) | <hh:mm:ss> | <saída `1` em cada uma> |
+| `docker compose -p igverif down -v` | <hh:mm:ss> | <volumes do projeto isolado removidos> |
+
+**Na execução — a jornada do job `Compose` rodada localmente (Tarefa 11):**
+
+| Fase | Horário | Resultado |
+|---|---|---|
+| `convites --esperado 1`, o `run` do one-shot e `convites --esperado 1` | <hh:mm:ss> | <observado> |
+| `jornada` | <hh:mm:ss> | <passos do login do platform-admin (o esperado é 1); a receita HS256 antiga → `401`; `POST /tenants` → `202`; `Active` em quantos segundos; o convite do admin do tenant e o `GET` do link → `200`> |
+| `antes-de-parar`, `stop`, `com-keycloak-parado`, `start`, `depois-de-voltar` | <hh:mm:ss> | <`GET` autenticado; `202` e `Pending` com o Keycloak parado; `Active` depois de voltar, em quantos segundos> |
+| Segunda subida (`down`, `up --wait api`) | <hh:mm:ss> | <o one-shot com saída `0` e "já enviado"; `convites --esperado 0`> |
+| Tempo total do job na CI | — | <observado no primeiro PR; a estimativa do design é de cerca de 5 min 30 s> |
+
+**Não verificado**, e registrado na §19 da v2.7: o cache de metadados além de ~9 minutos com o Keycloak fora; se o
+mailpit valida o `Host` contra *DNS rebinding*; e, herdado da fatia C, se a troca de e-mail pela account console
+exige verificação na 26.7.4. <Acrescentar o que mais a execução deixou sem verificar.>
+
+## Decisões tomadas durante a execução
+
+| Decisão | Custo se errado |
+|---|---|
+| <uma linha por decisão das Tarefas 1–12 que não estava no plano: ajustes de analisador, snippets do plano que não compilaram, comandos corrigidos na verificação ao vivo> | <…> |
+
+## Pendências
+
+**Para o autor decidir:**
+- <A prova por mutação da guarda `HttpSoEmDesenvolvimento`, se continuar pendente — roteiro no topo.>
+- **Uma divergência interna do design, a fechar antes da D2:** a §4.3 diz que o `tenantId` da rota e o claim
+  `tenant_id` são, os dois, GUID no formato `D`; a §5.2 tem como controle positivo o próprio tenant com o GUID da
+  rota **no formato `N`** respondendo `200`. A v2.7 (§10.1 e §11.7) ficou com a leitura da §5.2 — o claim só no
+  formato `D`, a rota em qualquer formato de GUID —, e a Tarefa 13 do plano implementa essa leitura. Se o autor
+  preferir a outra, mudam a Tarefa 13 (o `Guid.TryParse` da rota vira `TryParseExact`, e o controle positivo do
+  formato `N` vira caso de `403`) e, na Tarefa 17, a v2.7.
+
+**Limites registrados na v2.7 (§19), que continuam abertos:**
+- **O platform-admin recebe `403` na leitura de tenant** até o override virar a policy `TenantReadAccess`, com a
+  auditoria.
+- **O Data Plane continua exposto ao `tenant_id` por grupo** (ADR-011): a regra "nenhum grupo" é conferida só no
+  JSON do bootstrap.
+- **A pertença não contém quem tem a chave da Gateway**, que toma a conta de um `Member` real.
+- **Links de ações antigos trocam a senha de uma conta ativa.** O do platform-admin vale 4 horas; **o link de 7 dias
+  do convite do admin do tenant é risco aceito**, com dono na operação que trocar ou reenviar esse convite.
+- **E-mail digitado errado:** com a D2, o destinatário passa a ler o tenant pela API.
+- **Device flow:** consentimento forçado, e o client público é o vetor clássico de phishing de código de
+  dispositivo; por isso fica só no ambiente local e só na lista de `azp` de Development.
+- **`CreateDefaultClientScopes` não é documentado:** reverificar a cada troca de tag do Keycloak.
+- **Rotação de chave do realm:** cada réplica recusa o primeiro pedido com o `kid` novo; o runbook está na §19.
+- **Keycloak fora com metadados frios responde `401`**, e não `503`; o `/health/ready` não cobre um `jwks_uri`
+  inalcançável.
+- **A `api` depende de um one-shot que depende do Keycloak saudável**, e o one-shot faz login no `master` a cada
+  subida: não trocar nem apagar o admin do `master` do compose.
+- **`PLATFORM_ADMIN_EMAIL` fica fixado no primeiro import**, e a recuperação do platform-admin só existe pelo
+  console do `master`. O bootstrap de produção não está decidido.
+- **O marcador do convite vive no realm:** usuário recriado à mão, ou envio que falhou, só saem pelo reenvio manual.
+- **A lista de `azp` é estática**, e fica vazia fora de Development até existir um client administrativo.
+- **Reusar um refresh token derruba a sessão do client:** nenhuma renovação pode ser repetida automaticamente.
+- **Mailpit sem autenticação** em `127.0.0.1:8025`.
+
+**Dívidas herdadas, que seguem:** e-mail duplicado entre o envio e o commit; admin órfão; tenants anteriores à v2.6;
+a mesma pessoa em dois tenants; retenção real do e-mail apagado; notification-hub; vínculo federado no M4; corrida
+residual do `POST` de papel; slug perdedor com `500`; a troca de e-mail sem verificação, não verificada na 26.7.4.
+
+**Não entrou, e segue pendente do M0:** a tabela de auditoria, o armazenamento de eventos do realm (custa outro
+`docker compose down -v` quando entrar, e a retenção dos eventos de login, que guardam o e-mail, é decidida junto) e
+o RabbitMQ.
+
+**Propostas do design (§7), sem decisão:** a sequência das próximas fatias; a suspensão cobrindo também o admin
+`Invited`; a revisão da §12 da especificação, do Data Plane; o bootstrap de produção do primeiro platform-admin; e o
+RabbitMQ fora da lista do M0. Nenhuma está na v2.7.
+
+**Documento de negócio:** o RabbitMQ continua descrito como destino da arquitetura fora do fluxo 9.1, o que está
+certo como destino; a frase "sem código escrito até esta versão", da nota "Natureza do artefato", está desatualizada
+desde a vertical de registro; e o documento explica nove ADRs, sem ficha para o ADR-010 nem para o ADR-011.
+
+<Pendências menores levantadas nas revisões das tarefas: cobertura ausente, comentários, nomes.>
+
+## Próximo passo
+
+1. Revisão final da branch inteira, com a lista de pendências acima.
+2. Autorizar o push e abrir o PR contra `main`, com o aviso de `docker compose down -v` no corpo.
+3. Acompanhar a CI (`gh pr checks <n>`) — `Build`, `Testes`, `Imagem Docker` e `Compose`, que agora roda a jornada
+   pelo app C#, com o Keycloak parado. Se algo falhar, corrigir na mesma branch.
+4. Mesclar. Depois: `git checkout main && git pull --ff-only`, apagar a branch local e a remota, e acrescentar o
+   número do PR na linha da fatia D da §16 da v2.7.
+5. Começar a **D2** (Tarefas 13–17 do plano) numa branch nova, a partir da `main`: os requirements e a policy
+   `TenantAdmin`, a porta `IMemberQueries`, a rota `GET /api/v1/tenants/{tenantId}`, a coleção real estendida e o
+   fechamento dos itens "(D2, planejado)" — `grep -n "(D2, planejado)" docs/especificacao-arquitetural-v2.7.md docs/documentacao-negocio.md`
+   lista todos. A D2 não mexe no realm, no compose nem no one-shot.
+
+## Como retomar
+
+Docker Desktop costuma estar desligado ao abrir a sessão: sem ele, os testes de integração e funcionais falham com
+`DockerUnavailableException` (ambiente, não regressão). Quem já tinha o compose de pé antes desta fatia precisa de
+`docker compose down -v` uma vez. O token da demonstração vale 5 minutos, e o refresh token, 30 minutos de
+inatividade: cada renovação devolve um refresh token novo, e o usado não serve mais.
+````
+
+Run: `grep -n "<\|AAAA-MM-DD" docs/superpowers/specs/*-tokens-keycloak-d1-handoff.md`
+Expected: uma linha só — `gh pr checks <n>`, no "Próximo passo", que fica como está até o PR ter número. Toda outra
+lacuna do modelo começa com `<`: se sobrou alguma, preencher com o observado ou apagar a linha.
+
+Run: `ls docs/superpowers/plans/2026-09-30-tokens-keycloak.md`
+Expected: o arquivo existe — o cabeçalho do handoff aponta para ele. Se o plano foi gravado com outro nome, corrigir
+o link.
+
+Run: `grep -n "AAAA-MM-DD" README.md docs/documentacao-negocio.md`
+Expected: nenhuma linha.
+
+- [ ] **Passo 28: Commit**
+
+Run: `git status --short`
+Expected: exatamente estes cinco caminhos — `??` (ou `A`) para `docs/especificacao-arquitetural-v2.7.md` e para o
+handoff da D1, e `M` para `docs/documentacao-negocio.md`, `README.md` e `CONTRIBUTING.md`. Nada em `src/`, `tests/`,
+`tools/`, `keycloak/`, `.github/` nem `docker-compose.yml`. (Um sexto caminho, a spec de design, só se o Passo 21 a
+corrigiu.)
+
+Run: `grep -cF -- "$(printf '\134u0026')" docs/especificacao-arquitetural-v2.7.md`
+Expected: `2` — a sequência de escape continua lá, depois de todas as edições.
+
+```bash
+git add docs README.md CONTRIBUTING.md
+git commit -m "docs: especificacao v2.7, documento de negocio 1.4, README e handoff da D1
+
+A v2.7 registra os tokens do Keycloak: a API valida so access tokens
+RS256 do realm, com emissor, audiencia, azp, typ e sub conferidos; o
+realm emite o token com os scopes gateway-* fora dos defaults; o primeiro
+platform-admin nasce sem senha e e convidado por e-mail uma vez; e a
+demonstracao e a CI usam o device flow. Entra o ADR-011 e saem oito
+erratas, a E1 gravada por shell. O que so a D2 entrega fica marcado
+(D2, planejado). O documento de negocio vai a 1.4, o README e o
+CONTRIBUTING apontam a v2.7, e o handoff traz a suite, a tabela de
+mutacoes e a verificacao ao vivo."
+```
+
+Sem nenhum trailer de coautoria nem linha de atribuição de ferramenta.
+
+Run: `git log -1 --format=%B | grep -Eci "co-authored|generated with"`
+Expected: `0`.
+
+Run: `git show --stat --format= HEAD`
+Expected: os cinco caminhos do `git status` acima, e só eles.
+
+Push e PR ficam para autorização do autor.
+
+---
+
+> **Estado deste arquivo:** a parte D1 (Tarefas 1 a 12) está completa acima. A parte D2 (Tarefas 13 a 17) entra no próximo commit deste plano.
