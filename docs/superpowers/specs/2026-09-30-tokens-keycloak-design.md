@@ -257,12 +257,23 @@ em `server-spi`. O `UserAttributeMapper.java` citado é o do pacote `protocol/oi
   correções (§4.6) foram verificadas, e um projeto de teste que usa o projeto de suporte continua passando.
 - **O `IConfiguration` mescla arrays por índice**, não por substituição [código do framework].
 
-**NÃO VERIFICADO** (vira spike antes do plano, §8, ou limite na v2.7):
-- o marcador `platformAdminInviteSentAt` como atributo do realm, gravado e lido pelo `kcadm`, como premissa de
-  segurança do one-shot: é o spike que resta (§8);
-- o refresh token com `revokeRefreshToken` ligado depois de reiniciar o Keycloak: a verificação do `stop`/`start` foi
-  sem a rotação. A CI da D1 o prova (§4.7); se falhar, o app e o README obtêm um token novo pelo device flow depois do
-  `start`;
+**Verificado no spike antes do plano** (ao vivo, ambiente descartável, com o JSON da §4.4):
+- **o marcador `platformAdminInviteSentAt` como atributo do realm** funciona: o `kcadm update -s` só acrescenta o
+  atributo (comparação do realm inteiro em 19 visões, inclusive o partial export: scopes, clients, `smtpServer`,
+  `revokeRefreshToken`, `bruteForceProtected`, User Profile, papéis e usuários iguais; cada gravação gera um evento
+  `UPDATE REALM`); a segunda e a terceira execução saem `0` sem e-mail, e sem o marcador o one-shot reenvia (prova por
+  mutação); ele sobrevive a `stop`/`start`; e não aparece em nenhum token, no userinfo, em `/realms/identity-gateway`
+  nem no discovery;
+- **o refresh token com a rotação ligada atravessa o reinício** do Keycloak, e reusar um refresh token dá
+  `invalid_grant`, inclusive um usado antes do `stop`. **O reuso derruba a sessão daquele client:** depois dele, até o
+  refresh token novo passa a ser recusado ("Session doesn't have required client"), por desenho do Keycloak
+  (`AbstractRefreshTokenProvider` L263-280), com ou sem reinício. Por isso o harness, o app de CI e o README gravam o
+  refresh token novo antes de qualquer outro passo e **nunca repetem uma renovação** (sem retry automático); se ela
+  falhar, o caminho é um device flow novo. O teste K do "refresh já usado" roda numa sessão própria e afirma também que
+  o token novo é recusado depois do reuso.
+
+**NÃO VERIFICADO** (limite na v2.7):
+- as mutações do teste K (`refreshTokenMaxReuse: 1`, `revokeRefreshToken: false`), que o plano executa;
 - o cache de metadados além de ~9 min com o Keycloak fora (inferência pelo comportamento observado);
 - o header `at+jwt` (atributo `access.token.header.type.rfc9068`, desligado por padrão), que não é usado;
 - se o mailpit valida o `Host` contra *DNS rebinding*;
@@ -1076,14 +1087,11 @@ o Data Plane não é implementado nesta fatia.
 
 ## 8. Dívidas e questões abertas registradas
 
-**Spike antes do plano** (container descartável, como na verificação). As três premissas que eram spike (o
-`run --rm --no-deps` sem reenvio, o refresh depois de `stop`/`start` e o prazo do device code) foram verificadas ao
-vivo na revisão e estão na §3.2 como fatos. Resta uma:
-- **o marcador como atributo do realm** (DT8), premissa de segurança do one-shot: gravar
-  `platformAdminInviteSentAt` com `kcadm update realms/identity-gateway -s attributes.platformAdminInviteSentAt=...`,
-  lê-lo com `attributes(*)` e sem `--fields`, conferir que sobrevive a `stop`/`start` do Keycloak e que o PUT do `-s`
-  não altera o `smtpServer`, o `bruteForceProtected`, o `revokeRefreshToken` nem os demais atributos do realm. Se
-  falhar, a alternativa é um `PUT /admin/realms/{realm}` com a representação lida inteira, verificado do mesmo jeito.
+**Spikes: todos fechados.** As três premissas que eram spike (o `run --rm --no-deps` sem reenvio, o refresh depois
+de `stop`/`start` e o prazo do device code) foram verificadas ao vivo na revisão e estão na §3.2. O spike que restava,
+o marcador como atributo do realm (DT8), e a rotação do refresh depois do reinício foram verificados ao vivo antes do
+plano (fim da §3): os dois funcionam, e o spike revelou que reusar um refresh token derruba a sessão do client, o que
+proíbe retry automático de renovação no harness, no app de CI e no README.
 
 **Achado ao vivo: links de ações antigos trocam a senha de uma conta ativa** (§3.2). Cada link emitido é uma
 credencial de troca de senha até expirar, mesmo depois de o convite ser aceito por outro link. Vale para o one-shot
