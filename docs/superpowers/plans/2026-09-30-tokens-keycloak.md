@@ -27,7 +27,7 @@
 - **Arquivos em LF** (o `.gitattributes` força `eol=lf`, menos `.slnx`).
 - **A sequência de escape do "e comercial" em JSON** (barra invertida, `u`, `0026`) nunca é escrita pelas ferramentas de edição de arquivo dos agentes, que a decodificam em silêncio. Onde ela precisa existir (errata E1 da v2.7, Tarefa 12), o texto é gravado por shell e conferido com `grep -c 'u0026'`.
 - **Commits** em Conventional Commits, em português sem acentos, como o histórico. **Nenhum trailer de coautoria nem linha de atribuição de ferramenta** (sem `Co-Authored-By`, sem "Generated with"). Push e PR só com autorização do autor.
-- **Docker Desktop ligado** nas Tarefas 1 a 5 e 9 a 11 (Testcontainers e compose) e na suíte completa. Sem ele, `DockerUnavailableException` é ambiente, não regressão.
+- **Docker Desktop ligado** nas Tarefas 1 a 5, 9 a 11 e 14 a 16 (Testcontainers e compose) e na suíte completa. Sem ele, `DockerUnavailableException` é ambiente, não regressão.
 - **Verificação local do compose sempre num projeto isolado** (`docker compose -p igverif …`), derrubado com `down -v` no fim. Os volumes `identitygateway_*` do autor nunca são tocados.
 - 🧪 = passo "Prova por mutação" obrigatório: aplicar a mutação, rodar o teste indicado, ver vermelho por asserção (erro de compilação não conta), **reverter** (conferir com `git diff --stat` que o arquivo voltou), ver verde. Registrar a mutação na mensagem de commit e, depois, na tabela do handoff.
 
@@ -41,7 +41,9 @@ O material da sessão de design ficou num scratchpad efêmero. Antes de escrever
 
 Dois achados dessa execução entraram no plano: **senha errada fazia o harness reenviar o login doze vezes** (o formulário volta igual), o que com `bruteForceProtected` bloquearia a conta — o harness agora falha na primeira volta do formulário, com teste; e **um link de ações já concluído responde `400` com a página de erro**, que o harness reporta na hora. Os doze testes unitários do harness (Tarefa 4) também foram compilados com os analisadores do repositório e executados.
 
-O que **não** foi executado e fica por conta dos testes de cada tarefa: tudo o que é ASP.NET Core (OIDC falso, opções do JwtBearer, host em `Production`), o app de arquivo único e o job da CI.
+O que **não** foi executado na D1 e fica por conta dos testes de cada tarefa: a integração com o `Program.cs` real e o `WebApplicationFactory` (as peças de autenticação rodaram num protótipo à parte), as fases do app de arquivo único contra a API e o job da CI.
+
+**Da D2**, o código de produção e os testes das Tarefas 13 a 15 foram compilados com os analisadores do repositório e executados num clone, com as provas por mutação das tabelas; o detalhe está na abertura da Parte D2. A Tarefa 16 não foi executada.
 
 ## Foco de revisão
 
@@ -54,6 +56,8 @@ Cinco condições que a spec implica mas não lista como caso; cada uma tem test
 5. **Segunda subida depois de perder o e-mail** (o mailpit não tem volume): o one-shot diz "já enviado" e não reenvia; quem ainda não concluiu só recupera o convite pelo comando de reenvio — que precisa funcionar nesse estado. Tarefa 10 (passo ao vivo "reenvio depois do `down`/`up`").
 
 Nota para o revisor: **a D1 troca o mecanismo de autenticação inteiro**, e os 16 testes funcionais que usam `CreateClientAutenticado` continuam verdes sem mudar uma linha. Isso é o desenho (o emissor de teste imita o token real), mas também é o risco: um verde ali não prova nada sobre o Keycloak. Quem prova são a coleção com Keycloak real (Tarefa 9), a ponte de contrato entre o token real e o do emissor de teste, e o job `Compose`.
+
+**Na D2, o que revisar com mais cuidado é o que o HTTP não mostra:** um requirement que faz `return` onde devia fazer `Fail()` responde o mesmo `403`, e um handler da pertença registrado na ordem errada também. Os dois só aparecem nos testes unitários da policy (Tarefas 13 e 14), e é por isso que eles existem. Confira ainda que nenhum `403` da rota distingue "tenant que não existe" de "tenant alheio" — nem pelo corpo, nem pelo status.
 
 ---
 
@@ -72,6 +76,15 @@ Nota para o revisor: **a D1 troca o mecanismo de autenticação inteiro**, e os 
 - **A fase `com-keycloak-parado` do app confere que o Keycloak não responde, e não o `/health/ready`** (como a §4.6 da spec descreve): a api guarda o token do service account em memória por até ~4,5 min (`ServiceAccountTokenCache`), e o ready continua `200` logo depois do `stop`.
 - **O aviso da lista de `azp` vazia é um `IHostedService`** (`AvisoDeClientsPermitidos`): é o que roda na subida do host real e do `WebApplicationFactory`, e por isso tem teste.
 - **O teste de vazamento do e-mail no token usa a factory do OIDC falso** (Tarefa 9), com um sink do Serilog e um exportador OpenTelemetry em memória, as duas exceções declaradas à regra "só configuração" (§5.5 da spec).
+- **D2 — o `tenantId` da rota em qualquer formato de GUID, o claim só no formato `D`** (Tarefa 13). A §4.3 da spec diz formato `D` nos dois; a §5.2 tem como controle a rota no formato `N` respondendo `200`. O plano segue a §5.2 e deixa a divergência para o autor nos dois handoffs.
+- **D2 — o claim `tenant_id` é conferido pelo tamanho antes do parse** (Tarefa 13), pelo mesmo motivo do `sub`: `Guid.TryParseExact(…, "D")` aceita espaço nas pontas. Visto no protótipo.
+- **D2 — `Policies.DeTenant`** (Tarefa 13): a lista das policies que decidem pelo tenant da rota, lida pelo teste de subida. A spec fala do teste, não de onde ele tira a lista.
+- **D2 — o `TenantDetailsView` fica em `ITenantQueries.cs`**, ao lado do `TenantProvisioningView`, e não num arquivo próprio; e a resposta ganha o record `TenantPlanResponse` para o objeto `plan`.
+- **D2 — sem teste de "a consulta não rastreia"** (Tarefa 14): numa projeção de um campo, o teste fica verde com ou sem `AsNoTracking()`. Visto no protótipo.
+- **D2 — o teste funcional da ordem dos handlers troca a `IMemberQueries` por uma porta que conta** (Tarefa 15), por `WithWebHostBuilder`: a terceira exceção declarada à regra "só configuração", restrita àquela classe.
+- **D2 — a regra do e-mail fora da leitura ganha uma classe própria**, `RegrasDeLeituraTests`: os tipos são da Application, e não cabem em `RegrasDeDominioTests`.
+- **D2 — na coleção com Keycloak real, as três afirmações da jornada do admin convidado ficam num teste só** (Tarefa 16): o cenário custa dois convites, três device flows e um provisionamento. O ataque do grupo é um teste à parte.
+- **D2 — o projeto funcional passa a referenciar a Application** (Tarefa 14): os testes usam a `IMemberQueries` no código, e o `.csproj` pede referência explícita do que é usado.
 
 ## Mapa de arquivos
 
@@ -87,7 +100,7 @@ Nota para o revisor: **a D1 troca o mecanismo de autenticação inteiro**, e os 
 - D2: create `Persistence/Queries/MemberQueries.cs`; modify `Persistence/Queries/TenantQueries.cs`, `DependencyInjection.cs`.
 
 **Application (D2)**
-- Create `Common/Abstractions/IMemberQueries.cs`, `Tenants/GetTenant/GetTenantQuery.cs`, `GetTenantHandler.cs`, `TenantDetailsResponse.cs`, `TenantDetailsView.cs`; modify `Common/Abstractions/ITenantQueries.cs`.
+- Create `Common/Abstractions/IMemberQueries.cs`, `Tenants/GetTenant/GetTenantQuery.cs`, `GetTenantHandler.cs`, `TenantDetailsResponse.cs`; modify `Common/Abstractions/ITenantQueries.cs` (o método `GetDetailsAsync` e o record `TenantDetailsView`).
 
 **Api**
 - Create `Authentication/ValidacaoDoAccessToken.cs`, `Authentication/AutenticacaoLogs.cs` (Tarefa 7); `Authentication/FormaDoAccessToken.cs`, `Authentication/AvisoDeClientsPermitidos.cs` (Tarefa 8).
@@ -101,9 +114,9 @@ Nota para o revisor: **a D1 troca o mecanismo de autenticação inteiro**, e os 
 - Modify `Directory.Packages.props` (`xunit.v3.extensibility.core`), `IdentityGateway.slnx`.
 
 **Testes**
-- Architecture: `RegrasDoRealmTests.cs`, `RegrasDoAmbienteLocalTests.cs`, `RegrasDaApiTests.cs`; create `RegrasDeFerramentasTests.cs`; D2: `RegrasDeDominioTests.cs`.
+- Architecture: `RegrasDoRealmTests.cs`, `RegrasDoAmbienteLocalTests.cs`, `RegrasDaApiTests.cs`; create `RegrasDeFerramentasTests.cs`; D2: `RegrasDaApiTests.cs`, `RegrasDeDominioTests.cs`, create `RegrasDeLeituraTests.cs`.
 - Integration: create `Identity/Keycloak/KeycloakFixtureExtensions.cs`, `RealmVivoTests.cs`, `HarnessDeLoginTests.cs`, `HarnessContraKeycloakTests.cs`, `FormaDoTokenContraKeycloakTests.cs`, `AccessTokenValidationOptionsTests.cs`; modify `GlobalUsings.cs`, `KeycloakRealTests.cs`, `KeycloakHealthCheckTests.cs`, `DependencyInjectionTests.cs`, `Provisioning/ComposicaoDoProvisionamento.cs`, o `.csproj`; delete `Identity/Keycloak/KeycloakFixture.cs`, `ChavesDeTeste.cs`, `RaizDoRepositorio.cs`. D2: create `Persistence/MemberQueriesTests.cs`, `Persistence/TenantDetailsTests.cs`.
-- Functional: create `Oidc/OidcFalso.cs`, `Oidc/EmissorDeTeste.cs`, `Logs/ColetorDeLogsDaApi.cs`, `Logs/CapturaDeSpans.cs`, `ApiEmProducaoFactory.cs`, `EmissorEstritoTests.cs`, `OpcoesDoJwtBearerTests.cs`, `LogsPorHostTests.cs`, `AutenticacaoNegativaTests.cs`, `FormaDoAccessTokenTests.cs`, `HostEmProducaoTests.cs`, `EndpointsDeclaramAutorizacaoTests.cs`, `ApiComKeycloakFactory.cs`, `ColecaoComKeycloak.cs`, `TokensDoKeycloakNaApiTests.cs`, `VazamentoDoEmailNoTokenTests.cs`; rewrite `IdentityGatewayApiFactory.cs`; modify `SegurancaTests.cs`, o `.csproj`. D2: create `Autorizacao/TenantAdminPolicyTests.cs`, `Autorizacao/OrdemDosHandlersTests.cs`, `LeituraDeTenantTests.cs`, `PoliciesDeTenantExigemTenantIdTests.cs`, `LeituraDeTenantComKeycloakTests.cs`.
+- Functional: create `Oidc/OidcFalso.cs`, `Oidc/EmissorDeTeste.cs`, `Logs/ColetorDeLogsDaApi.cs`, `Logs/CapturaDeSpans.cs`, `ApiEmProducaoFactory.cs`, `EmissorEstritoTests.cs`, `OpcoesDoJwtBearerTests.cs`, `LogsPorHostTests.cs`, `AutenticacaoNegativaTests.cs`, `FormaDoAccessTokenTests.cs`, `HostEmProducaoTests.cs`, `EndpointsDeclaramAutorizacaoTests.cs`, `ApiComKeycloakFactory.cs`, `ColecaoComKeycloak.cs`, `TokensDoKeycloakNaApiTests.cs`, `VazamentoDoEmailNoTokenTests.cs`; rewrite `IdentityGatewayApiFactory.cs`; modify `SegurancaTests.cs`, o `.csproj`. Application (D2): create `Tenants/GetTenant/GetTenantHandlerTests.cs`. D2: create `Autorizacao/MontagemDaAutorizacao.cs`, `Autorizacao/TenantAdminPolicyTests.cs`, `Autorizacao/PertencaFalsa.cs`, `Autorizacao/PertencaNaPolicyTenantAdminTests.cs`, `Autorizacao/OrdemDosHandlersTests.cs`, `Autorizacao/RespostaDaLeituraDeTenantTests.cs`, `LeituraDeTenantTests.cs`, `LeituraDeTenantComKeycloakTests.cs`; modify `EndpointsDeclaramAutorizacaoTests.cs`, `AutenticacaoNegativaTests.cs`, `ApiComKeycloakFactory.cs`, o `.csproj`.
 
 **Documentos**
 - Create `docs/especificacao-arquitetural-v2.7.md`; modify `docs/documentacao-negocio.md`, `README.md`, `CONTRIBUTING.md`; create os handoffs da D1 e da D2 em `docs/superpowers/specs/`.
@@ -8856,7 +8869,7 @@ Expected: `0`.
 
 ---
 
-<preencher|<n>|<hash|<N>|### Tarefa 12: Especificação v2.7, documento de negócio 1.4, README, CONTRIBUTING e handoff da D1
+### Tarefa 12: Especificação v2.7, documento de negócio 1.4, README, CONTRIBUTING e handoff da D1
 
 Spec: §9 (a tabela "Onde / v2.6 / Mudança" e as erratas E1 a E8), §11 (entregáveis), §6 ("Documentos"), §8 (os
 limites que a v2.7 registra), D-l (a v2.7 só com o que a fatia implementa, mais as erratas).
@@ -11439,7 +11452,7 @@ Outbox; a fundação Keycloak (PR #2) acrescentou o realm `identity-gateway` com
 `private_key_jwt` do service account; o consumidor do provisionamento (PR #3) consome o evento pelo próprio
 Outbox e decide entre repetir e desistir pela janela de provisionamento; o convite do admin inicial (PR #5)
 fechou o provisionamento da §9.1 — o tenant só fica `Active` depois que o admin é convidado no Keycloak —; e
-esta branch troca a autenticação: **a API aceita só access tokens do Keycloak** (RS256, com emissor, audiência,
+a primeira parte da fatia D trocou a autenticação: **a API aceita só access tokens do Keycloak** (RS256, com emissor, audiência,
 client de origem e forma conferidos), o JWT simétrico do template deixou de existir, o primeiro platform-admin
 nasce sem senha e é convidado por e-mail, e a demonstração obtém o token pelo device flow. Fecha o critério do
 M0 "primeiro `curl` com token do Keycloak". **Próximo passo:** a D2, a primeira rota de tenant
@@ -11971,4 +11984,3249 @@ Push e PR ficam para autorização do autor.
 
 ---
 
-> **Estado deste arquivo:** a parte D1 (Tarefas 1 a 12) está completa acima. A parte D2 (Tarefas 13 a 17) entra no próximo commit deste plano.
+# PARTE D2 — a primeira rota de tenant (um PR)
+
+A D2 começa **depois do merge da D1**, numa branch nova a partir da `main`:
+
+```bash
+git checkout main && git pull --ff-only
+git checkout -b feat/leitura-do-tenant
+dotnet build IdentityGateway.slnx && dotnet test
+```
+
+Expected: build sem avisos e suíte verde, com os totais do handoff da D1. Anote o total de cada projeto: os passos "ver passar" abaixo dizem quantos testes cada tarefa acrescenta.
+
+**A D2 não toca `keycloak/`, `docker-compose.yml` nem o one-shot.** Tudo o que ela consome do realm (o scope `gateway-tenant`, o catálogo, o client de demonstração) entrou na D1. Se uma tarefa daqui parecer pedir mudança no realm, pare: é erro de leitura, e custaria outro `docker compose down -v`.
+
+**Verificado ao escrever este plano (2026-10-01).** O código de produção e os testes das Tarefas 13 a 15 foram compilados com os analisadores do repositório e executados num clone descartável, sobre a `main` de hoje com a autorização da Tarefa 7 aplicada por cima (as policies e o Problem Details), e os tokens assinados pelo JWT simétrico do template no lugar do OIDC falso: 40 testes unitários da policy, 31 por HTTP (26 da rota e 5 da ordem dos handlers), as consultas contra o PostgreSQL e as regras de arquitetura, todos verdes; e cada mutação das tabelas 🧪 foi aplicada e vista vermelha, com as contagens que as tabelas trazem. O que **não** foi executado: a extensão da suíte negativa de autenticação à rota nova (Tarefa 15, Passo 7), que depende do OIDC falso, e a Tarefa 16 inteira (Keycloak real, app e CI).
+
+Docker Desktop ligado nas Tarefas 14 a 16.
+
+---
+
+### Tarefa 13: Os três requirements do token, a policy `TenantAdmin` e o `AddAutorizacaoDaGateway`
+
+Spec: §4.3 (a tabela dos requirements, os três primeiros; "A ordem de registro é explícita"), §5.1 (linha "Unitário da autorização"), §5.2 (casos `U` da D2), §5.3 (as mutações "`return` no lugar de `Fail()`", "comparar o tenant como texto" e "tirar o `NotPlatformAdminRequirement`"), D-g.
+
+A policy `TenantAdmin` nasce com as três camadas que só leem o token: o papel, a separação de funções e o tenant da rota. A quarta — a pertença no banco — entra na Tarefa 14, e a rota que usa a policy, na 15. Nenhuma rota muda aqui.
+
+O ponto que os testes desta tarefa existem para provar: **cada negação é um `Fail()`**, e não a falta de um `Succeed`. Por HTTP as duas coisas respondem o mesmo `403`; a diferença só aparece quando outro handler aprova o requirement — e é por isso que os testes põem no contêiner um handler que aprova tudo.
+
+**Arquivos:**
+- Create: `src/IdentityGateway.Api/Authorization/RoleRequirement.cs`, `NotPlatformAdminRequirement.cs`, `SameTenantRequirement.cs`, `AutorizacaoDaGateway.cs`
+- Modify: `src/IdentityGateway.Api/Authorization/Policies.cs`, `src/IdentityGateway.Api/DependencyInjection.cs`
+- Create (testes): `tests/IdentityGateway.Api.FunctionalTests/Autorizacao/MontagemDaAutorizacao.cs`, `Autorizacao/TenantAdminPolicyTests.cs`
+
+**Interfaces:**
+- Consome: `Policies.PlatformAdmin`, `ProblemDetailsDeAutorizacao` e o registro da autorização em `AddAutenticacao` (Tarefa 7).
+- Produz:
+  - `Policies.TenantAdmin` (`"TenantAdmin"`) e `Policies.DeTenant` (`IReadOnlyList<string>`, hoje só com `TenantAdmin`).
+  - `internal sealed class RoleRequirement(string role)`, `NotPlatformAdminRequirement` e `SameTenantRequirement` — cada um é requirement **e** handler (`AuthorizationHandler<T>, IAuthorizationRequirement`). `SameTenantRequirement.ParametroDaRota` (`"tenantId"`).
+  - `internal static class AutorizacaoDaGateway` com `IServiceCollection AddAutorizacaoDaGateway(this IServiceCollection services)`: policies, `FallbackPolicy`, `InvokeHandlersAfterFailure = false`.
+  - Nos testes: `MontagemDaAutorizacao.Montar(Action<IServiceCollection>? ajustar = null)`, `.Usuario(roles, tenantIds, sub)`, `.Pedido(tenantIdDaRota)` e `HandlerQueAprovaTudo`.
+
+- [ ] **Passo 1: A montagem da autorização fora do HTTP**
+
+Os testes unitários de autorização ficam no projeto funcional — o único com `InternalsVisibleTo` da Api —, em classes **sem fixture**: não sobem host, banco nem container.
+
+`tests/IdentityGateway.Api.FunctionalTests/Autorizacao/MontagemDaAutorizacao.cs`:
+
+```csharp
+using System.Security.Claims;
+using IdentityGateway.Api.Authorization;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace IdentityGateway.Api.FunctionalTests.Autorizacao;
+
+/// <summary>
+/// Monta a autorização da Gateway fora do HTTP: o mesmo <c>AddAutorizacaoDaGateway</c> da produção, num contêiner só
+/// com ele.
+/// </summary>
+/// <remarks>
+/// Sem host, sem banco e sem container: estes testes rodam em milissegundos e exercitam o que o teste por HTTP não
+/// distingue — por HTTP, um requirement que só deixa de aprovar e um que veta respondem o mesmo <c>403</c>.
+/// </remarks>
+internal static class MontagemDaAutorizacao
+{
+    /// <summary>O serviço de autorização, com as policies e a ordem de handlers da produção.</summary>
+    /// <param name="ajustar">O que o teste acrescenta ao contêiner <b>depois</b> do registro da produção.</param>
+    public static ServiceProvider Montar(Action<IServiceCollection>? ajustar = null)
+    {
+        ServiceCollection services = new();
+        services.AddLogging();
+        services.AddAutorizacaoDaGateway();
+        ajustar?.Invoke(services);
+
+        return services.BuildServiceProvider(validateScopes: true);
+    }
+
+    /// <summary>Um usuário autenticado com os claims que o token do Keycloak traria.</summary>
+    public static ClaimsPrincipal Usuario(
+        IEnumerable<string> roles, IEnumerable<string> tenantIds, string? sub = "5f1c0a2e-7c1d-4a55-9b0e-2f6f3c9d1a10")
+    {
+        List<Claim> claims = [.. roles.Select(role => new Claim("roles", role))];
+        claims.AddRange(tenantIds.Select(tenantId => new Claim("tenant_id", tenantId)));
+
+        if (sub is not null)
+        {
+            claims.Add(new Claim("sub", sub));
+        }
+
+        return new ClaimsPrincipal(
+            new ClaimsIdentity(claims, authenticationType: "teste", nameType: "sub", roleType: "roles"));
+    }
+
+    /// <summary>O <c>HttpContext</c> de um pedido a uma rota com <c>{tenantId}</c>, como o roteamento o entrega.</summary>
+    /// <param name="tenantIdDaRota">O texto cru do parâmetro, ou nulo para uma rota sem ele.</param>
+    public static DefaultHttpContext Pedido(string? tenantIdDaRota)
+    {
+        DefaultHttpContext contexto = new();
+
+        if (tenantIdDaRota is not null)
+        {
+            contexto.Request.RouteValues[SameTenantRequirement.ParametroDaRota] = tenantIdDaRota;
+        }
+
+        return contexto;
+    }
+}
+
+/// <summary>
+/// Um handler que aprova todo requirement ainda pendente — o pior vizinho que um requirement pode ter.
+/// </summary>
+/// <remarks>
+/// É o que torna o <c>Fail()</c> observável: com ele no contêiner, um requirement que só deixasse de dar
+/// <c>Succeed</c> seria satisfeito aqui, e a policy passaria. Só o <c>Fail()</c> sobrevive a ele.
+/// </remarks>
+internal sealed class HandlerQueAprovaTudo : IAuthorizationHandler
+{
+    public Task HandleAsync(AuthorizationHandlerContext context)
+    {
+        foreach (IAuthorizationRequirement requirement in context.PendingRequirements.ToList())
+        {
+            context.Succeed(requirement);
+        }
+
+        return Task.CompletedTask;
+    }
+}
+```
+
+- [ ] **Passo 2: Os testes da policy**
+
+`tests/IdentityGateway.Api.FunctionalTests/Autorizacao/TenantAdminPolicyTests.cs`:
+
+```csharp
+using System.Security.Claims;
+using IdentityGateway.Api.Authorization;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace IdentityGateway.Api.FunctionalTests.Autorizacao;
+
+/// <summary>
+/// A policy <c>TenantAdmin</c> de verdade, fora do HTTP: cada caminho de negação termina num <c>Fail()</c>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Por que não basta o teste por HTTP.</b> Um requirement que faz <c>return</c> onde devia fazer <c>Fail()</c>
+/// responde <c>403</c> do mesmo jeito — enquanto não houver outro handler que o aprove. No dia em que houver (uma
+/// policy de leitura para o platform-admin, um handler de recurso), o <c>return</c> vira acesso. Aqui há um handler que
+/// aprova tudo, de propósito: só o <c>Fail()</c> sobrevive a ele.
+/// </para>
+/// <para>
+/// <b>Uma causa por caso.</b> Cada caso reprova em exatamente um requirement e passa nos outros: se dois reprovassem,
+/// o <c>Fail()</c> de um esconderia o <c>return</c> do outro.
+/// </para>
+/// </remarks>
+public sealed class TenantAdminPolicyTests
+{
+    private const string Tenant = "0199a000-0000-7000-8000-00000000000a";
+
+    private const string OutroTenant = "0199a000-0000-7000-8000-00000000000b";
+
+    private static readonly string[] SoTenantAdmin = ["tenant-admin"];
+
+    private static readonly string[] SoOTenant = [Tenant];
+
+    private static async Task<AuthorizationResult> AutorizarAsync(
+        ClaimsPrincipal usuario, object? recurso, bool comHandlerQueAprovaTudo)
+    {
+        await using ServiceProvider provider = MontagemDaAutorizacao.Montar(services =>
+        {
+            if (comHandlerQueAprovaTudo)
+            {
+                services.AddSingleton<IAuthorizationHandler, HandlerQueAprovaTudo>();
+            }
+        });
+        await using AsyncServiceScope escopo = provider.CreateAsyncScope();
+
+        return await escopo.ServiceProvider.GetRequiredService<IAuthorizationService>()
+            .AuthorizeAsync(usuario, recurso, Policies.TenantAdmin);
+    }
+
+    private static void DeveTerVetado(AuthorizationResult resultado, string caso)
+    {
+        resultado.Succeeded.Should().BeFalse($"{caso}: a policy não pode passar, nem com um handler que aprova tudo");
+        resultado.Failure!.FailCalled.Should().BeTrue($"{caso}: a negação precisa ser um Fail(), e não a falta de Succeed");
+    }
+
+    [Theory]
+    [InlineData("próprio tenant", Tenant, Tenant)]
+    [InlineData("rota em maiúsculas", "0199A000-0000-7000-8000-00000000000A", Tenant)]
+    [InlineData("rota no formato N", "0199a00000007000800000000000000a", Tenant)]
+    [InlineData("claim em maiúsculas", Tenant, "0199A000-0000-7000-8000-00000000000A")]
+    public async Task TenantAdminDoTenantDaRota_Passa(string caso, string rota, string claim)
+    {
+        // Controles positivos, SEM o handler que aprova tudo: são os próprios requirements que aprovam. A comparação
+        // é por Guid — a mesma identidade escrita de outro jeito é o mesmo tenant.
+        ClaimsPrincipal usuario = MontagemDaAutorizacao.Usuario(SoTenantAdmin, [claim]);
+
+        AuthorizationResult resultado = await AutorizarAsync(
+            usuario, MontagemDaAutorizacao.Pedido(rota), comHandlerQueAprovaTudo: false);
+
+        resultado.Succeeded.Should().BeTrue(caso);
+    }
+
+    [Theory]
+    [InlineData("papel de outro nível", new[] { "reader" })]
+    [InlineData("papel com outra caixa", new[] { "Tenant-Admin" })]
+    [InlineData("sem o claim roles", new string[0])]
+    public async Task SemOPapelTenantAdmin_Veta(string caso, string[] roles)
+    {
+        ClaimsPrincipal usuario = MontagemDaAutorizacao.Usuario(roles, SoOTenant);
+
+        AuthorizationResult resultado = await AutorizarAsync(
+            usuario, MontagemDaAutorizacao.Pedido(Tenant), comHandlerQueAprovaTudo: true);
+
+        DeveTerVetado(resultado, caso);
+    }
+
+    [Fact]
+    public async Task PlatformAdminQueTambemETenantAdminDoProprioTenant_Veta()
+    {
+        // Separação de funções: tem o papel, tem o tenant, e mesmo assim não entra. Sem este veto, somar tenant-admin
+        // e um tenant_id a uma conta de plataforma contornaria o "platform-admin não lê tenant sem auditoria".
+        ClaimsPrincipal usuario = MontagemDaAutorizacao.Usuario(["platform-admin", "tenant-admin"], SoOTenant);
+
+        AuthorizationResult resultado = await AutorizarAsync(
+            usuario, MontagemDaAutorizacao.Pedido(Tenant), comHandlerQueAprovaTudo: true);
+
+        DeveTerVetado(resultado, "platform-admin + tenant-admin");
+    }
+
+    [Theory]
+    [InlineData("tenant_id de outro tenant", new[] { OutroTenant })]
+    [InlineData("tenant_id ausente", new string[0])]
+    [InlineData("tenant_id vazio", new[] { "" })]
+    [InlineData("tenant_id que não é GUID", new[] { "acme" })]
+    [InlineData("tenant_id com espaço antes", new[] { " " + Tenant })]
+    [InlineData("tenant_id com espaço depois", new[] { Tenant + " " })]
+    [InlineData("tenant_id entre chaves", new[] { "{" + Tenant + "}" })]
+    [InlineData("tenant_id no formato N", new[] { "0199a00000007000800000000000000a" })]
+    [InlineData("dois tenant_id: o próprio e outro", new[] { Tenant, OutroTenant })]
+    [InlineData("dois tenant_id: outro e o próprio", new[] { OutroTenant, Tenant })]
+    [InlineData("dois tenant_id iguais ao próprio", new[] { Tenant, Tenant })]
+    public async Task TenantDoTokenQueNaoEODaRota_Veta(string caso, string[] tenantIds)
+    {
+        ClaimsPrincipal usuario = MontagemDaAutorizacao.Usuario(SoTenantAdmin, tenantIds);
+
+        AuthorizationResult resultado = await AutorizarAsync(
+            usuario, MontagemDaAutorizacao.Pedido(Tenant), comHandlerQueAprovaTudo: true);
+
+        DeveTerVetado(resultado, caso);
+    }
+
+    [Theory]
+    [InlineData("rota sem tenantId", null)]
+    [InlineData("tenantId da rota que não é GUID", "acme")]
+    [InlineData("tenantId da rota vazio", "")]
+    public async Task RotaSemUmTenantIdUtilizavel_Veta(string caso, string? rota)
+    {
+        // Rota com policy de tenant e sem {tenantId} é erro de configuração; o teste de subida a reprova antes. Se
+        // chegar aqui, nega.
+        ClaimsPrincipal usuario = MontagemDaAutorizacao.Usuario(SoTenantAdmin, SoOTenant);
+
+        AuthorizationResult resultado = await AutorizarAsync(
+            usuario, MontagemDaAutorizacao.Pedido(rota), comHandlerQueAprovaTudo: true);
+
+        DeveTerVetado(resultado, caso);
+    }
+
+    [Fact]
+    public async Task RecursoQueNaoEHttpContext_Veta()
+    {
+        // Quem chamar a policy à mão, com outro recurso (ou nenhum), não tem rota de onde ler o tenant.
+        ClaimsPrincipal usuario = MontagemDaAutorizacao.Usuario(SoTenantAdmin, SoOTenant);
+
+        AuthorizationResult semRecurso = await AutorizarAsync(usuario, recurso: null, comHandlerQueAprovaTudo: true);
+        AuthorizationResult outroRecurso = await AutorizarAsync(usuario, new object(), comHandlerQueAprovaTudo: true);
+
+        DeveTerVetado(semRecurso, "sem recurso");
+        DeveTerVetado(outroRecurso, "recurso que não é HttpContext");
+    }
+}
+```
+
+Três coisas sobre os casos:
+- **`tenant_id` com espaço** está na lista porque `Guid.TryParseExact(…, "D")` aceita espaço nas pontas. É o mesmo achado do `sub`, na Tarefa 8.
+- **Um array de um elemento** (`"tenant_id": ["…"]`) não está: o `ClaimsPrincipal` o entrega como um claim só, indistinguível do texto, e é o mesmo tenant — não há ambiguidade a recusar.
+- **O claim em maiúsculas passa**: é o formato `D`, e a comparação é por `Guid`.
+
+- [ ] **Passo 3: Rodar e ver falhar**
+
+Run: `dotnet build tests/IdentityGateway.Api.FunctionalTests`
+Expected: FAIL de compilação — `AddAutorizacaoDaGateway`, `Policies.TenantAdmin` e `SameTenantRequirement` não existem. (É a única falha possível antes de os tipos existirem; o vermelho por asserção vem no Passo 7, por mutação.)
+
+- [ ] **Passo 4: As policies e os três requirements**
+
+Em `src/IdentityGateway.Api/Authorization/Policies.cs`, depois da constante `PlatformAdmin`:
+
+```csharp
+
+    /// <summary>
+    /// Quem administra o tenant da rota: <c>tenant-admin</c>, sem <c>platform-admin</c>, com o <c>tenant_id</c> do token
+    /// igual ao da rota.
+    /// </summary>
+    public const string TenantAdmin = "TenantAdmin";
+
+    /// <summary>
+    /// As policies que decidem pelo tenant da rota. Toda rota que usa uma delas precisa ter <c>{tenantId}</c> no
+    /// template: sem o parâmetro, o <see cref="SameTenantRequirement"/> nega sempre. Um teste de subida confere.
+    /// </summary>
+    public static IReadOnlyList<string> DeTenant { get; } = [TenantAdmin];
+```
+
+`src/IdentityGateway.Api/Authorization/RoleRequirement.cs`:
+
+```csharp
+using Microsoft.AspNetCore.Authorization;
+
+namespace IdentityGateway.Api.Authorization;
+
+/// <summary>
+/// Exige um papel do catálogo no claim <c>roles</c>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Um handler próprio, e não <c>RequireClaim</c>.</b> O <c>RequireClaim</c> só deixa de dar <c>Succeed</c> quando o
+/// claim falta — ele não chama <c>Fail()</c>. Em ASP.NET Core, um requirement sem <c>Succeed</c> e sem <c>Fail</c> está
+/// só "ainda não satisfeito": qualquer outro handler que o aprove o satisfaz. <c>Fail()</c> veta, e nada o desfaz.
+/// </para>
+/// <para>
+/// <b>O requirement é o próprio handler.</b> Não precisa de serviço nenhum, e assim roda dentro do
+/// <c>PassThroughAuthorizationHandler</c>, na ordem em que a policy o declara (ver <see cref="AutorizacaoDaGateway"/>).
+/// </para>
+/// </remarks>
+internal sealed class RoleRequirement(string role) : AuthorizationHandler<RoleRequirement>, IAuthorizationRequirement
+{
+    /// <summary>O papel exigido, como o realm o escreve.</summary>
+    public string Role { get; } = role;
+
+    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, RoleRequirement requirement)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(requirement);
+
+        if (context.User.HasClaim("roles", requirement.Role))
+        {
+            context.Succeed(requirement);
+        }
+        else
+        {
+            context.Fail(new AuthorizationFailureReason(this, "O papel exigido não está no token."));
+        }
+
+        return Task.CompletedTask;
+    }
+}
+```
+
+`src/IdentityGateway.Api/Authorization/NotPlatformAdminRequirement.cs`:
+
+```csharp
+using Microsoft.AspNetCore.Authorization;
+
+namespace IdentityGateway.Api.Authorization;
+
+/// <summary>
+/// Separação de funções: quem traz <c>platform-admin</c> não age como administrador de tenant.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A hierarquia de papéis é teto de atribuição, não herança de acesso: estar acima de <c>tenant-admin</c> limita o
+/// que o platform-admin pode conceder, e não lhe dá o que o <c>tenant-admin</c> acessa.
+/// </para>
+/// <para>
+/// <b>Por que negar quem acumula os dois papéis.</b> O service account da Gateway atribui <c>platform-admin</c>
+/// (o <c>manage-users</c> o permite). Sem esta negação, o "platform-admin não lê tenant sem auditoria" só valeria
+/// para a conta que não acumula papéis — bastaria somar <c>tenant-admin</c> e um <c>tenant_id</c> para contorná-lo.
+/// </para>
+/// </remarks>
+internal sealed class NotPlatformAdminRequirement
+    : AuthorizationHandler<NotPlatformAdminRequirement>, IAuthorizationRequirement
+{
+    protected override Task HandleRequirementAsync(
+        AuthorizationHandlerContext context, NotPlatformAdminRequirement requirement)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(requirement);
+
+        if (context.User.HasClaim("roles", "platform-admin"))
+        {
+            context.Fail(new AuthorizationFailureReason(this, "Conta de plataforma não age como administrador de tenant."));
+        }
+        else
+        {
+            context.Succeed(requirement);
+        }
+
+        return Task.CompletedTask;
+    }
+}
+```
+
+`src/IdentityGateway.Api/Authorization/SameTenantRequirement.cs`:
+
+```csharp
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+
+namespace IdentityGateway.Api.Authorization;
+
+/// <summary>
+/// Garante que o tenant do token é o tenant da rota.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Sem esta verificação, qualquer administrador de tenant operaria sobre qualquer tenant: bastaria trocar o id na URL
+/// (BOLA/IDOR).
+/// </para>
+/// <para>
+/// <b>Todo caminho que não é sucesso chama <c>Fail()</c>.</b> Um requirement sem <c>Succeed</c> e sem <c>Fail</c> fica
+/// só "ainda não satisfeito", e outro handler poderia satisfazê-lo. É por isso que o acesso do platform-admin à
+/// leitura de tenant <b>não</b> é um segundo handler deste requirement: o <c>Fail()</c> daqui o vetaria. Ele será
+/// uma policy própria.
+/// </para>
+/// </remarks>
+internal sealed class SameTenantRequirement : AuthorizationHandler<SameTenantRequirement>, IAuthorizationRequirement
+{
+    /// <summary>O nome do parâmetro de rota que toda rota com policy de tenant precisa ter. Há teste de subida.</summary>
+    internal const string ParametroDaRota = "tenantId";
+
+    protected override Task HandleRequirementAsync(
+        AuthorizationHandlerContext context, SameTenantRequirement requirement)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(requirement);
+
+        if (MesmoTenant(context))
+        {
+            context.Succeed(requirement);
+        }
+        else
+        {
+            context.Fail(new AuthorizationFailureReason(this, "O tenant da rota e o do token não conferem."));
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static bool MesmoTenant(AuthorizationHandlerContext context)
+    {
+        // Com endpoint routing, o Resource é o próprio HttpContext.
+        if (context.Resource is not HttpContext http)
+        {
+            return false;
+        }
+
+        // GetRouteValue devolve o texto cru da URL, mesmo com a restrição :guid — que aceita os mesmos formatos do
+        // Guid.TryParse. Rota sem {tenantId} é erro de configuração, e o teste de subida impede que chegue aqui.
+        if (!Guid.TryParse(http.GetRouteValue(ParametroDaRota)?.ToString(), out Guid daRota))
+        {
+            return false;
+        }
+
+        // Exatamente UM claim. O Keycloak nunca emite dois (o mapper não é multivalorado); aceitar "o primeiro", "o
+        // último" ou "algum" aceitaria um token forjado com o tenant da vítima numa das posições.
+        if (context.User.FindAll("tenant_id").Take(2).ToArray() is not [Claim claim])
+        {
+            return false;
+        }
+
+        // O claim, só no formato D, que é como o Keycloak o emite. O tamanho antes do parse: Guid.TryParseExact tolera
+        // espaço nas pontas, e o formato D tem exatamente 36 caracteres. A comparação é por Guid, e não por texto: a
+        // rota com o GUID em maiúsculas é o mesmo tenant.
+        return claim.Value is { Length: 36 }
+            && Guid.TryParseExact(claim.Value, "D", out Guid doToken)
+            && doToken == daRota;
+    }
+}
+```
+
+**A rota aceita qualquer formato de GUID; o claim, só o `D`.** A §4.3 da spec diz "os dois no formato `D`", e a §5.2 tem como controle positivo a rota no formato `N` respondendo `200`. O plano fica com a §5.2: a restrição `:guid` da rota já aceita os formatos do `Guid.TryParse`, e recusar aqui um formato que a rota aceitou daria `403` ao dono do tenant por causa de hifens. O claim é emitido pelo Keycloak, sempre no formato `D`; qualquer outra forma é token forjado ou atributo adulterado. O handoff da D1 registra a divergência para o autor.
+
+- [ ] **Passo 5: O registro da autorização num método só**
+
+`src/IdentityGateway.Api/Authorization/AutorizacaoDaGateway.cs`:
+
+```csharp
+using Microsoft.AspNetCore.Authorization;
+
+namespace IdentityGateway.Api.Authorization;
+
+/// <summary>
+/// O registro da autorização da Gateway: as policies, a policy de fallback e a ordem dos handlers.
+/// </summary>
+/// <remarks>
+/// <b>Um método só, usado pela produção e pelos testes unitários.</b> A ordem em que os handlers são registrados é
+/// parte da segurança (abaixo), e um teste que montasse a autorização por conta própria provaria outra ordem.
+/// </remarks>
+internal static class AutorizacaoDaGateway
+{
+    public static IServiceCollection AddAutorizacaoDaGateway(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAuthorization(options =>
+        {
+            // Todo endpoint exige usuário autenticado, a menos que declare AllowAnonymous ou outra policy.
+            options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+
+            // Depois do primeiro Fail(), nenhum outro handler roda. É global: vale para todas as policies. Por isso a
+            // negação não pode ser auditada por um handler — a auditoria nasce no ProblemDetailsDeAutorizacao, que vê
+            // todas.
+            options.InvokeHandlersAfterFailure = false;
+
+            // Claim plano, não RequireRole: o papel chega no claim "roles", com esse nome (MapInboundClaims desligado).
+            options.AddPolicy(Policies.PlatformAdmin, policy => policy.RequireClaim("roles", "platform-admin"));
+
+            // A ordem dos requirements é a ordem em que rodam: os que só leem o token primeiro.
+            options.AddPolicy(Policies.TenantAdmin, policy => policy.AddRequirements(
+                new RoleRequirement("tenant-admin"),
+                new NotPlatformAdminRequirement(),
+                new SameTenantRequirement()));
+        });
+
+        return services;
+    }
+}
+```
+
+Em `src/IdentityGateway.Api/DependencyInjection.cs`, no método `AddAutenticacao`, trocar o bloco inteiro do `services.AddAuthorization(options => { … });` — as duas linhas de dentro, a do `AddPolicy` e a do `FallbackPolicy`, saem com ele — por:
+
+```csharp
+        // As policies, a policy de fallback e a ordem dos handlers: um método só, que os testes unitários também usam.
+        services.AddAutorizacaoDaGateway();
+```
+
+As duas linhas acima dele (`AddProblemDetails` e o `AddSingleton<IAuthorizationMiddlewareResultHandler, ProblemDetailsDeAutorizacao>`) ficam. No comentário XML do método, o parágrafo "Claim plano, não `RequireRole`" continua valendo.
+
+`InvokeHandlersAfterFailure = false` é novo e **global**: vale também para a policy `PlatformAdmin` e para a de fallback. Nenhuma delas tem mais de um handler, e nada muda para elas.
+
+- [ ] **Passo 6: Rodar e ver passar**
+
+Run: `dotnet build IdentityGateway.slnx`
+Expected: `0 Aviso(s)`, `0 Erro(s)`.
+
+Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-class "*TenantAdminPolicyTests"`
+Expected: `total: 23`, `falhou: 0`, em poucos segundos — nenhum container sobe.
+
+Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests`
+Expected: verde, com 23 testes a mais que na `main`. São os funcionais da D1 que provam que mover o registro não mudou nada: o caminho não mapeado sem token continua `401` (a `FallbackPolicy`), e `TodoEndpoint_TemPolicyNomeadaOuAnonimatoDeclarado` continua verde.
+
+- [ ] **Passo 7: 🧪 Provas por mutação**
+
+Antes da primeira: `git add -A src tests`. Reverter cada uma com `git restore src`.
+
+Run (a cada mutação): `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-class "*TenantAdminPolicyTests"`
+
+| # | Mutação | Vermelho esperado |
+|---|---|---|
+| 1 | Em `RoleRequirement`, apagar o `else { context.Fail(…); }` | 3: os três casos de `SemOPapelTenantAdmin_Veta` ("a policy não pode passar, nem com um handler que aprova tudo") |
+| 2 | Em `NotPlatformAdminRequirement`, trocar o `context.Fail(…);` por `return Task.CompletedTask;` | 1: `PlatformAdminQueTambemETenantAdminDoProprioTenant_Veta` |
+| 3 | Em `SameTenantRequirement`, apagar o `else { context.Fail(…); }` | 15: os onze de `TenantDoTokenQueNaoEODaRota_Veta`, os três de `RotaSemUmTenantIdUtilizavel_Veta` e `RecursoQueNaoEHttpContext_Veta` |
+| 4 | Usar o **primeiro** claim: `if (context.User.FindFirst("tenant_id") is not Claim claim)` | 2: "o próprio e outro" e "iguais ao próprio" |
+| 5 | Usar o **último**: `if (context.User.FindAll("tenant_id").LastOrDefault() is not Claim claim)` | 2: "outro e o próprio" e "iguais ao próprio" |
+| 6 | Comparar como texto: trocar `&& doToken == daRota` por `&& string.Equals(claim.Value, http.GetRouteValue(ParametroDaRota)?.ToString(), StringComparison.Ordinal)` | 3: os controles "rota em maiúsculas", "rota no formato N" e "claim em maiúsculas" |
+| 7 | Tirar o `claim.Value is { Length: 36 } &&` | 2: "espaço antes" e "espaço depois" |
+| 8 | Trocar o retorno inteiro por `return Guid.TryParse(claim.Value, out Guid doToken) && doToken == daRota;` | 4: os dois de espaço, "entre chaves" e "formato N" |
+| 9 | Em `AutorizacaoDaGateway`, tirar a linha `new NotPlatformAdminRequirement(),` da policy | 1: `PlatformAdminQueTambemETenantAdminDoProprioTenant_Veta` |
+
+As mutações 1 a 3 são as da §5.3 da spec ("`return` no lugar de `Fail()`"), e **só estes testes as pegam**: por HTTP, sem outro handler, a rota continuaria respondendo `403`.
+
+- [ ] **Passo 8: Commit**
+
+```bash
+git add src/IdentityGateway.Api tests/IdentityGateway.Api.FunctionalTests
+git commit -m "feat: policy TenantAdmin com papel, separacao de funcoes e tenant da rota
+
+Tres requirements que sao o proprio handler: RoleRequirement (tenant-admin
+no claim roles), NotPlatformAdminRequirement (quem traz platform-admin nao
+age como admin de tenant) e SameTenantRequirement (exatamente um claim
+tenant_id, no formato D, igual como Guid ao tenantId da rota). Todo caminho
+que nao e sucesso chama Fail(). O registro da autorizacao passa a um metodo
+so, AddAutorizacaoDaGateway, com a policy de fallback e
+InvokeHandlersAfterFailure desligado. Nenhuma rota usa a policy ainda.
+
+Testes unitarios com a policy real e um handler que aprova tudo. Mutacoes:
+return no lugar de Fail() em cada requirement, primeiro e ultimo claim,
+comparacao como texto, parse sem o tamanho e sem o formato D, e a policy
+sem o NotPlatformAdminRequirement."
+```
+
+Run: `git log -1 --format=%B | grep -Eci "co-authored|generated with"`
+Expected: `0`.
+
+---
+
+### Tarefa 14: A pertença no banco — `IMemberQueries` e o `MemberRequirement`
+
+Spec: §4.3 (linha `MemberRequirement` da tabela; "A ordem de registro é explícita"; "A pertença é lida por uma porta da Application"), §5.1 (linhas "Unitário da autorização", "Integração, PostgreSQL" e a de arquitetura da D2), §5.3 ("Registrar o handler do `MemberRequirement` antes do `AddAuthorization`", "Tirar o `MemberRequirement`, ou aceitar qualquer status"), D-f, D-j, ADR-011.
+
+O `tenant_id` do token é forjável por quem tem a chave da Gateway: o mapper do claim recua para o atributo de um grupo do Keycloak, e o `manage-users` cria grupos (Tarefa 5, teste de caracterização). A quarta camada da policy confere no banco da Gateway que o `sub` é `Member` do tenant da rota.
+
+Duas propriedades precisam de teste, e são elas que organizam a tarefa: **quais estados do membro passam** (só `Invited` e `Active`; um estado novo no enum nega até alguém decidir) e **quando o banco é consultado** (só para quem já passou nas três camadas do token — senão o tempo de resposta diria a qualquer token autenticado se um `sub` é membro de um tenant).
+
+**Arquivos:**
+- Create: `src/IdentityGateway.Application/Common/Abstractions/IMemberQueries.cs`
+- Create: `src/IdentityGateway.Infrastructure/Persistence/Queries/MemberQueries.cs`
+- Modify: `src/IdentityGateway.Infrastructure/DependencyInjection.cs`
+- Create: `src/IdentityGateway.Api/Authorization/MemberRequirement.cs`, `MemberRequirementHandler.cs`
+- Modify: `src/IdentityGateway.Api/Authorization/AutorizacaoDaGateway.cs`, `Policies.cs`
+- Create (testes): `tests/IdentityGateway.Infrastructure.IntegrationTests/Persistence/MemberQueriesTests.cs`; `tests/IdentityGateway.Api.FunctionalTests/Autorizacao/PertencaFalsa.cs`, `Autorizacao/PertencaNaPolicyTenantAdminTests.cs`
+- Modify (testes): `tests/IdentityGateway.Api.FunctionalTests/Autorizacao/TenantAdminPolicyTests.cs`, `IdentityGateway.Api.FunctionalTests.csproj`; `tests/IdentityGateway.ArchitectureTests/RegrasDaApiTests.cs`, `RegrasDeDominioTests.cs`
+
+**Interfaces:**
+- Consome: `AutorizacaoDaGateway.AddAutorizacaoDaGateway`, `SameTenantRequirement.ParametroDaRota`, `MontagemDaAutorizacao`, `HandlerQueAprovaTudo` (Tarefa 13); `Member`, `MemberStatus`, `ExternalUserId.From(string)`, `TenantId`, `AppDbContext.Members` (existentes).
+- Produz:
+  - `public interface IMemberQueries` (Application): `Task<MemberStatus?> GetStatusAsync(TenantId tenantId, ExternalUserId externalUserId, CancellationToken cancellationToken = default)`.
+  - `internal sealed class MemberQueries(AppDbContext context) : IMemberQueries` (Infrastructure), registrada `Scoped`.
+  - `internal sealed class MemberRequirement : IAuthorizationRequirement` e `internal sealed class MemberRequirementHandler(IMemberQueries members) : AuthorizationHandler<MemberRequirement>` (Api).
+  - Nos testes: `internal sealed class PertencaFalsa(MemberStatus? status) : IMemberQueries`, com `int Consultas` e `(TenantId TenantId, ExternalUserId ExternalUserId)? Ultima`.
+
+- [ ] **Passo 1: A porta e o teste contra o PostgreSQL**
+
+`src/IdentityGateway.Application/Common/Abstractions/IMemberQueries.cs`:
+
+```csharp
+using IdentityGateway.Domain.Members;
+using IdentityGateway.Domain.Tenants;
+
+namespace IdentityGateway.Application.Common.Abstractions;
+
+/// <summary>
+/// Leitura da pertença de um ator a um tenant.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>O tenant está na assinatura (§6.4).</b> Não existe leitura de membro só pelo <c>sub</c>: quem pergunta diz de
+/// qual tenant, e o membro de outro tenant não é achado. É a mesma regra do repositório de sub-recurso, aplicada à
+/// consulta.
+/// </para>
+/// <para>
+/// <b>Porta de consulta, e não método novo do <see cref="IMemberRepository"/>.</b> O repositório devolve o agregado
+/// rastreado, para ser alterado; aqui é uma projeção sem rastreamento, de um campo, para a autorização decidir. O
+/// repositório continua só com <c>Add</c>.
+/// </para>
+/// </remarks>
+public interface IMemberQueries
+{
+    /// <summary>O status do membro <c>(tenant, sub)</c>, ou nulo se o ator não for membro do tenant.</summary>
+    Task<MemberStatus?> GetStatusAsync(
+        TenantId tenantId, ExternalUserId externalUserId, CancellationToken cancellationToken = default);
+}
+```
+
+`tests/IdentityGateway.Infrastructure.IntegrationTests/Persistence/MemberQueriesTests.cs`:
+
+```csharp
+using IdentityGateway.Domain.Members;
+using IdentityGateway.Domain.Tenants;
+using IdentityGateway.Infrastructure.Persistence;
+using IdentityGateway.Infrastructure.Persistence.Queries;
+using Microsoft.EntityFrameworkCore;
+
+namespace IdentityGateway.Infrastructure.IntegrationTests.Persistence;
+
+/// <summary>
+/// A leitura da pertença, contra o PostgreSQL: pelo tenant <b>e</b> pelo <c>sub</c>, nunca só por um deles.
+/// </summary>
+/// <remarks>
+/// É a consulta de que a policy <c>TenantAdmin</c> depende (ADR-011). O erro que estes testes existem para pegar é o
+/// filtro que esquece o tenant: ele acharia o membro de outro tenant e diria "é membro".
+/// </remarks>
+public sealed class MemberQueriesTests(PostgresFixture postgres) : IClassFixture<PostgresFixture>
+{
+    private static TenantSlug SlugUnico() => TenantSlug.Create($"mq-{Guid.NewGuid():N}"[..18]).Value;
+
+    private static ExternalUserId SubUnico() => ExternalUserId.From(Guid.NewGuid().ToString());
+
+    /// <summary>Registra um tenant e o ativa pelo caminho de domínio, com o admin dado como membro.</summary>
+    private async Task<TenantId> TenantComAdminAsync(ExternalUserId sub, CancellationToken ct)
+    {
+        var tenant = Tenant.Register(
+            "Consultas", SlugUnico(), new Plan(PlanTier.Free, 5, 1), PostgresFixture.EmailDoAdmin(), PostgresFixture.Agora);
+
+        await using AppDbContext contexto = postgres.CriarContexto();
+        contexto.Tenants.Add(tenant);
+        await contexto.SaveChangesAsync(ct);
+
+        Member admin = tenant.CompleteProvisioning($"org-{Guid.NewGuid():N}", sub, PostgresFixture.Agora);
+        contexto.Members.Add(admin);
+        await contexto.SaveChangesAsync(ct);
+
+        return tenant.Id;
+    }
+
+    private async Task<MemberStatus?> ConsultarAsync(TenantId tenant, ExternalUserId sub, CancellationToken ct)
+    {
+        // Contexto novo: a consulta lê do banco, e não do que o contexto de escrita ainda tem rastreado.
+        await using AppDbContext contexto = postgres.CriarContexto();
+
+        return await new MemberQueries(contexto).GetStatusAsync(tenant, sub, ct);
+    }
+
+    [Fact]
+    public async Task MembroDoTenant_DevolveOStatusGravado()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        ExternalUserId sub = SubUnico();
+        TenantId tenant = await TenantComAdminAsync(sub, ct);
+
+        (await ConsultarAsync(tenant, sub, ct)).Should().Be(MemberStatus.Invited);
+
+        // O status vem da coluna, e não de um valor fixo: muda no banco, muda na resposta.
+        await using (AppDbContext contexto = postgres.CriarContexto())
+        {
+            await contexto.Database.ExecuteSqlAsync(
+                $"UPDATE members SET status = 'Deactivated' WHERE tenant_id = {tenant.Value}", ct);
+        }
+
+        (await ConsultarAsync(tenant, sub, ct)).Should().Be(MemberStatus.Deactivated);
+    }
+
+    [Fact]
+    public async Task MembroDeOutroTenant_NaoEAchado()
+    {
+        // O mesmo sub é membro do tenant A. Perguntar por ele no tenant B responde nulo — e não o status dele em A.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        ExternalUserId sub = SubUnico();
+        TenantId tenantA = await TenantComAdminAsync(sub, ct);
+        TenantId tenantB = await TenantComAdminAsync(SubUnico(), ct);
+
+        (await ConsultarAsync(tenantB, sub, ct)).Should().BeNull();
+        (await ConsultarAsync(tenantA, sub, ct)).Should().Be(MemberStatus.Invited, "controle: no tenant dele, é achado");
+    }
+
+    [Fact]
+    public async Task OutroSubNoMesmoTenant_NaoEAchado()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        TenantId tenant = await TenantComAdminAsync(SubUnico(), ct);
+
+        (await ConsultarAsync(tenant, SubUnico(), ct)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task TenantQueNaoExiste_DevolveNulo()
+    {
+        // Não há Member de um tenant que não existe: é por isso que a rota responde 403, e não 404, sem consultar o
+        // tenant antes de autorizar.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+
+        (await ConsultarAsync(TenantId.New(), SubUnico(), ct)).Should().BeNull();
+    }
+}
+```
+
+Não há teste de "a consulta não rastreia nada": uma projeção de um campo escalar nunca rastreia, com ou sem `AsNoTracking()`, e o teste ficaria verde sem o método (visto ao escrever este plano). O `AsNoTracking()` fica por convenção, como nas outras consultas.
+
+Run: `dotnet build tests/IdentityGateway.Infrastructure.IntegrationTests`
+Expected: FAIL de compilação — `MemberQueries` não existe.
+
+- [ ] **Passo 2: A implementação e o registro**
+
+`src/IdentityGateway.Infrastructure/Persistence/Queries/MemberQueries.cs`:
+
+```csharp
+using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Domain.Members;
+using IdentityGateway.Domain.Tenants;
+using Microsoft.EntityFrameworkCore;
+
+namespace IdentityGateway.Infrastructure.Persistence.Queries;
+
+/// <summary>
+/// Implementa <see cref="IMemberQueries"/> com uma projeção sem rastreamento.
+/// </summary>
+internal sealed class MemberQueries(AppDbContext context) : IMemberQueries
+{
+    /// <inheritdoc />
+    /// <remarks>
+    /// O filtro leva o tenant <b>e</b> o <c>sub</c>, e é o índice único <c>(tenant_id, external_user_id)</c> que
+    /// responde: no máximo uma linha. O cast para o tipo anulável é o que faz "nenhuma linha" virar nulo, e não o
+    /// primeiro valor do enum.
+    /// </remarks>
+    public Task<MemberStatus?> GetStatusAsync(
+        TenantId tenantId, ExternalUserId externalUserId, CancellationToken cancellationToken) =>
+        context.Members
+            .AsNoTracking()
+            .Where(membro => membro.TenantId == tenantId && membro.ExternalUserId == externalUserId)
+            .Select(membro => (MemberStatus?)membro.Status)
+            .SingleOrDefaultAsync(cancellationToken);
+}
+```
+
+Em `src/IdentityGateway.Infrastructure/DependencyInjection.cs`, depois da linha `services.AddScoped<ITenantQueries, TenantQueries>();`:
+
+```csharp
+        services.AddScoped<IMemberQueries, MemberQueries>();
+```
+
+Run: `dotnet test tests/IdentityGateway.Infrastructure.IntegrationTests --filter-class "*MemberQueriesTests"`
+Expected: `total: 4`, `falhou: 0`.
+
+- [ ] **Passo 3: 🧪 Mutações da consulta**
+
+`git add -A src tests` antes; `git restore src` depois de cada uma.
+
+| # | Mutação em `MemberQueries.GetStatusAsync` | Vermelho esperado |
+|---|---|---|
+| 1 | Tirar o tenant do filtro (`membro.TenantId == tenantId && `) | `MembroDeOutroTenant_NaoEAchado` — responde `Invited`, o status do membro no outro tenant |
+| 2 | Tirar o `sub` do filtro (` && membro.ExternalUserId == externalUserId`) | `OutroSubNoMesmoTenant_NaoEAchado` e `MembroDeOutroTenant_NaoEAchado` |
+
+A mutação 1 é o defeito que esta porta existe para impedir: a consulta "pelo `sub`" que esquece o tenant.
+
+- [ ] **Passo 4: A pertença falsa e os testes da quarta camada**
+
+Em `tests/IdentityGateway.Api.FunctionalTests/IdentityGateway.Api.FunctionalTests.csproj`, no `ItemGroup` das referências de projeto, depois da linha da Infrastructure (a `IMemberQueries` é usada no código dos testes, e o comentário do arquivo pede a referência explícita):
+
+```xml
+    <ProjectReference Include="..\..\src\IdentityGateway.Application\IdentityGateway.Application.csproj" />
+```
+
+`tests/IdentityGateway.Api.FunctionalTests/Autorizacao/PertencaFalsa.cs`:
+
+```csharp
+using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Domain.Members;
+using IdentityGateway.Domain.Tenants;
+
+namespace IdentityGateway.Api.FunctionalTests.Autorizacao;
+
+/// <summary>
+/// Uma <see cref="IMemberQueries"/> de teste: responde o status combinado e conta quantas vezes foi consultada.
+/// </summary>
+/// <remarks>
+/// A contagem é o que prova a ordem dos handlers: a pertença só pode ser consultada para quem já passou nas camadas
+/// do token. Uma consulta com o papel ausente é uma consulta ao banco que qualquer token autenticado conseguiria
+/// provocar, para qualquer tenant.
+/// </remarks>
+internal sealed class PertencaFalsa(MemberStatus? status) : IMemberQueries
+{
+    private int _consultas;
+
+    /// <summary>Quantas vezes a porta foi consultada.</summary>
+    public int Consultas => _consultas;
+
+    /// <summary>O tenant e o <c>sub</c> da última consulta.</summary>
+    public (TenantId TenantId, ExternalUserId ExternalUserId)? Ultima { get; private set; }
+
+    public Task<MemberStatus?> GetStatusAsync(
+        TenantId tenantId, ExternalUserId externalUserId, CancellationToken cancellationToken = default)
+    {
+        Interlocked.Increment(ref _consultas);
+        Ultima = (tenantId, externalUserId);
+
+        return Task.FromResult(status);
+    }
+}
+```
+
+`tests/IdentityGateway.Api.FunctionalTests/Autorizacao/PertencaNaPolicyTenantAdminTests.cs`:
+
+```csharp
+using System.Security.Claims;
+using IdentityGateway.Api.Authorization;
+using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Domain.Members;
+using IdentityGateway.Domain.Tenants;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace IdentityGateway.Api.FunctionalTests.Autorizacao;
+
+/// <summary>
+/// A quarta camada da policy <c>TenantAdmin</c>: a pertença no banco (ADR-011), pela porta <c>IMemberQueries</c>.
+/// </summary>
+/// <remarks>
+/// Aqui a porta é falsa e conta as consultas. O que se prova: quais estados do membro passam, que quem não é membro é
+/// vetado, e que <b>a porta só é consultada para quem já passou nas três camadas do token</b>.
+/// </remarks>
+public sealed class PertencaNaPolicyTenantAdminTests
+{
+    private const string Tenant = "0199a000-0000-7000-8000-00000000000a";
+
+    private const string OutroTenant = "0199a000-0000-7000-8000-00000000000b";
+
+    private const string Sub = "5f1c0a2e-7c1d-4a55-9b0e-2f6f3c9d1a10";
+
+    private static readonly string[] SoTenantAdmin = ["tenant-admin"];
+
+    private static readonly string[] SoOTenant = [Tenant];
+
+    /// <summary>
+    /// A decisão para cada estado do membro, escrita à mão. Um estado novo no enum não está aqui — e o teste reprova
+    /// até alguém decidir, em vez de herdar uma resposta.
+    /// </summary>
+    private static readonly Dictionary<MemberStatus, bool> PassaNaPertenca = new()
+    {
+        [MemberStatus.Invited] = true,
+        [MemberStatus.Active] = true,
+        [MemberStatus.Deactivated] = false,
+        [MemberStatus.Expired] = false,
+        [MemberStatus.Revoked] = false,
+        [MemberStatus.Erased] = false,
+    };
+
+    public static TheoryData<MemberStatus> TodosOsEstados => [.. Enum.GetValues<MemberStatus>()];
+
+    private static async Task<AuthorizationResult> AutorizarAsync(
+        ClaimsPrincipal usuario, string? rota, PertencaFalsa pertenca, bool comHandlerQueAprovaTudo)
+    {
+        await using ServiceProvider provider = MontagemDaAutorizacao.Montar(services =>
+        {
+            services.AddSingleton<IMemberQueries>(pertenca);
+
+            if (comHandlerQueAprovaTudo)
+            {
+                services.AddSingleton<IAuthorizationHandler, HandlerQueAprovaTudo>();
+            }
+        });
+        await using AsyncServiceScope escopo = provider.CreateAsyncScope();
+
+        return await escopo.ServiceProvider.GetRequiredService<IAuthorizationService>()
+            .AuthorizeAsync(usuario, MontagemDaAutorizacao.Pedido(rota), Policies.TenantAdmin);
+    }
+
+    [Theory]
+    [MemberData(nameof(TodosOsEstados))]
+    public async Task CadaEstadoDoMembro_PassaOuEVetadoComoATabela(MemberStatus estado)
+    {
+        PassaNaPertenca.Should().ContainKey(
+            estado, "estado novo no enum: decida se ele passa na pertença e acrescente à tabela deste teste");
+        bool esperado = PassaNaPertenca[estado];
+        ClaimsPrincipal usuario = MontagemDaAutorizacao.Usuario(SoTenantAdmin, SoOTenant);
+
+        AuthorizationResult sozinho = await AutorizarAsync(
+            usuario, Tenant, new PertencaFalsa(estado), comHandlerQueAprovaTudo: false);
+        AuthorizationResult comVizinho = await AutorizarAsync(
+            usuario, Tenant, new PertencaFalsa(estado), comHandlerQueAprovaTudo: true);
+
+        sozinho.Succeeded.Should().Be(esperado);
+        comVizinho.Succeeded.Should().Be(esperado, "um handler que aprova tudo não muda a decisão da pertença");
+
+        if (!esperado)
+        {
+            comVizinho.Failure!.FailCalled.Should().BeTrue("a negação precisa ser um Fail()");
+        }
+    }
+
+    [Fact]
+    public async Task QuemNaoEMembroDoTenant_EVetado()
+    {
+        // O caso do ataque: papel certo, tenant_id certo (forjado por um grupo no Keycloak), e nenhum Member no banco.
+        ClaimsPrincipal usuario = MontagemDaAutorizacao.Usuario(SoTenantAdmin, SoOTenant);
+        PertencaFalsa pertenca = new(status: null);
+
+        AuthorizationResult resultado = await AutorizarAsync(usuario, Tenant, pertenca, comHandlerQueAprovaTudo: true);
+
+        resultado.Succeeded.Should().BeFalse();
+        resultado.Failure!.FailCalled.Should().BeTrue();
+        pertenca.Consultas.Should().Be(1, "controle: a negação veio da pertença, e não de uma camada anterior");
+    }
+
+    [Theory]
+    [InlineData(Tenant)]
+    [InlineData("0199A000-0000-7000-8000-00000000000A")]
+    [InlineData("0199a00000007000800000000000000a")]
+    public async Task APertenca_EConsultadaUmaVezComOTenantDaRotaEOSubDoToken(string rota)
+    {
+        ClaimsPrincipal usuario = MontagemDaAutorizacao.Usuario(SoTenantAdmin, SoOTenant, Sub);
+        PertencaFalsa pertenca = new(MemberStatus.Active);
+
+        AuthorizationResult resultado = await AutorizarAsync(usuario, rota, pertenca, comHandlerQueAprovaTudo: false);
+
+        resultado.Succeeded.Should().BeTrue();
+        pertenca.Consultas.Should().Be(1);
+        pertenca.Ultima.Should().Be((new TenantId(Guid.Parse(Tenant)), ExternalUserId.From(Sub)));
+    }
+
+    [Theory]
+    [InlineData("sem o papel tenant-admin", new[] { "reader" }, new[] { Tenant })]
+    [InlineData("platform-admin que também é tenant-admin", new[] { "platform-admin", "tenant-admin" }, new[] { Tenant })]
+    [InlineData("tenant-admin de outro tenant", new[] { "tenant-admin" }, new[] { OutroTenant })]
+    [InlineData("tenant-admin sem tenant_id", new[] { "tenant-admin" }, new string[0])]
+    public async Task QuemNaoPassaNasCamadasDoToken_NaoProvocaConsultaAoBanco(
+        string caso, string[] roles, string[] tenantIds)
+    {
+        // O tempo de resposta não pode dizer se um sub é membro de um tenant: a pertença só é lida para quem já provou,
+        // pelo token, que é tenant-admin daquele tenant. É a ordem de registro dos handlers que garante.
+        ClaimsPrincipal usuario = MontagemDaAutorizacao.Usuario(roles, tenantIds);
+        PertencaFalsa pertenca = new(MemberStatus.Active);
+
+        AuthorizationResult resultado = await AutorizarAsync(usuario, Tenant, pertenca, comHandlerQueAprovaTudo: false);
+
+        resultado.Succeeded.Should().BeFalse(caso);
+        pertenca.Consultas.Should().Be(0, caso);
+    }
+
+    [Theory]
+    [InlineData("sem sub", null)]
+    [InlineData("sub vazio", "")]
+    [InlineData("sub só com espaços", "   ")]
+    public async Task TokenSemSubUtilizavel_EVetadoSemConsultar(string caso, string? sub)
+    {
+        // A autenticação já recusa token sem sub (401). Se um chegar aqui, não há de quem conferir a pertença.
+        ClaimsPrincipal usuario = MontagemDaAutorizacao.Usuario(SoTenantAdmin, SoOTenant, sub);
+        PertencaFalsa pertenca = new(MemberStatus.Active);
+
+        AuthorizationResult resultado = await AutorizarAsync(usuario, Tenant, pertenca, comHandlerQueAprovaTudo: true);
+
+        resultado.Succeeded.Should().BeFalse(caso);
+        resultado.Failure!.FailCalled.Should().BeTrue(caso);
+        pertenca.Consultas.Should().Be(0, caso);
+    }
+}
+```
+
+Em `tests/IdentityGateway.Api.FunctionalTests/Autorizacao/TenantAdminPolicyTests.cs`, a policy passa a precisar da porta. Acrescentar os dois `using`:
+
+```csharp
+using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Domain.Members;
+```
+
+e, em `AutorizarAsync`, como primeiras linhas do lambda do `Montar` (antes do `if (comHandlerQueAprovaTudo)`):
+
+```csharp
+            // Nesta classe o ator é sempre membro ativo: o que se prova aqui são as três camadas do token.
+            services.AddSingleton<IMemberQueries>(new PertencaFalsa(MemberStatus.Active));
+
+```
+
+Aqui o vermelho é de execução, e não de compilação: tudo o que os testes usam já existe, e o que falta é a policy consultar a pertença.
+
+Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-class "*PertencaNaPolicyTenantAdminTests"`
+Expected: FAIL em 11 dos 17 — os quatro estados que deviam ser vetados (`Deactivated`, `Expired`, `Revoked`, `Erased`), `QuemNaoEMembroDoTenant_EVetado`, os três de `TokenSemSubUtilizavel_EVetadoSemConsultar` e os três de `APertenca_EConsultadaUmaVez…` (`Consultas` é `0`): a policy ainda não consulta a pertença.
+
+- [ ] **Passo 5: O requirement, o handler e a ordem de registro**
+
+`src/IdentityGateway.Api/Authorization/MemberRequirement.cs`:
+
+```csharp
+using Microsoft.AspNetCore.Authorization;
+
+namespace IdentityGateway.Api.Authorization;
+
+/// <summary>
+/// A pertença no banco (ADR-011): o ator é <c>Member</c> do tenant da rota.
+/// </summary>
+/// <remarks>
+/// O <c>tenant_id</c> do token é forjável por quem tem a chave da Gateway (um grupo do Keycloak com o atributo dá o
+/// claim a qualquer usuário posto nele). Nas rotas de governança, o token não basta: o banco da Gateway confirma. Ao
+/// contrário dos outros três requirements da policy, este não é o próprio handler — precisa de um serviço, e quem o
+/// atende é o <see cref="MemberRequirementHandler"/>.
+/// </remarks>
+internal sealed class MemberRequirement : IAuthorizationRequirement;
+```
+
+`src/IdentityGateway.Api/Authorization/MemberRequirementHandler.cs`:
+
+```csharp
+using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Domain.Members;
+using IdentityGateway.Domain.Tenants;
+using Microsoft.AspNetCore.Authorization;
+
+namespace IdentityGateway.Api.Authorization;
+
+/// <summary>
+/// Confere no banco se o <c>sub</c> do token é membro do tenant da rota, em <c>Invited</c> ou <c>Active</c>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Só consulta o banco para quem já passou nas camadas do token.</b> Se o contexto já falhou — papel ausente,
+/// conta de plataforma, outro tenant —, sai sem consultar: o tempo de resposta não pode virar oráculo do vínculo entre
+/// um <c>sub</c> e um tenant. Isso depende de este handler rodar <b>depois</b> dos outros três, e é o registro que
+/// garante (ver <see cref="AutorizacaoDaGateway"/>).
+/// </para>
+/// <para>
+/// <b>Pela porta <see cref="IMemberQueries"/>, e não pelo Mediator:</b> a Api só fala com o Mediator dentro dos
+/// módulos. Os behaviors do pipeline não se aplicam a esta leitura.
+/// </para>
+/// <para>
+/// <b><c>Invited</c> passa.</b> O aceite do convite acontece no Keycloak, e a Gateway ainda não o detecta: quem
+/// concluiu o convite e entrou continua <c>Invited</c> aqui. Sai da lista quando o aceite for sincronizado.
+/// </para>
+/// </remarks>
+internal sealed class MemberRequirementHandler(IMemberQueries members) : AuthorizationHandler<MemberRequirement>
+{
+    protected override async Task HandleRequirementAsync(
+        AuthorizationHandlerContext context, MemberRequirement requirement)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(requirement);
+
+        if (context.HasFailed
+            || context.Resource is not HttpContext http
+            || !Guid.TryParse(http.GetRouteValue(SameTenantRequirement.ParametroDaRota)?.ToString(), out Guid tenantId)
+            || context.User.FindFirst("sub")?.Value is not { } sub
+            || string.IsNullOrWhiteSpace(sub))
+        {
+            context.Fail(new AuthorizationFailureReason(this, "A pertença não pôde ser verificada."));
+            return;
+        }
+
+        // O sub vai como o Keycloak o emite, sem normalizar. O CancellationToken é o da requisição: o contexto de
+        // autorização não tem um.
+        MemberStatus? status = await members.GetStatusAsync(
+            new TenantId(tenantId), ExternalUserId.From(sub), http.RequestAborted);
+
+        // Lista fechada: um estado que o enum ganhe depois nega, até alguém decidir.
+        if (status is MemberStatus.Invited or MemberStatus.Active)
+        {
+            context.Succeed(requirement);
+        }
+        else
+        {
+            context.Fail(new AuthorizationFailureReason(this, "O ator não é membro do tenant."));
+        }
+    }
+}
+```
+
+`src/IdentityGateway.Api/Authorization/AutorizacaoDaGateway.cs` passa a ser, inteiro:
+
+```csharp
+using Microsoft.AspNetCore.Authorization;
+
+namespace IdentityGateway.Api.Authorization;
+
+/// <summary>
+/// O registro da autorização da Gateway: as policies, a policy de fallback e a ordem dos handlers.
+/// </summary>
+/// <remarks>
+/// <b>Um método só, usado pela produção e pelos testes unitários.</b> A ordem em que os handlers são registrados é
+/// parte da segurança (abaixo), e um teste que montasse a autorização por conta própria provaria outra ordem.
+/// </remarks>
+internal static class AutorizacaoDaGateway
+{
+    public static IServiceCollection AddAutorizacaoDaGateway(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAuthorization(options =>
+        {
+            // Todo endpoint exige usuário autenticado, a menos que declare AllowAnonymous ou outra policy.
+            options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+
+            // Depois do primeiro Fail(), nenhum outro handler roda. É global: vale para todas as policies. Por isso a
+            // negação não pode ser auditada por um handler — a auditoria nasce no ProblemDetailsDeAutorizacao, que vê
+            // todas.
+            options.InvokeHandlersAfterFailure = false;
+
+            // Claim plano, não RequireRole: o papel chega no claim "roles", com esse nome (MapInboundClaims desligado).
+            options.AddPolicy(Policies.PlatformAdmin, policy => policy.RequireClaim("roles", "platform-admin"));
+
+            // Os três primeiros só leem o token e rodam nesta ordem. O da pertença lê o banco e roda por último — o que
+            // não vem desta lista, e sim da ordem de registro dos handlers, logo abaixo.
+            options.AddPolicy(Policies.TenantAdmin, policy => policy.AddRequirements(
+                new RoleRequirement("tenant-admin"),
+                new NotPlatformAdminRequirement(),
+                new SameTenantRequirement(),
+                new MemberRequirement()));
+        });
+
+        // A ORDEM IMPORTA. Os três primeiros requirements são o próprio handler, e rodam dentro do
+        // PassThroughAuthorizationHandler, que o AddAuthorization acabou de registrar. O handler da pertença entra
+        // DEPOIS dele: se entrasse antes, rodaria primeiro, com o contexto ainda sem falha, e consultaria o banco
+        // para qualquer tenantId da URL — com qualquer token autenticado.
+        services.AddScoped<IAuthorizationHandler, MemberRequirementHandler>();
+
+        return services;
+    }
+}
+```
+
+Em `src/IdentityGateway.Api/Authorization/Policies.cs`, o comentário de `TenantAdmin` passa a dizer as quatro camadas:
+
+```csharp
+    /// <summary>
+    /// Quem administra o tenant da rota: <c>tenant-admin</c>, sem <c>platform-admin</c>, com o <c>tenant_id</c> do token
+    /// igual ao da rota e <c>Member</c> desse tenant no banco, em <c>Invited</c> ou <c>Active</c> (ADR-011).
+    /// </summary>
+    public const string TenantAdmin = "TenantAdmin";
+```
+
+**Por que a ordem de registro importa.** O `AddAuthorization` registra o `PassThroughAuthorizationHandler`, que roda os requirements que são o próprio handler — os três da Tarefa 13 —, na ordem da policy, e para no primeiro `Fail()` (com `InvokeHandlersAfterFailure` desligado). O `MemberRequirementHandler` vem do contêiner, e os handlers do contêiner rodam na ordem em que foram registrados. Registrado **depois** do `AddAuthorization`, ele roda depois do `PassThrough` — ou nem roda, se alguém já falhou. Registrado antes, rodaria primeiro, com o contexto ainda sem falha, e consultaria o banco para qualquer token autenticado.
+
+Duas defesas, e cada uma esconde a falta da outra: o `InvokeHandlersAfterFailure = false` impede o handler de rodar depois de uma falha, e o `context.HasFailed` do handler o faz sair sem consultar se rodar. Ficam as duas, de propósito.
+
+- [ ] **Passo 6: As duas regras de arquitetura**
+
+Em `tests/IdentityGateway.ArchitectureTests/RegrasDaApiTests.cs`, logo **depois** do teste `Api_NaoReferenciaEfCore` (antes do comentário `/// <summary>` de "A Api não alcança repositório direto."):
+
+```csharp
+    /// <summary>
+    /// A autorização da Api decide pelo token e pelas portas da Application — nunca pela Infrastructure.
+    /// </summary>
+    /// <remarks>
+    /// O requirement da pertença precisa do banco, e o atalho é injetar o <c>DbContext</c> ou a classe de consulta
+    /// direto no handler. A regra do EF Core acima pega o primeiro; esta pega o segundo. O caminho é a porta
+    /// <c>IMemberQueries</c>, que tem o tenant na assinatura.
+    /// </remarks>
+    [Fact]
+    public void AutorizacaoDaApi_NaoDependeDaInfrastructure()
+    {
+        const string autorizacao = "IdentityGateway.Api.Authorization";
+
+        Types.InAssembly(Api).That().ResideInNamespace(autorizacao).GetTypes()
+            .Should().NotBeEmpty("sem tipos no namespace, a regra passaria vazia");
+
+        ArchTestResult resultado = Types.InAssembly(Api)
+            .That()
+            .ResideInNamespace(autorizacao)
+            .Should()
+            .NotHaveDependencyOn("IdentityGateway.Infrastructure")
+            .GetResult();
+
+        resultado.Should().NaoTerViolacao(
+            "policy que alcança a Infrastructure lê o banco sem o tenant na assinatura; a pertença vem da porta "
+            + "IMemberQueries, da Application");
+    }
+
+```
+
+Em `tests/IdentityGateway.ArchitectureTests/RegrasDeDominioTests.cs`, acrescentar `using IdentityGateway.Domain.Tenants;` e, depois do teste `Member_NaoTemConstrutorNemFabricaPublicos` (antes de `private static bool EhEntidade`):
+
+```csharp
+    /// <summary>
+    /// Os nomes dos estados de tenant e de membro são contrato: vão para o banco e para a API como texto.
+    /// </summary>
+    /// <remarks>
+    /// Renomear um estado quebra as linhas já gravadas e quem lê o <c>status</c> da API. Acrescentar um exige decidir
+    /// o que a pertença faz com ele (a policy <c>TenantAdmin</c> só aceita <c>Invited</c> e <c>Active</c>) — e este
+    /// teste fica vermelho até a lista daqui ser atualizada, de propósito.
+    /// </remarks>
+    [Fact]
+    public void NomesDosEstadosDeTenantEDeMembro_SaoContrato()
+    {
+        Enum.GetNames<TenantStatus>().Should().BeEquivalentTo(
+            "Pending", "Active", "Suspending", "Suspended", "Terminating", "Terminated", "ProvisioningFailed");
+
+        Enum.GetNames<MemberStatus>().Should().BeEquivalentTo(
+            "Invited", "Active", "Deactivated", "Expired", "Revoked", "Erased");
+    }
+
+```
+
+- [ ] **Passo 7: Rodar e ver passar**
+
+Run: `dotnet build IdentityGateway.slnx`
+Expected: `0 Aviso(s)`, `0 Erro(s)`.
+
+Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-namespace "*Autorizacao"`
+Expected: `total: 40`, `falhou: 0` — os 23 da Tarefa 13 e os 17 desta.
+
+Run: `dotnet test tests/IdentityGateway.ArchitectureTests`
+Expected: verde, com 2 testes a mais.
+
+Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests`
+Expected: verde, com 17 testes a mais que no fim da Tarefa 13.
+
+- [ ] **Passo 8: 🧪 Provas por mutação**
+
+`git add -A src tests` antes; `git restore src` depois de cada uma.
+
+Run (mutações 1 a 9): `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-namespace "*Autorizacao"`
+
+| # | Mutação | Vermelho esperado |
+|---|---|---|
+| 1 | Em `AutorizacaoDaGateway`, mover a linha `services.AddScoped<IAuthorizationHandler, MemberRequirementHandler>();` para **antes** do `services.AddAuthorization(` | 4: os quatro casos de `QuemNaoPassaNasCamadasDoToken_NaoProvocaConsultaAoBanco` (`Consultas` é `1`) |
+| 2 | No handler, aceitar qualquer status: `if (status is not null)` | 4: `CadaEstadoDoMembro_…` para `Deactivated`, `Expired`, `Revoked` e `Erased` |
+| 3 | No handler, só `Active`: `if (status is MemberStatus.Active)` | 1: `CadaEstadoDoMembro_…(Invited)` |
+| 4 | Tirar `new MemberRequirement()` da policy (o `SameTenantRequirement` volta a fechar a lista) | 11: os mesmos do "ver falhar" do Passo 4 |
+| 5 | No handler, apagar o `context.Fail(…)` da guarda (fica só o `return;`) | 3: `TokenSemSubUtilizavel_EVetadoSemConsultar` |
+| 6 | No handler, apagar o `else { context.Fail(…); }` do fim | 5: os quatro estados vetados e `QuemNaoEMembroDoTenant_EVetado` |
+| 7 | `options.InvokeHandlersAfterFailure = true;`, **sozinha** | **nenhum** — equivalente: o `HasFailed` do handler cobre |
+| 8 | Tirar o `context.HasFailed ||` da guarda do handler, **sozinha** | **nenhum** — equivalente: o `InvokeHandlersAfterFailure` cobre |
+| 9 | As mutações 7 e 8 **juntas** | 4: os mesmos da mutação 1 |
+| 10 | Em `MemberRequirementHandler`, acrescentar `private static readonly Type Vazamento = typeof(IdentityGateway.Infrastructure.Configuration.DatabaseOptions);` e `internal static string Nome => Vazamento.Name;` | `dotnet test tests/IdentityGateway.ArchitectureTests`: `AutorizacaoDaApi_NaoDependeDaInfrastructure` |
+| 11 | Em `src/IdentityGateway.Domain/Members/MemberStatus.cs`, acrescentar um valor `Paused` | `dotnet test tests/IdentityGateway.ArchitectureTests`: `NomesDosEstadosDeTenantEDeMembro_SaoContrato`; e, no projeto funcional, `CadaEstadoDoMembro_…(Paused)` ("estado novo no enum: decida se ele passa na pertença…") |
+
+As mutações 7 e 8 ficam registradas como executadas e **verdes**: são as "que se mascaram" da §5.3 da spec, e a 9 é a prova de que o par é pego.
+
+- [ ] **Passo 9: Commit**
+
+```bash
+git add src tests
+git commit -m "feat: pertenca no banco como quarta camada da policy TenantAdmin (ADR-011)
+
+IMemberQueries.GetStatusAsync(tenant, sub) e a porta de consulta, com o
+tenant na assinatura; MemberQueries a implementa com uma projecao sem
+rastreamento. O MemberRequirementHandler aceita so Invited e Active, veta
+todo o resto com Fail(), e so consulta o banco para quem ja passou nas tres
+camadas do token: e registrado depois do AddAuthorization, e sai sem
+consultar se o contexto ja falhou.
+
+Testes: os estados do membro numa tabela escrita a mao, a contagem de
+consultas com uma porta falsa, a consulta contra o PostgreSQL sem achar o
+membro de outro tenant, a autorizacao da Api sem dependencia da
+Infrastructure e os nomes dos estados travados. Mutacoes: handler
+registrado antes do AddAuthorization, qualquer status, so Active, policy
+sem o requirement, return no lugar de Fail(), o filtro sem o tenant e sem
+o sub. InvokeHandlersAfterFailure ligado e o handler sem o HasFailed, cada
+um sozinho, ficam verdes; juntos, vermelhos."
+```
+
+Run: `git log -1 --format=%B | grep -Eci "co-authored|generated with"`
+Expected: `0`.
+
+---
+
+### Tarefa 15: `GET /api/v1/tenants/{tenantId}` — a rota, o read model e a suíte negativa de autorização
+
+Spec: §4.3 ("`GET /api/v1/tenants/{tenantId:guid}`", inteiro), §5.1 (linhas da D2: "Funcional, OIDC falso", "Funcional, ordem dos handlers", "Integração, PostgreSQL", "Vazamento do e-mail" e a de arquitetura), §5.2 (casos `F` da D2), §5.3 (mutações da D2), D-b, D-k.
+
+A primeira rota de tenant: o administrador lê o próprio tenant. É também a primeira vez que a regra de isolamento número um ("o tenant do token é o tenant da rota") tem uma rota onde falhar — e por isso esta tarefa traz o teste de subida que a v2.6 prometia e nunca teve objeto.
+
+O contrato, que os testes travam:
+- `200` com **exatamente** as chaves `tenantId`, `name`, `slug`, `status`, `plan` (`tier`, `maxUsers`, `maxClients`), `occupiedSeats` e `registeredAt`. Nunca o e-mail.
+- `401` sem token ou com token inválido.
+- `403` em todo o resto, **sempre com o mesmo corpo**: platform-admin, outro tenant, papel errado, quem não é membro — e tenant que não existe. A rota não tem `404`.
+
+Um detalhe que não é exceção a essa regra: `GET /api/v1/tenants/acme` (um id que não é GUID) responde `404` a quem está autenticado. A restrição `:guid` tira o pedido da rota, e ele vira um caminho não mapeado; não diz nada sobre tenant nenhum. Há teste que afirma isso, para ninguém "consertar".
+
+**Arquivos:**
+- Create: `src/IdentityGateway.Application/Tenants/GetTenant/GetTenantQuery.cs`, `GetTenantHandler.cs`, `TenantDetailsResponse.cs`
+- Modify: `src/IdentityGateway.Application/Common/Abstractions/ITenantQueries.cs` (o método e o record `TenantDetailsView`), `src/IdentityGateway.Infrastructure/Persistence/Queries/TenantQueries.cs`, `src/IdentityGateway.Api/Modules/TenantsModule.cs`
+- Create (testes): `tests/IdentityGateway.Application.UnitTests/Tenants/GetTenant/GetTenantHandlerTests.cs`; `tests/IdentityGateway.Infrastructure.IntegrationTests/Persistence/TenantDetailsTests.cs`; `tests/IdentityGateway.ArchitectureTests/RegrasDeLeituraTests.cs`; `tests/IdentityGateway.Api.FunctionalTests/LeituraDeTenantTests.cs`, `Autorizacao/OrdemDosHandlersTests.cs`, `Autorizacao/RespostaDaLeituraDeTenantTests.cs`
+- Modify (testes): `tests/IdentityGateway.Api.FunctionalTests/EndpointsDeclaramAutorizacaoTests.cs`, `AutenticacaoNegativaTests.cs`
+
+**Interfaces:**
+- Consome: `Policies.TenantAdmin`, `Policies.DeTenant`, `SameTenantRequirement.ParametroDaRota` (Tarefa 13); `IMemberQueries`, `PertencaFalsa` (Tarefa 14); `RespostasDeAutorizacao.Proibido(HttpContext)` e as constantes `TipoDoProibido`, `TituloDoProibido`, `DetalheDoProibido`; `IdentityGatewayApiFactory.Emissor` (`Emitir(sub, roles, tenantId, ajustar)`) e `ComEscopoAsync` (Tarefa 7); `Tenant.Register`, `Tenant.CompleteProvisioning`, `TenantErrors.NotFound`, `Result<T>.Match` (existentes).
+- Produz:
+  - `public sealed record GetTenantQuery(TenantId TenantId) : IQuery<TenantDetailsResponse>` e `GetTenantHandler`.
+  - `public sealed record TenantDetailsResponse(Guid TenantId, string Name, string Slug, string Status, TenantPlanResponse Plan, int OccupiedSeats, DateTimeOffset RegisteredAt)` e `TenantPlanResponse(string Tier, int MaxUsers, int MaxClients)`.
+  - `ITenantQueries.GetDetailsAsync(TenantId, CancellationToken)` → `TenantDetailsView?`; `public sealed record TenantDetailsView(TenantId TenantId, string Name, TenantSlug Slug, TenantStatus Status, Plan Plan, int OccupiedSeats, DateTimeOffset RegisteredAt)`.
+  - `GET /api/v1/tenants/{tenantId:guid}` (nome `ConsultarTenant`) e `internal static IResult TenantsModule.ParaRespostaDoTenant(Result<TenantDetailsResponse>, HttpContext)`.
+
+- [ ] **Passo 1: Os testes do handler e da projeção**
+
+`tests/IdentityGateway.Application.UnitTests/Tenants/GetTenant/GetTenantHandlerTests.cs`:
+
+```csharp
+using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Application.Tenants.GetTenant;
+using IdentityGateway.Domain.Common;
+using IdentityGateway.Domain.Tenants;
+using NSubstitute;
+
+namespace IdentityGateway.Application.UnitTests.Tenants.GetTenant;
+
+public sealed class GetTenantHandlerTests
+{
+    private readonly ITenantQueries _consultas = Substitute.For<ITenantQueries>();
+
+    [Fact]
+    public async Task TenantExistente_DevolveOsCamposComStatusETierEmTexto()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        var tenant = TenantId.New();
+        DateTimeOffset registro = new(2026, 9, 25, 12, 0, 0, TimeSpan.Zero);
+        _consultas.GetDetailsAsync(tenant, Arg.Any<CancellationToken>())
+            .Returns(new TenantDetailsView(
+                tenant,
+                "Acme Corp",
+                TenantSlug.Create("acme").Value,
+                TenantStatus.Suspended,
+                new Plan(PlanTier.Enterprise, 500, 20),
+                7,
+                registro));
+
+        Result<TenantDetailsResponse> resultado = await new GetTenantHandler(_consultas)
+            .Handle(new GetTenantQuery(tenant), ct);
+
+        resultado.Value.Should().Be(new TenantDetailsResponse(
+            tenant.Value, "Acme Corp", "acme", "Suspended", new TenantPlanResponse("Enterprise", 500, 20), 7, registro));
+    }
+
+    [Fact]
+    public async Task TenantInexistente_DevolveNotFound()
+    {
+        // O handler segue o padrão e diz "não encontrado". Quem decide que isso vira 403, e não 404, é o módulo da Api.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+
+        Result<TenantDetailsResponse> resultado = await new GetTenantHandler(_consultas)
+            .Handle(new GetTenantQuery(TenantId.New()), ct);
+
+        resultado.IsFailure.Should().BeTrue();
+        resultado.Error.Code.Should().Be("Tenant.NaoEncontrado");
+    }
+}
+```
+
+`tests/IdentityGateway.Infrastructure.IntegrationTests/Persistence/TenantDetailsTests.cs`:
+
+```csharp
+using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Domain.Members;
+using IdentityGateway.Domain.Tenants;
+using IdentityGateway.Infrastructure.Persistence;
+using IdentityGateway.Infrastructure.Persistence.Queries;
+
+namespace IdentityGateway.Infrastructure.IntegrationTests.Persistence;
+
+/// <summary>
+/// A projeção de leitura do tenant, contra o PostgreSQL.
+/// </summary>
+/// <remarks>
+/// O que só o banco real prova: que o <c>Plan</c>, um tipo complexo achatado em três colunas, volta inteiro numa
+/// projeção com <c>Select</c>, e que o slug e o status, gravados como texto, voltam como os tipos do domínio.
+/// </remarks>
+public sealed class TenantDetailsTests(PostgresFixture postgres) : IClassFixture<PostgresFixture>
+{
+    private async Task<Tenant> RegistrarAsync(Plan plano, CancellationToken ct)
+    {
+        var tenant = Tenant.Register(
+            "  Leitura Ltda  ",
+            TenantSlug.Create($"td-{Guid.NewGuid():N}"[..18]).Value,
+            plano,
+            PostgresFixture.EmailDoAdmin(),
+            PostgresFixture.Agora);
+
+        await using AppDbContext contexto = postgres.CriarContexto();
+        contexto.Tenants.Add(tenant);
+        await contexto.SaveChangesAsync(ct);
+
+        return tenant;
+    }
+
+    private async Task<TenantDetailsView?> LerAsync(TenantId tenant, CancellationToken ct)
+    {
+        await using AppDbContext contexto = postgres.CriarContexto();
+
+        return await new TenantQueries(contexto).GetDetailsAsync(tenant, ct);
+    }
+
+    [Fact]
+    public async Task TenantPorProvisionar_VoltaComOPlanoInteiroEStatusPending()
+    {
+        // Em Pending, o e-mail do admin inicial ainda está na linha. A projeção não o traz: o tipo nem tem onde pôr.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        Tenant tenant = await RegistrarAsync(new Plan(PlanTier.Standard, 25, 3), ct);
+
+        TenantDetailsView? lido = await LerAsync(tenant.Id, ct);
+
+        lido.Should().Be(new TenantDetailsView(
+            tenant.Id,
+            "Leitura Ltda",
+            tenant.Slug,
+            TenantStatus.Pending,
+            new Plan(PlanTier.Standard, 25, 3),
+            OccupiedSeats: 0,
+            PostgresFixture.Agora));
+    }
+
+    [Fact]
+    public async Task TenantAtivado_VoltaActiveComAVagaDoAdmin()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        Tenant tenant = await RegistrarAsync(new Plan(PlanTier.Free, 5, 1), ct);
+
+        await using (AppDbContext contexto = postgres.CriarContexto())
+        {
+            Tenant rastreado = contexto.Tenants.Single(item => item.Id == tenant.Id);
+            Member admin = rastreado.CompleteProvisioning(
+                $"org-{Guid.NewGuid():N}", ExternalUserId.From(Guid.NewGuid().ToString()), PostgresFixture.Agora);
+            contexto.Members.Add(admin);
+            await contexto.SaveChangesAsync(ct);
+        }
+
+        TenantDetailsView? lido = await LerAsync(tenant.Id, ct);
+
+        lido!.Status.Should().Be(TenantStatus.Active);
+        lido.OccupiedSeats.Should().Be(1);
+        lido.Plan.Should().Be(new Plan(PlanTier.Free, 5, 1));
+    }
+
+    [Fact]
+    public async Task TenantQueNaoExiste_DevolveNulo()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+
+        (await LerAsync(TenantId.New(), ct)).Should().BeNull();
+    }
+}
+```
+
+Run: `dotnet build IdentityGateway.slnx`
+Expected: FAIL de compilação — `GetTenantQuery`, `GetTenantHandler`, `TenantDetailsResponse`, `TenantDetailsView` e `GetDetailsAsync` não existem.
+
+- [ ] **Passo 2: A query, o handler, a resposta e a projeção**
+
+`src/IdentityGateway.Application/Tenants/GetTenant/GetTenantQuery.cs`:
+
+```csharp
+using IdentityGateway.Application.Common.Messaging;
+using IdentityGateway.Domain.Tenants;
+
+namespace IdentityGateway.Application.Tenants.GetTenant;
+
+/// <summary>O tenant, para quem o administra.</summary>
+/// <remarks>
+/// A query não carrega quem pergunta: a autorização — papel, tenant do token e pertença no banco — acontece antes, na
+/// policy da rota. Quem enviar esta query por outro caminho precisa autorizar antes.
+/// </remarks>
+/// <param name="TenantId">Tenant consultado.</param>
+public sealed record GetTenantQuery(TenantId TenantId) : IQuery<TenantDetailsResponse>;
+```
+
+`src/IdentityGateway.Application/Tenants/GetTenant/TenantDetailsResponse.cs`:
+
+```csharp
+namespace IdentityGateway.Application.Tenants.GetTenant;
+
+/// <summary>
+/// O que a leitura de um tenant devolve.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Sem o e-mail do admin inicial, de propósito.</b> Ele é dado pessoal, só existe enquanto o tenant está por
+/// provisionar e some na ativação; não é atributo do tenant para quem o lê. Um teste trava o conjunto de chaves da
+/// resposta, e outro, por reflexão, recusa qualquer propriedade de e-mail aqui.
+/// </para>
+/// <para>
+/// Sem o id da Organization: é detalhe interno do Keycloak, como na resposta do provisionamento.
+/// </para>
+/// </remarks>
+/// <param name="TenantId">Identidade do tenant.</param>
+/// <param name="Name">Nome de exibição.</param>
+/// <param name="Slug">Slug, único e imutável.</param>
+/// <param name="Status">Nome do <c>TenantStatus</c>.</param>
+/// <param name="Plan">O plano contratado.</param>
+/// <param name="OccupiedSeats">Vagas ocupadas, contando convites pendentes.</param>
+/// <param name="RegisteredAt">Quando foi registrado, em UTC.</param>
+public sealed record TenantDetailsResponse(
+    Guid TenantId,
+    string Name,
+    string Slug,
+    string Status,
+    TenantPlanResponse Plan,
+    int OccupiedSeats,
+    DateTimeOffset RegisteredAt);
+
+/// <summary>O plano do tenant, na leitura.</summary>
+/// <param name="Tier">Nome do <c>PlanTier</c>.</param>
+/// <param name="MaxUsers">Limite de membros.</param>
+/// <param name="MaxClients">Limite de clients M2M.</param>
+public sealed record TenantPlanResponse(string Tier, int MaxUsers, int MaxClients);
+```
+
+`src/IdentityGateway.Application/Tenants/GetTenant/GetTenantHandler.cs`:
+
+```csharp
+using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Application.Common.Messaging;
+using IdentityGateway.Domain.Common;
+using IdentityGateway.Domain.Tenants;
+
+namespace IdentityGateway.Application.Tenants.GetTenant;
+
+/// <summary>Responde <see cref="GetTenantQuery"/>.</summary>
+public sealed class GetTenantHandler(ITenantQueries consultas) : IQueryHandler<GetTenantQuery, TenantDetailsResponse>
+{
+    public async ValueTask<Result<TenantDetailsResponse>> Handle(
+        GetTenantQuery query,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        TenantDetailsView? tenant = await consultas.GetDetailsAsync(query.TenantId, cancellationToken);
+
+        if (tenant is null)
+        {
+            return Result.Failure<TenantDetailsResponse>(TenantErrors.NotFound(query.TenantId));
+        }
+
+        return new TenantDetailsResponse(
+            tenant.TenantId.Value,
+            tenant.Name,
+            tenant.Slug.Value,
+            tenant.Status.ToString(),
+            new TenantPlanResponse(tenant.Plan.Tier.ToString(), tenant.Plan.MaxUsers, tenant.Plan.MaxClients),
+            tenant.OccupiedSeats,
+            tenant.RegisteredAt);
+    }
+}
+```
+
+`src/IdentityGateway.Application/Common/Abstractions/ITenantQueries.cs` passa a ser, inteiro (o método novo, o record novo no fim, e a última frase do `<remarks>` da interface, que dizia "Três campos não pedem o `Tenant` montado"):
+
+```csharp
+using IdentityGateway.Domain.Tenants;
+
+namespace IdentityGateway.Application.Common.Abstractions;
+
+/// <summary>
+/// Leituras de tenant que não precisam do agregado.
+/// </summary>
+/// <remarks>
+/// Separado do <see cref="ITenantRepository"/>: o repositório devolve o agregado rastreado, para ser alterado; aqui
+/// são projeções sem rastreamento, para responder consulta. Ler um tenant não pede o agregado montado.
+/// </remarks>
+public interface ITenantQueries
+{
+    /// <summary>Estado do provisionamento, ou nulo se o tenant não existir.</summary>
+    Task<TenantProvisioningView?> GetProvisioningAsync(TenantId tenantId, CancellationToken cancellationToken = default);
+
+    /// <summary>O tenant, sem o e-mail do admin inicial, ou nulo se ele não existir.</summary>
+    Task<TenantDetailsView?> GetDetailsAsync(TenantId tenantId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Projeção do estado de provisionamento de um tenant.</summary>
+/// <param name="TenantId">Identidade do tenant.</param>
+/// <param name="Status">Estado no ciclo de vida.</param>
+/// <param name="RegisteredAt">Quando foi registrado, em UTC.</param>
+public sealed record TenantProvisioningView(TenantId TenantId, TenantStatus Status, DateTimeOffset RegisteredAt);
+
+/// <summary>Projeção de um tenant para leitura.</summary>
+/// <remarks>
+/// <b>Sem o e-mail do admin inicial.</b> A projeção não o seleciona, e por isso ele nem sai do banco. Serve à leitura
+/// de um tenant e, depois, à listagem.
+/// </remarks>
+/// <param name="TenantId">Identidade do tenant.</param>
+/// <param name="Name">Nome de exibição.</param>
+/// <param name="Slug">Slug.</param>
+/// <param name="Status">Estado no ciclo de vida.</param>
+/// <param name="Plan">O plano contratado.</param>
+/// <param name="OccupiedSeats">Vagas ocupadas.</param>
+/// <param name="RegisteredAt">Quando foi registrado, em UTC.</param>
+public sealed record TenantDetailsView(
+    TenantId TenantId,
+    string Name,
+    TenantSlug Slug,
+    TenantStatus Status,
+    Plan Plan,
+    int OccupiedSeats,
+    DateTimeOffset RegisteredAt);
+```
+
+O `TenantDetailsView` fica no mesmo arquivo da interface, como o `TenantProvisioningView` já fica.
+
+Em `src/IdentityGateway.Infrastructure/Persistence/Queries/TenantQueries.cs`, depois de `GetProvisioningAsync` (antes da chave que fecha a classe):
+
+```csharp
+
+    /// <inheritdoc />
+    public Task<TenantDetailsView?> GetDetailsAsync(TenantId tenantId, CancellationToken cancellationToken) =>
+        context.Tenants
+            .AsNoTracking()
+            .Where(tenant => tenant.Id == tenantId)
+            .Select(tenant => new TenantDetailsView(
+                tenant.Id,
+                tenant.Name,
+                tenant.Slug,
+                tenant.Status,
+                tenant.Plan,
+                tenant.OccupiedSeats,
+                tenant.RegisteredAt))
+            .SingleOrDefaultAsync(cancellationToken);
+```
+
+O `tenant.Plan` é um tipo complexo achatado em três colunas, e o EF Core o projeta inteiro dentro do `Select` (conferido contra o PostgreSQL ao escrever este plano). A coluna do e-mail não aparece na projeção e não sai do banco.
+
+Run: `dotnet test tests/IdentityGateway.Application.UnitTests --filter-class "*GetTenantHandlerTests"`
+Expected: `total: 2`, `falhou: 0`.
+
+Run: `dotnet test tests/IdentityGateway.Infrastructure.IntegrationTests --filter-class "*TenantDetailsTests"`
+Expected: `total: 3`, `falhou: 0`.
+
+- [ ] **Passo 3: A regra do e-mail fora da leitura**
+
+`tests/IdentityGateway.ArchitectureTests/RegrasDeLeituraTests.cs`:
+
+```csharp
+using System.Reflection;
+using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Application.Tenants.GetTenant;
+using IdentityGateway.Domain.ValueObjects;
+
+namespace IdentityGateway.ArchitectureTests;
+
+/// <summary>
+/// Regras sobre o que as leituras expõem.
+/// </summary>
+public sealed class RegrasDeLeituraTests
+{
+    /// <summary>
+    /// A leitura de um tenant não carrega e-mail: nem na projeção que sai do banco, nem na resposta da API.
+    /// </summary>
+    /// <remarks>
+    /// O e-mail do admin inicial é dado pessoal e fica na linha do tenant só até a ativação. Um
+    /// <c>InitialAdminEmail</c> acrescentado ao read model "para a listagem" passaria a sair em toda leitura. O teste
+    /// olha o tipo e o nome de cada propriedade, inclusive as dos tipos aninhados.
+    /// </remarks>
+    [Fact]
+    public void LeituraDeTenant_NaoCarregaEmail()
+    {
+        Type[] tipos = [typeof(TenantDetailsView), typeof(TenantDetailsResponse), typeof(TenantPlanResponse)];
+
+        string[] comEmail =
+        [
+            .. tipos
+                .SelectMany(tipo => tipo.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                    .Select(propriedade => (Tipo: tipo, Propriedade: propriedade)))
+                .Where(item => item.Propriedade.PropertyType == typeof(Email)
+                    || item.Propriedade.Name.Contains("Email", StringComparison.OrdinalIgnoreCase)
+                    || item.Propriedade.Name.Contains("Mail", StringComparison.OrdinalIgnoreCase))
+                .Select(item => $"{item.Tipo.Name}.{item.Propriedade.Name}"),
+        ];
+
+        tipos.SelectMany(tipo => tipo.GetProperties()).Should().NotBeEmpty("sem propriedades, a regra passaria vazia");
+        comEmail.Should().BeEmpty("o e-mail do admin inicial não é atributo do tenant para quem o lê");
+    }
+}
+```
+
+Run: `dotnet test tests/IdentityGateway.ArchitectureTests --filter-class "*RegrasDeLeituraTests"`
+Expected: PASS. A regra nasce verde; quem prova que ela pega é a mutação 5 do Passo 8.
+
+- [ ] **Passo 4: Os testes da rota**
+
+`tests/IdentityGateway.Api.FunctionalTests/Autorizacao/RespostaDaLeituraDeTenantTests.cs` (sem fixture):
+
+```csharp
+using IdentityGateway.Api.Authorization;
+using IdentityGateway.Api.Modules;
+using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Application.Tenants.GetTenant;
+using IdentityGateway.Domain.Common;
+using IdentityGateway.Domain.Tenants;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace IdentityGateway.Api.FunctionalTests.Autorizacao;
+
+/// <summary>
+/// A tradução do resultado da leitura de tenant em resposta HTTP, sem HTTP.
+/// </summary>
+/// <remarks>
+/// O ramo de falha é inalcançável por HTTP com a porta real — a policy nega antes, porque não há membro de um tenant
+/// que não existe. Por isso é testado aqui, na função: se um dia for alcançado, "não encontrado" responde o mesmo
+/// <c>403</c> das negações, e não o <c>404</c> que o <c>ParaOk</c> daria.
+/// </remarks>
+public sealed class RespostaDaLeituraDeTenantTests
+{
+    private static readonly string[] SoACorrelacao = ["correlationId"];
+
+    private static DefaultHttpContext Contexto()
+    {
+        ServiceCollection services = new();
+        services.AddSingleton<ICorrelationIdProvider>(new CorrelacaoFixa());
+
+        return new DefaultHttpContext { RequestServices = services.BuildServiceProvider() };
+    }
+
+    [Fact]
+    public void TenantNaoEncontrado_ViraOMesmo403DaAutorizacao()
+    {
+        var falha = Result.Failure<TenantDetailsResponse>(TenantErrors.NotFound(TenantId.New()));
+
+        IResult resposta = TenantsModule.ParaRespostaDoTenant(falha, Contexto());
+
+        ProblemHttpResult problema = resposta.Should().BeOfType<ProblemHttpResult>().Subject;
+        problema.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        problema.ProblemDetails.Type.Should().Be(RespostasDeAutorizacao.TipoDoProibido);
+        problema.ProblemDetails.Title.Should().Be(RespostasDeAutorizacao.TituloDoProibido);
+        problema.ProblemDetails.Detail.Should().Be(RespostasDeAutorizacao.DetalheDoProibido);
+
+        // Nem o código do erro de domínio, que diria "Tenant.NaoEncontrado".
+        problema.ProblemDetails.Extensions.Keys.Should().BeEquivalentTo(SoACorrelacao);
+    }
+
+    [Fact]
+    public void TenantEncontrado_Vira200ComOTenant()
+    {
+        TenantDetailsResponse tenant = new(
+            Guid.NewGuid(), "Acme", "acme", "Active", new TenantPlanResponse("Free", 5, 1), 1, DateTimeOffset.UtcNow);
+
+        IResult resposta = TenantsModule.ParaRespostaDoTenant(tenant, Contexto());
+
+        resposta.Should().BeOfType<Ok<TenantDetailsResponse>>().Which.Value.Should().Be(tenant);
+    }
+
+    private sealed class CorrelacaoFixa : ICorrelationIdProvider
+    {
+        public string CorrelationId => "correlacao-de-teste";
+    }
+}
+```
+
+`tests/IdentityGateway.Api.FunctionalTests/LeituraDeTenantTests.cs`:
+
+```csharp
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using IdentityGateway.Api.Authorization;
+using IdentityGateway.Domain.Members;
+using IdentityGateway.Domain.Tenants;
+using IdentityGateway.Domain.ValueObjects;
+using Microsoft.EntityFrameworkCore;
+
+namespace IdentityGateway.Api.FunctionalTests;
+
+/// <summary>
+/// <c>GET /api/v1/tenants/{tenantId}</c>: o administrador lê o próprio tenant, e mais ninguém lê nada.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>A regra de isolamento número um, por HTTP.</b> Cada caso de <c>403</c> tem tudo certo menos uma coisa — o papel,
+/// a conta de plataforma, o tenant do token, a pertença no banco —, e todos respondem o mesmo Problem Details: quem
+/// chama não aprende por que foi negado, nem se o tenant existe.
+/// </para>
+/// <para>
+/// <b>Não há <c>404</c> nesta rota.</b> Tenant que não existe é <c>403</c>: a policy nega antes de qualquer consulta ao
+/// tenant, porque não há membro de um tenant que não existe.
+/// </para>
+/// <para>
+/// Os tokens levam <c>sub</c> único, e o limitador de requisições particiona por <c>sub</c>: a classe fica longe do
+/// limite.
+/// </para>
+/// </remarks>
+public sealed class LeituraDeTenantTests(IdentityGatewayApiFactory factory) : IClassFixture<IdentityGatewayApiFactory>
+{
+    private const string OutroTenant = "0199a000-0000-7000-8000-0000000000ff";
+
+    private static readonly string[] SoTenantAdmin = ["tenant-admin"];
+
+    private static readonly string[] SoPlatformAdmin = ["platform-admin"];
+
+    private static readonly string[] PlatformAdminETenantAdmin = ["platform-admin", "tenant-admin"];
+
+    private static readonly string[] SoReader = ["reader"];
+
+    private static readonly string[] ChavesDoTenant =
+        ["tenantId", "name", "slug", "status", "plan", "occupiedSeats", "registeredAt"];
+
+    private static readonly string[] ChavesDoPlano = ["tier", "maxUsers", "maxClients"];
+
+    private static string Rota(Guid tenant) => $"/api/v1/tenants/{tenant}";
+
+    /// <summary>Grava um tenant ativo com um admin membro, pelo caminho de domínio, e devolve os dois ids.</summary>
+    private async Task<(Guid Tenant, Guid Admin, string Slug)> TenantComAdminAsync(CancellationToken ct)
+    {
+        var admin = Guid.NewGuid();
+        string slug = $"lt-{Guid.NewGuid():N}"[..20];
+        var tenant = Tenant.Register(
+            "Acme Corp",
+            TenantSlug.Create(slug).Value,
+            new Plan(PlanTier.Standard, 25, 3),
+            Email.Of($"admin+{Guid.NewGuid():N}@acme.test").Value,
+            DateTimeOffset.UtcNow);
+
+        await factory.ComEscopoAsync(async contexto =>
+        {
+            contexto.Tenants.Add(tenant);
+            await contexto.SaveChangesAsync(ct);
+
+            // O sub como o Keycloak o emite: o GUID em minúsculas, formato D.
+            Member membro = tenant.CompleteProvisioning(
+                $"org-{Guid.NewGuid():N}", ExternalUserId.From(admin.ToString()), DateTimeOffset.UtcNow);
+            contexto.Members.Add(membro);
+            await contexto.SaveChangesAsync(ct);
+        });
+
+        return (tenant.Id.Value, admin, slug);
+    }
+
+    private async Task<HttpResponseMessage> LerAsync(string rota, string? token, CancellationToken ct)
+    {
+        using HttpClient client = factory.CreateClient();
+        using HttpRequestMessage pedido = new(HttpMethod.Get, rota);
+
+        if (token is not null)
+        {
+            pedido.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        return await client.SendAsync(pedido, ct);
+    }
+
+    /// <summary>O <c>403</c> único da Gateway: os mesmos quatro campos fixos, qualquer que seja o motivo.</summary>
+    private static async Task DeveSerOProibidoPadraoAsync(HttpResponseMessage resposta, string caso, CancellationToken ct)
+    {
+        resposta.StatusCode.Should().Be(HttpStatusCode.Forbidden, caso);
+        resposta.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json", caso);
+
+        JsonElement corpo = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
+        corpo.GetProperty("status").GetInt32().Should().Be(403, caso);
+        corpo.GetProperty("type").GetString().Should().Be(RespostasDeAutorizacao.TipoDoProibido, caso);
+        corpo.GetProperty("title").GetString().Should().Be(RespostasDeAutorizacao.TituloDoProibido, caso);
+        corpo.GetProperty("detail").GetString().Should().Be(RespostasDeAutorizacao.DetalheDoProibido, caso);
+    }
+
+    [Fact]
+    public async Task AdminDoTenant_LeOProprioTenantComExatamenteAsChavesDoContrato()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        (Guid tenant, Guid admin, string slug) = await TenantComAdminAsync(ct);
+        string token = factory.Emissor.Emitir(admin, SoTenantAdmin, tenant.ToString());
+
+        using HttpResponseMessage resposta = await LerAsync(Rota(tenant), token, ct);
+
+        resposta.StatusCode.Should().Be(HttpStatusCode.OK);
+        JsonElement corpo = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
+
+        // O conjunto EXATO de chaves: uma a mais reprova, mesmo nula. É o que impede o e-mail do admin inicial (ou o
+        // id da Organization) de aparecer aqui por uma propriedade nova no DTO.
+        corpo.EnumerateObject().Select(chave => chave.Name).Should().BeEquivalentTo(ChavesDoTenant);
+        corpo.GetProperty("plan").EnumerateObject().Select(chave => chave.Name).Should().BeEquivalentTo(ChavesDoPlano);
+
+        corpo.GetProperty("tenantId").GetGuid().Should().Be(tenant);
+        corpo.GetProperty("name").GetString().Should().Be("Acme Corp");
+        corpo.GetProperty("slug").GetString().Should().Be(slug);
+        corpo.GetProperty("status").GetString().Should().Be("Active");
+        corpo.GetProperty("plan").GetProperty("tier").GetString().Should().Be("Standard");
+        corpo.GetProperty("plan").GetProperty("maxUsers").GetInt32().Should().Be(25);
+        corpo.GetProperty("plan").GetProperty("maxClients").GetInt32().Should().Be(3);
+        corpo.GetProperty("occupiedSeats").GetInt32().Should().Be(1, "o admin convidado ocupa uma vaga");
+        corpo.GetProperty("registeredAt").GetDateTimeOffset()
+            .Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(5));
+    }
+
+    [Theory]
+    [InlineData("D")]
+    [InlineData("N")]
+    public async Task ProprioTenantComOGuidDaRotaEscritoDeOutroJeito_Responde200(string formato)
+    {
+        // Controles: a comparação entre a rota e o token é por Guid, e não por texto. Em maiúsculas ou sem hifens, é o
+        // mesmo tenant.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        (Guid tenant, Guid admin, _) = await TenantComAdminAsync(ct);
+        string token = factory.Emissor.Emitir(admin, SoTenantAdmin, tenant.ToString());
+        string rota = $"/api/v1/tenants/{tenant.ToString(formato).ToUpperInvariant()}";
+
+        using HttpResponseMessage resposta = await LerAsync(rota, token, ct);
+
+        resposta.StatusCode.Should().Be(HttpStatusCode.OK, rota);
+    }
+
+    private static TheoryDataRow<Func<IdentityGatewayApiFactory, Guid, Guid, string>> Caso(
+        string rotulo, Func<IdentityGatewayApiFactory, Guid, Guid, string> token) => new(token) { Label = rotulo };
+
+    /// <summary>O token do admin membro do tenant, com o claim <c>tenant_id</c> trocado pelo que o caso disser.</summary>
+    private static TheoryDataRow<Func<IdentityGatewayApiFactory, Guid, Guid, string>> ComTenantId(
+        string rotulo, Func<Guid, object?> tenantId) =>
+        Caso(rotulo, (alvo, tenant, admin) => alvo.Emissor.Emitir(admin, SoTenantAdmin, ajustar: payload =>
+        {
+            if (tenantId(tenant) is { } valor)
+            {
+                payload["tenant_id"] = valor;
+            }
+        }));
+
+    /// <summary>
+    /// Tokens do <b>membro</b> do tenant (o <c>sub</c> está no banco) em que só uma coisa está errada. Recebem a
+    /// factory, o tenant e o admin, e devolvem o token.
+    /// </summary>
+    public static TheoryData<Func<IdentityGatewayApiFactory, Guid, Guid, string>> TokensNegados => new()
+    {
+        Caso("platform-admin sem tenant_id",
+            (alvo, _, admin) => alvo.Emissor.Emitir(admin, SoPlatformAdmin)),
+        Caso("platform-admin com o tenant_id do tenant",
+            (alvo, tenant, admin) => alvo.Emissor.Emitir(admin, SoPlatformAdmin, tenant.ToString())),
+        Caso("platform-admin que também é tenant-admin do próprio tenant",
+            (alvo, tenant, admin) => alvo.Emissor.Emitir(admin, PlatformAdminETenantAdmin, tenant.ToString())),
+        Caso("papel de outro nível (reader)",
+            (alvo, tenant, admin) => alvo.Emissor.Emitir(admin, SoReader, tenant.ToString())),
+        Caso("sem o claim roles",
+            (alvo, tenant, admin) => alvo.Emissor.Emitir(admin, tenantId: tenant.ToString())),
+        ComTenantId("tenant_id ausente", _ => null),
+        ComTenantId("tenant_id vazio", _ => string.Empty),
+        ComTenantId("tenant_id que não é GUID", _ => "acme"),
+        ComTenantId("tenant_id com espaço antes", tenant => $" {tenant}"),
+        ComTenantId("tenant_id com espaço depois", tenant => $"{tenant} "),
+        ComTenantId("tenant_id entre chaves", tenant => tenant.ToString("B")),
+        ComTenantId("tenant_id no formato N", tenant => tenant.ToString("N")),
+        ComTenantId("tenant_id de outro tenant", _ => OutroTenant),
+        ComTenantId("tenant_id em array: o próprio e outro", tenant => new[] { tenant.ToString(), OutroTenant }),
+        ComTenantId("tenant_id em array: outro e o próprio", tenant => new[] { OutroTenant, tenant.ToString() }),
+        ComTenantId("tenant_id em array: o próprio, duas vezes", tenant => new[] { tenant.ToString(), tenant.ToString() }),
+    };
+
+    [Theory]
+    [MemberData(nameof(TokensNegados))]
+    public async Task MembroDoTenantComUmDefeitoNoToken_Responde403(Func<IdentityGatewayApiFactory, Guid, Guid, string> token)
+    {
+        ArgumentNullException.ThrowIfNull(token);
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        (Guid tenant, Guid admin, _) = await TenantComAdminAsync(ct);
+
+        using HttpResponseMessage resposta = await LerAsync(Rota(tenant), token(factory, tenant, admin), ct);
+
+        await DeveSerOProibidoPadraoAsync(resposta, "token com defeito", ct);
+    }
+
+    [Fact]
+    public async Task AdminDeOutroTenantQueExiste_Responde403()
+    {
+        // Os dois tenants existem, e cada admin é membro do seu. O token de A, na rota de B.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        (Guid tenantA, Guid adminA, _) = await TenantComAdminAsync(ct);
+        (Guid tenantB, _, _) = await TenantComAdminAsync(ct);
+        string token = factory.Emissor.Emitir(adminA, SoTenantAdmin, tenantA.ToString());
+
+        using HttpResponseMessage resposta = await LerAsync(Rota(tenantB), token, ct);
+
+        await DeveSerOProibidoPadraoAsync(resposta, "tenant alheio", ct);
+    }
+
+    [Fact]
+    public async Task TenantQueNaoExiste_Responde403ENao404()
+    {
+        // Duas formas de "não existe": o tenant da rota não existe e o token é de outro tenant; e o tenant da rota não
+        // existe e o token diz que é o dele. Nas duas, 403 — a resposta não distingue "não existe" de "não é seu".
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        (Guid tenantA, Guid adminA, _) = await TenantComAdminAsync(ct);
+        var inexistente = Guid.NewGuid();
+        string tokenDeA = factory.Emissor.Emitir(adminA, SoTenantAdmin, tenantA.ToString());
+        string tokenDoInexistente = factory.Emissor.Emitir(adminA, SoTenantAdmin, inexistente.ToString());
+
+        using HttpResponseMessage deOutro = await LerAsync(Rota(inexistente), tokenDeA, ct);
+        using HttpResponseMessage doProprio = await LerAsync(Rota(inexistente), tokenDoInexistente, ct);
+
+        await DeveSerOProibidoPadraoAsync(deOutro, "tenant inexistente, token de outro tenant", ct);
+        await DeveSerOProibidoPadraoAsync(doProprio, "tenant inexistente, token com o tenant_id dele", ct);
+    }
+
+    [Fact]
+    public async Task TokenCertoDeQuemNaoEMembro_Responde403()
+    {
+        // O ataque que a pertença fecha: papel certo e tenant_id certo no token (forjável por um grupo no Keycloak),
+        // de um sub que o banco da Gateway não conhece como membro do tenant.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        (Guid tenant, _, _) = await TenantComAdminAsync(ct);
+        string token = factory.Emissor.Emitir(Guid.NewGuid(), SoTenantAdmin, tenant.ToString());
+
+        using HttpResponseMessage resposta = await LerAsync(Rota(tenant), token, ct);
+
+        await DeveSerOProibidoPadraoAsync(resposta, "sub sem Member", ct);
+    }
+
+    [Fact]
+    public async Task MembroDesativado_PerdeOAcessoNoPedidoSeguinte()
+    {
+        // A pertença é lida a cada pedido: o token ainda vale 5 minutos, e o acesso acaba quando o status muda.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        (Guid tenant, Guid admin, _) = await TenantComAdminAsync(ct);
+        string token = factory.Emissor.Emitir(admin, SoTenantAdmin, tenant.ToString());
+
+        using HttpResponseMessage antes = await LerAsync(Rota(tenant), token, ct);
+        await factory.ComEscopoAsync(contexto => contexto.Database.ExecuteSqlAsync(
+            $"UPDATE members SET status = 'Deactivated' WHERE tenant_id = {tenant}", ct));
+        using HttpResponseMessage depois = await LerAsync(Rota(tenant), token, ct);
+
+        antes.StatusCode.Should().Be(HttpStatusCode.OK, "controle: antes da desativação, o mesmo token lê");
+        await DeveSerOProibidoPadraoAsync(depois, "membro desativado", ct);
+    }
+
+    [Fact]
+    public async Task Todo403DaRota_TemOMesmoCorpo()
+    {
+        // Três motivos diferentes, comparados campo a campo: fora o correlationId e o traceId, que são do pedido, os
+        // corpos são idênticos.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        (Guid tenant, Guid admin, _) = await TenantComAdminAsync(ct);
+
+        string[] tokens =
+        [
+            factory.Emissor.Emitir(admin, SoReader, tenant.ToString()),
+            factory.Emissor.Emitir(admin, SoTenantAdmin, OutroTenant),
+            factory.Emissor.Emitir(Guid.NewGuid(), SoTenantAdmin, tenant.ToString()),
+        ];
+
+        List<string> corpos = [];
+
+        foreach (string token in tokens)
+        {
+            using HttpResponseMessage resposta = await LerAsync(Rota(tenant), token, ct);
+            JsonElement corpo = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
+
+            corpos.Add(string.Join(
+                " | ",
+                corpo.EnumerateObject()
+                    .Where(campo => campo.Name is not ("correlationId" or "traceId"))
+                    .Select(campo => $"{campo.Name}={campo.Value.GetRawText()}")));
+        }
+
+        corpos.Distinct().Should().ContainSingle("o 403 não pode dizer por que negou");
+        corpos[0].Should().Contain("status=403");
+    }
+
+    [Fact]
+    public async Task SemToken_Responde401()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+
+        using HttpResponseMessage resposta = await LerAsync(Rota(Guid.NewGuid()), token: null, ct);
+
+        resposta.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task TenantIdQueNaoEGuid_NaoCasaARota()
+    {
+        // A restrição :guid tira o pedido da rota antes da policy: é um caminho não mapeado, e responde 404 a quem está
+        // autenticado. Não diz nada sobre tenant nenhum — um id malformado não pode existir.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        string token = factory.Emissor.Emitir(Guid.NewGuid(), SoTenantAdmin, OutroTenant);
+
+        using HttpResponseMessage resposta = await LerAsync("/api/v1/tenants/acme", token, ct);
+
+        resposta.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+}
+```
+
+O tenant e o membro são gravados pelo caminho de domínio (`Tenant.Register`, `CompleteProvisioning`), pelo `ComEscopoAsync` da factory: nesta suíte o Outbox está desligado e não há Keycloak que provisione. Quem prova a rota com um tenant provisionado de verdade é a Tarefa 16.
+
+`tests/IdentityGateway.Api.FunctionalTests/Autorizacao/OrdemDosHandlersTests.cs`:
+
+```csharp
+using System.Net;
+using System.Net.Http.Headers;
+using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Domain.Members;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace IdentityGateway.Api.FunctionalTests.Autorizacao;
+
+/// <summary>
+/// Na composição real da Api, a pertença só é consultada para quem já passou nas camadas do token.
+/// </summary>
+/// <remarks>
+/// <para>
+/// O teste unitário prova a ordem no contêiner que ele mesmo monta. Aqui é o contêiner do <c>Program.cs</c>: se outro
+/// registro passar a pôr um handler de autorização antes do <c>AddAutorizacaoDaGateway</c>, é este teste que vê.
+/// </para>
+/// <para>
+/// <b>Exceção declarada à regra "só configuração" da factory:</b> a porta <c>IMemberQueries</c> é trocada por uma que
+/// conta as consultas. É a única troca, vale só para esta classe, e o que está sob teste — a ordem dos handlers — não
+/// é tocado por ela.
+/// </para>
+/// </remarks>
+public sealed class OrdemDosHandlersTests(IdentityGatewayApiFactory factory) : IClassFixture<IdentityGatewayApiFactory>
+{
+    private const string Tenant = "0199a000-0000-7000-8000-00000000000a";
+
+    private const string OutroTenant = "0199a000-0000-7000-8000-00000000000b";
+
+    private static readonly string[] SoTenantAdmin = ["tenant-admin"];
+
+    private async Task<(HttpStatusCode Status, int Consultas)> LerAsync(
+        IReadOnlyCollection<string> roles, string? tenantIdDoToken, CancellationToken ct)
+    {
+        PertencaFalsa pertenca = new(MemberStatus.Active);
+
+        await using WebApplicationFactory<Program> api = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services => services.AddScoped<IMemberQueries>(_ => pertenca)));
+        using HttpClient client = api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", factory.Emissor.Emitir(roles: roles, tenantId: tenantIdDoToken));
+
+        using HttpResponseMessage resposta = await client.GetAsync(
+            new Uri($"/api/v1/tenants/{Tenant}", UriKind.Relative), ct);
+
+        return (resposta.StatusCode, pertenca.Consultas);
+    }
+
+    [Theory]
+    [InlineData("sem o papel tenant-admin", new[] { "reader" }, Tenant)]
+    [InlineData("platform-admin que também é tenant-admin", new[] { "platform-admin", "tenant-admin" }, Tenant)]
+    [InlineData("tenant-admin de outro tenant", new[] { "tenant-admin" }, OutroTenant)]
+    [InlineData("tenant-admin sem tenant_id", new[] { "tenant-admin" }, null)]
+    public async Task QuemNaoPassaNasCamadasDoToken_Recebe403SemConsultaAPertenca(
+        string caso, string[] roles, string? tenantIdDoToken)
+    {
+        (HttpStatusCode status, int consultas) = await LerAsync(
+            roles, tenantIdDoToken, TestContext.Current.CancellationToken);
+
+        status.Should().Be(HttpStatusCode.Forbidden, caso);
+        consultas.Should().Be(0, caso);
+    }
+
+    [Fact]
+    public async Task QuemPassaNasCamadasDoToken_ProvocaUmaConsulta()
+    {
+        // Controle: sem ele, "zero consultas" também seria verdade se a porta falsa nem estivesse ligada. A pertença
+        // falsa responde Active, a policy passa, e o tenant — que não existe no banco — vira o mesmo 403 no módulo.
+        (HttpStatusCode status, int consultas) = await LerAsync(
+            SoTenantAdmin, Tenant, TestContext.Current.CancellationToken);
+
+        consultas.Should().Be(1);
+        status.Should().Be(HttpStatusCode.Forbidden);
+    }
+}
+```
+
+Em `tests/IdentityGateway.Api.FunctionalTests/EndpointsDeclaramAutorizacaoTests.cs`: acrescentar `using IdentityGateway.Api.Authorization;` e trocar o teste `AsRotasDeTenant_ExigemPlatformAdmin` inteiro — do `[Fact]` dele até a chave que fecha a classe — por:
+
+```csharp
+    [Fact]
+    public void AsRotasDeTenant_TemAPolicyEsperada()
+    {
+        // Controle do teste acima: cada rota de tenant tem a policy nomeada certa — e não, por engano, AllowAnonymous,
+        // nem a policy de outra rota.
+        IReadOnlyList<Endpoint> endpoints = factory.Services.GetRequiredService<EndpointDataSource>().Endpoints;
+
+        var policyPorRota = endpoints.OfType<RouteEndpoint>()
+            .Where(endpoint => endpoint.RoutePattern.RawText!.StartsWith("/api/v1/tenants", StringComparison.Ordinal))
+            .ToDictionary(
+                endpoint => Rotulo(endpoint),
+                endpoint => endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>().Single().Policy!);
+
+        policyPorRota.Should().BeEquivalentTo(new Dictionary<string, string>
+        {
+            ["POST /api/v1/tenants"] = Policies.PlatformAdmin,
+            ["GET /api/v1/tenants/{tenantId:guid}/provisioning"] = Policies.PlatformAdmin,
+            ["GET /api/v1/tenants/{tenantId:guid}"] = Policies.TenantAdmin,
+        });
+    }
+
+    private static string Rotulo(RouteEndpoint endpoint) =>
+        $"{endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods[0]} {endpoint.RoutePattern.RawText}";
+
+    [Fact]
+    public void TodaRotaComPolicyDeTenant_TemTenantIdNoTemplate()
+    {
+        // O SameTenantRequirement lê o tenant do parâmetro {tenantId}. Uma rota com policy de tenant e sem o parâmetro
+        // nega sempre — e alguém, para "consertar", afrouxaria o requirement. O erro aparece aqui, na subida.
+        IReadOnlyList<Endpoint> endpoints = factory.Services.GetRequiredService<EndpointDataSource>().Endpoints;
+
+        RouteEndpoint[] comPolicyDeTenant =
+        [
+            .. endpoints.OfType<RouteEndpoint>()
+                .Where(endpoint => endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>()
+                    .Any(dado => dado.Policy is not null && Policies.DeTenant.Contains(dado.Policy))),
+        ];
+
+        comPolicyDeTenant.Should().NotBeEmpty("sem rota com policy de tenant, a regra passaria vazia");
+        comPolicyDeTenant
+            .Where(endpoint => endpoint.RoutePattern.GetParameter(SameTenantRequirement.ParametroDaRota) is null)
+            .Select(endpoint => endpoint.RoutePattern.RawText)
+            .Should().BeEmpty("rota com policy de tenant precisa do parâmetro tenantId no template");
+    }
+}
+```
+
+Run: `dotnet build tests/IdentityGateway.Api.FunctionalTests`
+Expected: FAIL de compilação — `TenantsModule.ParaRespostaDoTenant` não existe.
+
+- [ ] **Passo 5: A rota**
+
+Em `src/IdentityGateway.Api/Modules/TenantsModule.cs`:
+
+1. Acrescentar `using IdentityGateway.Application.Tenants.GetTenant;`.
+
+2. Em `AddRoutes`, depois da rota do provisionamento:
+
+```csharp
+
+        app.MapGet("/api/v1/tenants/{tenantId:guid}", ConsultarAsync)
+            .RequireAuthorization(Policies.TenantAdmin)
+            .WithName("ConsultarTenant")
+            .WithSummary("O tenant, para quem o administra.")
+            .Produces<TenantDetailsResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+```
+
+3. O comentário de `ConsultarProvisionamentoAsync` dizia que `GET /tenants/{id}` "ainda não existe". Passa a ser:
+
+```csharp
+    // Sempre 200 com o status, também quando Active, e não um 303 para o recurso do tenant: quem acompanha o
+    // provisionamento é o platform-admin, e GET /tenants/{id} responde 403 a ele. A restrição :guid na rota faz um id
+    // malformado responder 404 sem chegar ao handler.
+```
+
+4. No fim da classe, depois de `ConsultarProvisionamentoAsync`:
+
+```csharp
+
+    /// <remarks>
+    /// Quem chega aqui já passou pela policy <c>TenantAdmin</c>: é administrador deste tenant, pelo token e pelo banco.
+    /// A rota não tem <c>404</c>: para quem não é membro, um tenant que não existe e um tenant alheio são a mesma
+    /// resposta, e a policy nega os dois antes de qualquer consulta ao tenant.
+    /// </remarks>
+    private static async Task<IResult> ConsultarAsync(
+        Guid tenantId,
+        ISender sender,
+        HttpContext contexto,
+        CancellationToken cancellationToken)
+    {
+        Result<TenantDetailsResponse> resultado = await sender.Send(
+            new GetTenantQuery(new TenantId(tenantId)), cancellationToken);
+
+        return ParaRespostaDoTenant(resultado, contexto);
+    }
+
+    /// <summary>
+    /// Traduz o resultado da leitura do tenant: <c>200</c> com o tenant, ou o mesmo <c>403</c> da autorização.
+    /// </summary>
+    /// <remarks>
+    /// <b>Não usa o <c>ParaOk</c>,</b> que traduziria "tenant não encontrado" em <c>404</c>. A policy torna esse
+    /// caminho inalcançável — não há <c>Member</c> de um tenant que não existe —, mas se um dia ele for alcançado (uma
+    /// corrida, um tenant removido à mão), a resposta não pode passar a distinguir "não existe" de "não é seu".
+    /// </remarks>
+    internal static IResult ParaRespostaDoTenant(Result<TenantDetailsResponse> resultado, HttpContext contexto)
+    {
+        ArgumentNullException.ThrowIfNull(resultado);
+
+        return resultado.Match(
+            onSuccess: tenant => Results.Ok(tenant),
+            onFailure: _ => RespostasDeAutorizacao.Proibido(contexto));
+    }
+```
+
+- [ ] **Passo 6: Rodar e ver passar**
+
+Run: `dotnet build IdentityGateway.slnx`
+Expected: `0 Aviso(s)`, `0 Erro(s)`.
+
+Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-class "*.LeituraDeTenantTests"`
+Expected: `total: 26`, `falhou: 0`.
+
+Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-class "*OrdemDosHandlersTests"`
+Expected: `total: 5`, `falhou: 0`.
+
+Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-class "*RespostaDaLeituraDeTenantTests"`
+Expected: `total: 2`, `falhou: 0`.
+
+Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-class "*EndpointsDeclaramAutorizacaoTests"`
+Expected: `total: 3`, `falhou: 0`.
+
+- [ ] **Passo 7: A suíte negativa de autenticação também na rota nova**
+
+Os casos de autenticação (Tarefas 7 e 8) rodam em toda rota protegida. Em `tests/IdentityGateway.Api.FunctionalTests/AutenticacaoNegativaTests.cs`:
+
+1. Em `ConferirRecusaAsync`, o array das rotas ganha a terceira:
+
+```csharp
+        (HttpMethod Metodo, string Rota)[] rotas =
+        [
+            (HttpMethod.Post, "/api/v1/tenants"),
+            (HttpMethod.Get, RotaDeConsulta()),
+            (HttpMethod.Get, $"/api/v1/tenants/{Guid.NewGuid()}"),
+        ];
+```
+
+2. No teste dos tokens aceitos, acrescentar o controle da rota nova — depois da linha que envia a `consulta`:
+
+```csharp
+        using HttpResponseMessage leitura = await EnviarAsync(
+            HttpMethod.Get, $"/api/v1/tenants/{Guid.NewGuid()}", token(factory), ct);
+```
+
+e, depois das duas asserções:
+
+```csharp
+
+        // Na leitura de tenant, o platform-admin passa da autenticação e para na autorização: 403, e não 401.
+        leitura.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+```
+
+3. Os três métodos de teste trocam `NasDuasRotas` por `NasRotasProtegidas` no nome (são três rotas agora): `TokenQueAValidacaoRecusa_Responde401SemDetalheNasRotasProtegidas`, `TokenComAFormaErrada_Responde401SemDetalheNasRotasProtegidas` e `TokenAceito_PassaDaAutenticacaoNasRotasProtegidas`.
+
+Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-class "*AutenticacaoNegativaTests"`
+Expected: verde, com o mesmo total de antes — os casos são os mesmos, e cada um passa a percorrer três rotas.
+
+Run: `dotnet test`
+Expected: verde em todos os projetos. Em relação ao fim da Tarefa 14: `Application.UnitTests` +2, `Infrastructure.IntegrationTests` +3, `ArchitectureTests` +1, `Api.FunctionalTests` +34 (26 da rota, 5 da ordem dos handlers, 2 do mapeamento e 1 a mais na classe dos endpoints).
+
+- [ ] **Passo 8: 🧪 Provas por mutação**
+
+`git add -A src tests` antes; `git restore src` depois de cada uma.
+
+Run (a cada mutação): `dotnet test tests/IdentityGateway.Api.FunctionalTests` (e `dotnet test tests/IdentityGateway.ArchitectureTests` na 5)
+
+| # | Mutação | Vermelho esperado |
+|---|---|---|
+| 1 | **Policy de tenant numa rota sem `{tenantId}`:** em `TenantsModule`, trocar a policy do `POST /api/v1/tenants` por `Policies.TenantAdmin` | `TodaRotaComPolicyDeTenant_TemTenantIdNoTemplate` e `AsRotasDeTenant_TemAPolicyEsperada` (e os testes do `POST`, que passam a levar `403`) |
+| 2 | **A falha vira `404`:** em `ParaRespostaDoTenant`, `onFailure: _ => Results.NotFound()` | `TenantNaoEncontrado_ViraOMesmo403DaAutorizacao` e `QuemPassaNasCamadasDoToken_ProvocaUmaConsulta` |
+| 3 | **Sem o `NotPlatformAdminRequirement`** na policy | 4, entre eles o caso "platform-admin que também é tenant-admin do próprio tenant" de `MembroDoTenantComUmDefeitoNoToken_Responde403` (responde `200`) e o de `QuemNaoPassaNasCamadasDoToken_Recebe403SemConsultaAPertenca` |
+| 4 | **Sem o `MemberRequirement`** na policy | 15, entre eles `TokenCertoDeQuemNaoEMembro_Responde403` e `MembroDesativado_PerdeOAcessoNoPedidoSeguinte` (os dois respondem `200`) |
+| 5 | **E-mail na resposta:** em `TenantDetailsResponse`, transformar a declaração num record com corpo e acrescentar `public string? InitialAdminEmail { get; init; }` | `AdminDoTenant_LeOProprioTenantComExatamenteAsChavesDoContrato` (uma chave a mais, mesmo nula) e, na arquitetura, `LeituraDeTenant_NaoCarregaEmail` |
+| 6 | **Handler da pertença antes do `AddAuthorization`** (a mutação 1 da Tarefa 14) | 8: os quatro de `QuemNaoPassaNasCamadasDoToken_Recebe403SemConsultaAPertenca`, aqui na composição real, e os quatro unitários |
+| 7 | **Tenant comparado como texto** (a mutação 6 da Tarefa 13) | 7, entre eles os dois de `ProprioTenantComOGuidDaRotaEscritoDeOutroJeito_Responde200` |
+
+Sobre a mutação "consultar o tenant antes de autorizar", da §5.3 da spec: neste desenho ela se decompõe na 2 e na 4. Sem a 4, a query do tenant só roda para quem a policy inteira aprovou; e sem a 2, o que ela não achar responde o mesmo `403`. `TenantQueNaoExiste_Responde403ENao404` só fica vermelho com as duas juntas — rode-as juntas uma vez e confirme (`404` no caso "token com o `tenant_id` dele").
+
+- [ ] **Passo 9: Commit**
+
+```bash
+git add src tests
+git commit -m "feat: GET /api/v1/tenants/{tenantId}, a leitura do tenant por quem o administra
+
+A primeira rota de tenant, com a policy TenantAdmin. Responde 200 com
+tenantId, name, slug, status, plan (tier, maxUsers, maxClients),
+occupiedSeats e registeredAt, e nunca o e-mail do admin inicial; 401 sem
+token valido; 403 em todo o resto, com o mesmo Problem Details, inclusive
+para tenant que nao existe. GetTenantQuery e o handler leem a projecao
+TenantDetailsView, que nao seleciona o e-mail; no modulo, a falha do
+handler vira o mesmo 403 da autorizacao, e nao 404.
+
+Testes: a suite negativa de autorizacao por HTTP, o conjunto exato de
+chaves do 200, a ordem dos handlers na composicao real com uma porta que
+conta consultas, o teste de subida que exige tenantId em toda rota com
+policy de tenant, a projecao contra o PostgreSQL e a regra que recusa
+e-mail na leitura. A suite negativa de autenticacao passa a percorrer a
+rota nova. Mutacoes: policy de tenant em rota sem tenantId, falha como
+404, policy sem o NotPlatformAdmin e sem a pertenca, e-mail na resposta,
+handler da pertenca antes do AddAuthorization e tenant comparado como
+texto."
+```
+
+Run: `git log -1 --format=%B | grep -Eci "co-authored|generated with"`
+Expected: `0`.
+
+---
+
+### Tarefa 16: O admin convidado lê o próprio tenant — Keycloak real, app da jornada, CI e README
+
+Spec: §4.6 (a fase `jornada`, o passo da D2), §4.7 ("o passo da D2" do README), §5.1 (segunda linha "Coleção com Keycloak real na API"; linha "CI"), §5.2 (casos `K` da D2), §5.3 ("Tirar o `MemberRequirement`…: K: ataque do grupo"; "Outbox desligado na `ApiComKeycloakFactory`").
+
+Até aqui a rota foi provada com tokens que o próprio teste forjou e com membros gravados à mão. Esta tarefa fecha a volta inteira: o platform-admin registra o tenant, o Outbox o provisiona no Keycloak, o admin convidado conclui o convite, entra pelo device flow e lê o tenant. É onde aparece uma divergência entre o `sub` que o provisionamento gravou e o `sub` que o Keycloak emite — ou entre o `tenant_id` do atributo e o id do tenant.
+
+E reproduz, contra o Keycloak real, o ataque que justifica a pertença: um `tenant_id` herdado de um grupo.
+
+**Nada desta tarefa foi executado ao escrever o plano**, além da compilação do app com as edições do Passo 4. Depende do código da D1 rodando.
+
+**Arquivos:**
+- Modify: `tests/IdentityGateway.Api.FunctionalTests/ApiComKeycloakFactory.cs`
+- Create: `tests/IdentityGateway.Api.FunctionalTests/LeituraDeTenantComKeycloakTests.cs`
+- Modify: `tools/jornada-compose.cs`, `.github/workflows/ci.yml`, `README.md`
+
+**Interfaces:**
+- Consome: `ApiComKeycloakFactory` (`Keycloak`, `CriarClienteComoAsync`), `ColecaoComKeycloak.Nome` (Tarefa 9); `KeycloakFixture.NovoPlatformAdminAsync`, `NovoUsuarioAsync`, `LinkDoConviteAsync`, `CriarHarness`, `EmailUnico`, `CriarGrupoComoMasterAsync`, `PorNoGrupoComoMasterAsync`, `ApagarGrupoComoMasterAsync` (Tarefas 4 e 5); `HarnessDeLogin.ConcluirLinkDeAcoesAsync` e `TokenPorDispositivoAsync`; `PayloadDoJwt.Ler`; `SenhasDeTeste.Gerar`; a rota da Tarefa 15.
+- Produz: nada que outra tarefa consuma.
+
+- [ ] **Passo 1: O Outbox ligado na coleção com Keycloak real**
+
+Em `tests/IdentityGateway.Api.FunctionalTests/ApiComKeycloakFactory.cs`, em `ConfigureWebHost`, trocar o comentário e a linha do `Outbox:Enabled`:
+
+```csharp
+        // Desligado na D1: nenhum teste daqui espera o provisionamento. A D2 o liga, para o admin convidado existir.
+        builder.UseSetting("Outbox:Enabled", "false");
+```
+
+por:
+
+```csharp
+        // Ligado, ao contrário da factory do OIDC falso: aqui o provisionamento precisa acontecer, para o admin
+        // convidado existir no Keycloak e como Member no banco. O motivo de desligá-lo lá — a corrida com asserções
+        // sobre a tabela do Outbox — não vale para esta coleção, que roda em série e tem banco próprio. Um segundo de
+        // intervalo, o mínimo que a option aceita, para o teste não esperar os cinco do padrão.
+        builder.UseSetting("Outbox:Enabled", "true");
+        builder.UseSetting("Outbox:PollingIntervalSeconds", "1");
+```
+
+Efeito nos testes da D1 que já estão na coleção: o tenant que `PlatformAdminDoKeycloak_RegistraUmTenant` registra passa a ser provisionado em segundo plano — cria uma Organization e manda um convite ao mailpit do fixture. Nenhum deles afirma nada sobre isso. Um detalhe a saber: depois da primeira Organization, o login do Keycloak passa a ter dois passos; o harness lida com os dois casos.
+
+- [ ] **Passo 2: Os testes**
+
+`tests/IdentityGateway.Api.FunctionalTests/LeituraDeTenantComKeycloakTests.cs`:
+
+```csharp
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using IdentityGateway.Domain.Members;
+using IdentityGateway.Domain.Tenants;
+using IdentityGateway.Domain.ValueObjects;
+using IdentityGateway.Infrastructure.Persistence;
+using IdentityGateway.Testing.Keycloak;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace IdentityGateway.Api.FunctionalTests;
+
+/// <summary>
+/// A leitura de tenant com tudo de verdade: o Keycloak emite o token, o Outbox provisiona, e o banco diz quem é membro.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>O que os testes com o OIDC falso não provam:</b> que o admin convidado pelo provisionamento real recebe do
+/// Keycloak um token com <c>tenant-admin</c> e o <c>tenant_id</c> do tenant dele, e que o <c>sub</c> desse token é o
+/// que o provisionamento gravou como <c>Member</c>. Se uma das duas pontas divergir, a rota responde <c>403</c> ao
+/// dono do tenant — e só aqui isso aparece.
+/// </para>
+/// <para>
+/// <b>Cada <c>403</c> vem com a premissa afirmada antes:</b> o que o token traz, lido do próprio token. Um
+/// <c>403</c> sozinho pode ser de qualquer camada.
+/// </para>
+/// </remarks>
+[Collection(ColecaoComKeycloak.Nome)]
+public sealed class LeituraDeTenantComKeycloakTests(ApiComKeycloakFactory api)
+{
+    private static readonly string[] SoTenantAdmin = ["tenant-admin"];
+
+    private static readonly string[] ChavesDoTenant =
+        ["tenantId", "name", "slug", "status", "plan", "occupiedSeats", "registeredAt"];
+
+    private static readonly string[] ChavesDoPlano = ["tier", "maxUsers", "maxClients"];
+
+    private static readonly TimeSpan PrazoDoProvisionamento = TimeSpan.FromSeconds(90);
+
+    private static string Rota(Guid tenant) => $"/api/v1/tenants/{tenant}";
+
+    private static async Task<(Guid Tenant, Uri Acompanhamento)> RegistrarAsync(
+        HttpClient comoPlatformAdmin, string emailDoAdmin, CancellationToken ct)
+    {
+        using HttpResponseMessage resposta = await comoPlatformAdmin.PostAsJsonAsync(
+            "/api/v1/tenants",
+            new
+            {
+                name = "Acme Corp",
+                slug = $"kc-{Guid.NewGuid():N}"[..20],
+                planCode = "free",
+                initialAdminEmail = emailDoAdmin,
+            },
+            ct);
+        resposta.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        JsonElement corpo = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
+
+        return (corpo.GetProperty("tenantId").GetGuid(), resposta.Headers.Location!);
+    }
+
+    /// <summary>Espera o Outbox provisionar o tenant no Keycloak. Com prazo: sem o Outbox ligado, ele nunca chega.</summary>
+    private static async Task EsperarAtivoAsync(HttpClient comoPlatformAdmin, Uri acompanhamento, CancellationToken ct)
+    {
+        DateTimeOffset fim = DateTimeOffset.UtcNow + PrazoDoProvisionamento;
+        string? status = null;
+
+        while (DateTimeOffset.UtcNow < fim)
+        {
+            using HttpResponseMessage resposta = await comoPlatformAdmin.GetAsync(acompanhamento, ct);
+            resposta.StatusCode.Should().Be(HttpStatusCode.OK);
+            status = (await resposta.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("status").GetString();
+
+            if (status is "Active")
+            {
+                return;
+            }
+
+            status.Should().NotBe("ProvisioningFailed", "o provisionamento não pode desistir neste cenário");
+            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+        }
+
+        status.Should().Be("Active", $"o tenant precisa ser provisionado em {PrazoDoProvisionamento.TotalSeconds:0} s");
+    }
+
+    private async Task<HttpResponseMessage> LerComAsync(string accessToken, Guid tenant, CancellationToken ct)
+    {
+        using HttpClient client = api.CreateClient();
+        using HttpRequestMessage pedido = new(HttpMethod.Get, Rota(tenant));
+        pedido.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        return await client.SendAsync(pedido, ct);
+    }
+
+    private static string[] Roles(JsonElement payload) =>
+        payload.TryGetProperty("roles", out JsonElement roles)
+            ? [.. roles.EnumerateArray().Select(role => role.GetString()!)]
+            : [];
+
+    [Fact]
+    public async Task AdminConvidado_LeOProprioTenant_ENaoLeOutro_EOPlatformAdminNaoLeNenhum()
+    {
+        // Uma jornada só, porque o cenário é caro (dois convites, três device flows e um provisionamento). Cada
+        // asserção diz qual das três afirmações falhou.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        UsuarioDeTeste operador = await api.Keycloak.NovoPlatformAdminAsync(ct);
+        using HttpClient comoOperador = await api.CriarClienteComoAsync(operador, ct);
+        string emailDoAdmin = KeycloakFixture.EmailUnico();
+
+        (Guid tenant, Uri acompanhamento) = await RegistrarAsync(comoOperador, emailDoAdmin, ct);
+        (Guid outroTenant, _) = await RegistrarAsync(comoOperador, KeycloakFixture.EmailUnico(), ct);
+        await EsperarAtivoAsync(comoOperador, acompanhamento, ct);
+
+        // O admin conclui o convite pelo link do e-mail, como faria no navegador, e entra pelo device flow.
+        string senha = SenhasDeTeste.Gerar();
+
+        using (HarnessDeLogin navegador = api.Keycloak.CriarHarness())
+        {
+            await navegador.ConcluirLinkDeAcoesAsync(await api.Keycloak.LinkDoConviteAsync(emailDoAdmin, ct), senha, ct);
+        }
+
+        using HarnessDeLogin harness = api.Keycloak.CriarHarness();
+        TokensDeUsuario doAdmin = await harness.TokenPorDispositivoAsync(emailDoAdmin, senha, ct);
+        JsonElement payload = PayloadDoJwt.Ler(doAdmin.AccessToken);
+
+        // Premissas, lidas do token que o Keycloak emitiu: o papel e o tenant vêm do provisionamento.
+        Roles(payload).Should().BeEquivalentTo(SoTenantAdmin);
+        payload.GetProperty("tenant_id").GetString().Should().Be(tenant.ToString());
+        payload.GetProperty("tenant_id").GetString().Should().NotBe(outroTenant.ToString());
+
+        using HttpResponseMessage doProprio = await LerComAsync(doAdmin.AccessToken, tenant, ct);
+        using HttpResponseMessage doOutro = await LerComAsync(doAdmin.AccessToken, outroTenant, ct);
+        using HttpResponseMessage peloOperador = await comoOperador.GetAsync(new Uri(Rota(tenant), UriKind.Relative), ct);
+
+        doProprio.StatusCode.Should().Be(HttpStatusCode.OK, "o admin convidado lê o próprio tenant");
+        JsonElement corpo = await doProprio.Content.ReadFromJsonAsync<JsonElement>(ct);
+        corpo.EnumerateObject().Select(chave => chave.Name).Should().BeEquivalentTo(ChavesDoTenant);
+        corpo.GetProperty("plan").EnumerateObject().Select(chave => chave.Name).Should().BeEquivalentTo(ChavesDoPlano);
+        corpo.GetProperty("tenantId").GetGuid().Should().Be(tenant);
+        corpo.GetProperty("status").GetString().Should().Be("Active");
+        corpo.GetProperty("occupiedSeats").GetInt32().Should().Be(1);
+
+        doOutro.StatusCode.Should().Be(HttpStatusCode.Forbidden, "o tenant de outro id existe, e não é dele");
+        peloOperador.StatusCode.Should().Be(HttpStatusCode.Forbidden, "o platform-admin registra, mas não lê o tenant");
+    }
+
+    [Fact]
+    public async Task TenantIdHerdadoDeUmGrupo_NaoBasta_SemSerMembroNoBanco()
+    {
+        // O ataque que a pertença fecha (ADR-011), reproduzido como quem tem a chave da Gateway o faria: um usuário
+        // SEM o atributo tenant_id, com o papel tenant-admin, posto num grupo que tem o tenant_id de um tenant que
+        // existe. O mapper do Keycloak recua para o atributo do grupo, e o token sai com o tenant da vítima.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        Guid vitima = await TenantAtivoNoBancoAsync(ct);
+        UsuarioDeTeste atacante = await api.Keycloak.NovoUsuarioAsync(SoTenantAdmin, tenantId: null, ct);
+        string grupo = await api.Keycloak.CriarGrupoComoMasterAsync(
+            $"ataque-{Guid.NewGuid():N}",
+            new Dictionary<string, string[]> { ["tenant_id"] = [vitima.ToString()] },
+            ct);
+
+        try
+        {
+            await api.Keycloak.PorNoGrupoComoMasterAsync(atacante.Id, grupo, ct);
+            using HarnessDeLogin harness = api.Keycloak.CriarHarness();
+            TokensDeUsuario tokens = await harness.TokenPorDispositivoAsync(atacante.Email, atacante.Senha, ct);
+            JsonElement payload = PayloadDoJwt.Ler(tokens.AccessToken);
+
+            // Premissas: o token passa nas três camadas do token. Sem elas afirmadas, o 403 poderia vir de qualquer uma.
+            Roles(payload).Should().BeEquivalentTo(SoTenantAdmin);
+            payload.GetProperty("tenant_id").GetString().Should().Be(
+                vitima.ToString(), "o token precisa trazer o tenant_id herdado do grupo, ou o teste não prova a pertença");
+
+            using HttpResponseMessage resposta = await LerComAsync(tokens.AccessToken, vitima, ct);
+
+            resposta.StatusCode.Should().Be(HttpStatusCode.Forbidden, "o sub do atacante não é Member do tenant");
+        }
+        finally
+        {
+            // O realm não tem grupos, e outros testes afirmam isso.
+            await api.Keycloak.ApagarGrupoComoMasterAsync(grupo, CancellationToken.None);
+        }
+    }
+
+    /// <summary>
+    /// Um tenant já ativo, gravado direto no banco, com outro membro como admin.
+    /// </summary>
+    /// <remarks>
+    /// Registrado e ativado em memória e gravado num commit só: o tenant já nasce <c>Active</c>, e o consumidor do
+    /// provisionamento — que aqui está ligado — ignora a mensagem de registro em vez de tentar provisioná-lo.
+    /// </remarks>
+    private async Task<Guid> TenantAtivoNoBancoAsync(CancellationToken ct)
+    {
+        var tenant = Tenant.Register(
+            "Vítima",
+            TenantSlug.Create($"vt-{Guid.NewGuid():N}"[..20]).Value,
+            new Plan(PlanTier.Free, 5, 1),
+            Email.Of(KeycloakFixture.EmailUnico()).Value,
+            DateTimeOffset.UtcNow);
+        Member admin = tenant.CompleteProvisioning(
+            $"org-{Guid.NewGuid():N}", ExternalUserId.From(Guid.NewGuid().ToString()), DateTimeOffset.UtcNow);
+
+        using IServiceScope escopo = api.Services.CreateScope();
+        AppDbContext contexto = escopo.ServiceProvider.GetRequiredService<AppDbContext>();
+        contexto.Tenants.Add(tenant);
+        contexto.Members.Add(admin);
+        await contexto.SaveChangesAsync(ct);
+
+        return tenant.Id.Value;
+    }
+}
+```
+
+O tenant do segundo teste é gravado já `Active`, num commit só (conferido ao escrever o plano que o EF aceita o tenant e o membro novos no mesmo `SaveChanges`). Se fosse gravado `Pending` e ativado depois, o Outbox — ligado aqui — poderia pegar a mensagem de registro entre os dois commits e tentar provisioná-lo.
+
+- [ ] **Passo 3: Rodar e ver passar**
+
+Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-class "*LeituraDeTenantComKeycloakTests"`
+Expected: `total: 2`, `falhou: 0`. O primeiro leva de 30 a 60 s (dois convites concluídos, três device flows e a espera do `Active`).
+
+Se o primeiro falhar em `payload.GetProperty("tenant_id")…`, o token do admin convidado não traz o tenant: confira que o provisionamento grava o atributo `tenant_id` no usuário e que o client de demonstração tem o scope `gateway-tenant` (Tarefa 2). **Não** é caso de mexer no realm nesta tarefa — se o realm estiver errado, o defeito é da D1, e o conserto volta para lá.
+
+Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests`
+Expected: a suíte funcional inteira verde, com 2 testes a mais. Os testes da D1 na mesma coleção continuam verdes com o Outbox ligado.
+
+- [ ] **Passo 4: O app da jornada**
+
+Em `tools/jornada-compose.cs`, quatro edições.
+
+1. No cabeçalho, a descrição da fase `jornada`:
+
+```csharp
+//   jornada                 link do platform-admin → device flow → HS256 antigo recusado → POST /tenants → Active →
+//                           o admin do tenant conclui o convite, entra e lê o próprio tenant (200); outro tenant e o
+//                           platform-admin recebem 403
+```
+
+2. Depois da constante `ClientDeDemonstracao`:
+
+```csharp
+
+// O contrato do 200 da leitura de tenant: exatamente estas chaves. Uma a mais (o e-mail do admin, por exemplo) reprova.
+string[] chavesDoTenant = ["tenantId", "name", "slug", "status", "plan", "occupiedSeats", "registeredAt"];
+string[] chavesDoPlano = ["tier", "maxUsers", "maxClients"];
+```
+
+3. Em `JornadaAsync`, o bloco `using (HarnessDeLogin navegador = NovoHarness()) { … }` — o que só conferia se o link abria — sai, e no lugar dele, entre a linha do `Uri linkDoAdmin = …` e a do `GravarEstado(…)`, entra:
+
+```csharp
+
+    // Um harness novo é uma janela anônima: sem o cookie de sessão do platform-admin, que faria o device flow seguinte
+    // sair com a conta dele — e o 403 pareceria defeito.
+    using HarnessDeLogin navegadorDoAdmin = NovoHarness();
+    string senhaDoAdmin = Mascarar(SenhasDeTeste.Gerar());
+
+    Etapa("o admin do tenant conclui o convite pelo link e obtém o token pelo device flow");
+    await navegadorDoAdmin.ConcluirLinkDeAcoesAsync(linkDoAdmin, senhaDoAdmin, ct);
+    TokensDeUsuario tokensDoAdmin = await navegadorDoAdmin.TokenPorDispositivoAsync(emailDoAdmin, senhaDoAdmin, ct);
+    Mascarar(tokensDoAdmin.AccessToken);
+    Mascarar(tokensDoAdmin.RefreshToken);
+
+    // O Location do 202 é /api/v1/tenants/{id}/provisioning; a leitura do tenant é o mesmo caminho sem o sufixo.
+    string rotaDoTenant = localizacao.ToString().Replace("/provisioning", string.Empty, StringComparison.Ordinal);
+
+    Etapa("o admin lê o próprio tenant: 200, Active, com exatamente as chaves do contrato");
+    using (HttpResponseMessage leitura = await ExigirAsync(
+               HttpStatusCode.OK, HttpMethod.Get, rotaDoTenant, tokensDoAdmin.AccessToken, corpo: null))
+    {
+        JsonElement tenant = await leitura.Content.ReadFromJsonAsync<JsonElement>(ct);
+        ExigirChaves(tenant, chavesDoTenant, "tenant");
+        ExigirChaves(tenant.GetProperty("plan"), chavesDoPlano, "plan");
+
+        if (tenant.GetProperty("status").GetString() != "Active")
+        {
+            throw new FalhaDoHarnessException(FamiliaDeFalha.Api, etapaAtual, "o tenant lido pelo admin não está Active.");
+        }
+    }
+
+    Etapa("o admin recebe 403 ao ler outro tenant");
+    await ExigirAsync(
+        HttpStatusCode.Forbidden, HttpMethod.Get, $"/api/v1/tenants/{Guid.NewGuid()}", tokensDoAdmin.AccessToken, corpo: null);
+
+    // O platform-admin registra e acompanha o provisionamento, mas não lê o tenant: sem auditoria, seria o único acesso
+    // entre tenants sem trilha.
+    Etapa("o platform-admin recebe 403 ao ler o tenant");
+    await ExigirAsync(HttpStatusCode.Forbidden, HttpMethod.Get, rotaDoTenant, tokens.AccessToken, corpo: null);
+
+```
+
+Concluir o link prova mais do que abri-lo, e por isso a checagem `LinkDeAcoesAbreAsync` sai da jornada. O método continua na biblioteca.
+
+4. Antes do comentário `// Toda asserção de status é EXATA.` (acima de `ExigirAsync`):
+
+```csharp
+void ExigirChaves(JsonElement objeto, string[] esperadas, string nome)
+{
+    string[] vieram = [.. objeto.EnumerateObject().Select(chave => chave.Name).Order(StringComparer.Ordinal)];
+
+    if (!vieram.SequenceEqual(esperadas.Order(StringComparer.Ordinal), StringComparer.Ordinal))
+    {
+        throw new FalhaDoHarnessException(
+            FamiliaDeFalha.Api, etapaAtual,
+            $"{nome}: esperadas as chaves [{string.Join(", ", esperadas)}], vieram [{string.Join(", ", vieram)}].");
+    }
+}
+
+```
+
+Run: `dotnet build -c Release tools/jornada-compose.cs`
+Expected: `0 Aviso(s)`, `0 Erro(s)`.
+
+Run: `dotnet test tests/IdentityGateway.ArchitectureTests --filter-class "*RegrasDeFerramentasTests"`
+Expected: PASS nos três.
+
+- [ ] **Passo 5: Rodar a jornada num projeto isolado**
+
+As mesmas pré-condições da Tarefa 11: nada do projeto padrão de pé, portas livres, Git Bash na raiz do repositório.
+
+```bash
+export IG_ESTADO="$(mktemp -d)/ig-jornada-estado.json"
+docker compose -p igverif up -d --build --wait --wait-timeout 300 api
+dotnet run -c Release tools/jornada-compose.cs -- jornada; echo "exit=$?"
+```
+
+Expected: `exit=0`, com as quatro etapas novas na saída — `ok … o admin do tenant conclui o convite pelo link e obtém o token pelo device flow`, `ok … o admin lê o próprio tenant: 200, Active, com exatamente as chaves do contrato`, `ok … o admin recebe 403 ao ler outro tenant` e `ok … o platform-admin recebe 403 ao ler o tenant`. O login do admin do tenant leva dois passos (já existe uma Organization); o harness não afirma o número de passos dele.
+
+Reveja a saída: nenhum `eyJ`, nenhum `action-token?key=`, nenhum `user_code`.
+
+Anote os tempos das etapas para o handoff. **Não derrube o `igverif`**: o Passo 8 usa.
+
+- [ ] **Passo 6: O workflow**
+
+Em `.github/workflows/ci.yml`, no job `compose`, o comentário do passo `A jornada com token do Keycloak` passa a ser:
+
+```yaml
+      # O convite do platform-admin concluído pelo link, o token pelo device flow, a receita HS256 antiga recusada e o
+      # tenant registrado e provisionado. Depois, o admin do tenant: conclui o convite pelo link, entra por outro
+      # device flow e lê o próprio tenant (200, com exatamente as chaves do contrato); outro tenant e o
+      # platform-admin levam 403.
+```
+
+O comando e o `timeout-minutes: 5` do passo não mudam: a fase tem o mesmo nome, e as etapas novas somam cerca de 15 s.
+
+- [ ] **Passo 7: O README**
+
+Em `README.md`, na seção `### Demonstração: token do Keycloak, e o tenant provisionado quando o Keycloak volta`, logo depois do parágrafo que termina em `e o endereço passa a existir só no Keycloak.` (antes de `**Por que nessa ordem.**`):
+
+````markdown
+
+**6. O administrador do tenant lê o próprio tenant — e só ele.** Abra o link do convite numa **janela anônima** do
+navegador, defina a senha e informe nome e sobrenome. Tem que ser janela anônima: na janela normal, a sessão do
+platform-admin continua aberta no Keycloak, e o device flow abaixo sairia com a conta dele — e o `403` que ele recebe
+pareceria defeito.
+
+```bash
+pedido=$(curl -s -X POST "$KC/auth/device" -d client_id=identity-gateway-demo -d scope=openid)
+DEVICE_CODE=$(echo "$pedido" | jq -r .device_code | tr -d '\r')
+echo "$pedido" | jq -r .verification_uri_complete
+# Abra o endereço na MESMA janela anônima, entre com o e-mail de $EMAIL e a senha nova, e aceite o consentimento.
+```
+
+Depois de aceitar, espere uns 5 segundos e troque o código pelo token do administrador:
+
+```bash
+TOKEN_ADMIN=$(curl -s -X POST "$KC/token" \
+  -d grant_type=urn:ietf:params:oauth:grant-type:device_code \
+  -d client_id=identity-gateway-demo -d device_code="$DEVICE_CODE" | jq -r .access_token | tr -d '\r')
+
+curl -s http://localhost:8080/api/v1/tenants/{id} -H "Authorization: Bearer $TOKEN_ADMIN"
+# {"tenantId":"…","name":"Acme","slug":"acme-…","status":"Active",
+#  "plan":{"tier":"Free","maxUsers":5,"maxClients":1},"occupiedSeats":1,"registeredAt":"…"}
+
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN_ADMIN" \
+  http://localhost:8080/api/v1/tenants/00000000-0000-0000-0000-000000000000
+# 403: não é o tenant dele. A resposta é a mesma para um tenant de outra pessoa e para um que não existe.
+
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8080/api/v1/tenants/{id}
+# 403: o platform-admin registra o tenant e acompanha o provisionamento, mas não o lê.
+```
+
+**Por que o platform-admin leva `403`.** A leitura de tenant pelo operador da plataforma é o único acesso entre
+tenants do produto, e só entra junto com a auditoria que registra cada um. Até lá, ele não lê. E a leitura do
+administrador não confia só no token: além do papel e do `tenant_id`, a API confere no próprio banco que ele é
+membro daquele tenant.
+
+Se o último comando responder `401`, o token do platform-admin venceu (5 minutos): renove-o como no passo 5 e repita.
+````
+
+Run: `dotnet test tests/IdentityGateway.ArchitectureTests`
+Expected: verde — as regras que leem o README (o padrão do e-mail do platform-admin) continuam valendo.
+
+- [ ] **Passo 8: 🧪 Provas por mutação**
+
+`git add -A src tests tools` antes; `git restore` do arquivo depois de cada uma.
+
+| # | Mutação | Rodar | Vermelho esperado |
+|---|---|---|---|
+| 1 | **Outbox desligado:** em `ApiComKeycloakFactory`, `builder.UseSetting("Outbox:Enabled", "false");` | `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-class "*LeituraDeTenantComKeycloakTests"` | `AdminConvidado_LeOProprioTenant_…`, depois de 90 s: "o tenant precisa ser provisionado em 90 s" (ficou `Pending`) |
+| 2 | **Sem a pertença:** em `AutorizacaoDaGateway`, tirar `new MemberRequirement()` da policy | idem | `TenantIdHerdadoDeUmGrupo_NaoBasta_SemSerMembroNoBanco`: `200` no lugar de `403`. As premissas do teste passam — o token traz o `tenant_id` herdado do grupo |
+| 3 | **A jornada pega a chave a mais:** em `TenantDetailsResponse`, acrescentar `public string? InitialAdminEmail { get; init; }` (a mutação 5 da Tarefa 15), reconstruir a imagem (`docker compose -p igverif up -d --build --wait --wait-timeout 300 api`) | num ambiente novo (`docker compose -p igverif down -v` e `up` de novo, porque o convite do platform-admin já foi concluído), `dotnet run -c Release tools/jornada-compose.cs -- jornada` | `exit=40`: "tenant: esperadas as chaves […], vieram […, initialAdminEmail, …]" |
+
+Depois da mutação 3, reverter o arquivo e reconstruir a imagem não é necessário: o ambiente é derrubado em seguida.
+
+Run: `docker compose -p igverif down -v`
+Expected: remove os contêineres e os volumes `igverif_*`. Os volumes `identitygateway_*` não aparecem na saída.
+
+Run: `rm -f "$IG_ESTADO"`
+
+- [ ] **Passo 9: Commit**
+
+```bash
+git add tests tools .github/workflows/ci.yml README.md
+git commit -m "test: o admin convidado le o proprio tenant, do Keycloak real a jornada da CI
+
+A colecao com Keycloak real liga o Outbox e percorre a volta inteira: o
+platform-admin registra o tenant, o provisionamento convida o admin, ele
+conclui o convite, entra pelo device flow e le o proprio tenant com
+exatamente as chaves do contrato; outro tenant e o platform-admin levam
+403. O ataque do tenant_id herdado de um grupo e reproduzido pelo master,
+com o claim afirmado no token antes do 403.
+
+O app da jornada ganha as mesmas etapas, no lugar da checagem de que o
+link do convite abre, e o README, o passo do administrador em janela
+anonima, com o motivo do 403 do platform-admin.
+
+Rodado localmente num projeto isolado (igverif). Mutacoes: Outbox
+desligado na factory, policy sem a pertenca e uma chave a mais na
+resposta."
+```
+
+Run: `git log -1 --format=%B | grep -Eci "co-authored|generated with"`
+Expected: `0`.
+
+---
+
+### Tarefa 17: Fechar as marcas "(D2, planejado)", README e handoff da D2
+
+Spec: §6 ("Documentos": a D2 fecha os itens marcados), §9, §11 (entregáveis).
+
+A v2.7 e o documento de negócio entraram com a D1 descrevendo o design inteiro, com o que só a D2 entregaria marcado `(D2, planejado)`. A rota existe agora: as marcas saem. O que a execução da D2 tiver desmentido do texto entra como errata, e não como reescrita silenciosa.
+
+**Arquivos:**
+- Modify: `docs/especificacao-arquitetural-v2.7.md`, `docs/documentacao-negocio.md`, `README.md`
+- Create: `docs/superpowers/specs/AAAA-MM-DD-tokens-keycloak-d2-handoff.md` (data do dia, `date +%F`)
+
+**Interfaces:**
+- Consome: tudo (Tarefas 13–16) e os documentos da Tarefa 12.
+- Produz: documentação.
+
+**Regra desta tarefa, a mesma da Tarefa 12:** todo trecho "a localizar" existe literalmente no arquivo e aparece uma vez só. Se um `Edit` não achar o trecho, o arquivo mudou fora do roteiro: pare e confira. **As duas linhas da v2.7 que trazem a sequência de escape do "e comercial" não são tocadas por nenhum passo daqui** — e o Passo 3 confere que ela continua lá.
+
+- [ ] **Passo 1: O ponto de partida**
+
+Run: `grep -c "(D2, planejado)" docs/especificacao-arquitetural-v2.7.md docs/documentacao-negocio.md README.md`
+Expected: `33`, `21` e `0`. São os números que a Tarefa 12 conferiu. Outro número quer dizer que alguém mexeu nas marcas entre os dois PRs: liste com `grep -n "planejad"` e entenda antes de seguir.
+
+- [ ] **Passo 2: v2.7 — as quatro marcas que não saem só por apagar**
+
+Em `docs/especificacao-arquitetural-v2.7.md`:
+
+1. Na §0, localizar (são duas linhas; a quebra fica entre `marcado` e a marca):
+
+```markdown
+primeira rota de tenant. Esta versão entra com a D1 e descreve o design inteiro: **o que só a D2 entrega está marcado
+"(D2, planejado)"**, e a D2 tira as marcas. A v2.7 registra só o que a fatia implementa, mais as erratas: a sequência
+```
+
+e substituir por:
+
+```markdown
+primeira rota de tenant. Esta versão entrou com a D1, descrevendo o design inteiro, com o que só a D2 entregaria
+marcado como planejado; **a D2 entregou a rota e tirou as marcas**. A v2.7 registra só o que a fatia implementa, mais as erratas: a sequência
+```
+
+2. No ADR-011, localizar:
+
+```markdown
+- **Estado:** decidido na v2.7; a implementação chega com a primeira rota de tenant (D2, planejado).
+```
+
+e substituir por:
+
+```markdown
+- **Estado:** decidido na v2.7 e implementado com a primeira rota de tenant, `GET /tenants/{tenantId}`.
+```
+
+3. Na §13, na tabela de testes, localizar o começo da última linha:
+
+```markdown
+| Autorização da rota de tenant (D2, planejado) |
+```
+
+e substituir por:
+
+```markdown
+| Autorização da rota de tenant (v2.7) |
+```
+
+4. Na §16, na tabela de fatias, localizar o fim da linha da fatia D:
+
+```markdown
+| M0 + M1 | D1 entregue; D2 (D2, planejado) |
+```
+
+e substituir por (o número do PR da D1 sai de `git log --oneline --merges main | head`; o da D2 entra depois do merge, como o da D1 entrou):
+
+```markdown
+| M0 + M1 | Entregue (D1: PR #<número>; D2: nesta entrega) |
+```
+
+5. Na §8, um complemento que a execução mostrou necessário. Localizar, no parágrafo "A primeira rota de tenant":
+
+```markdown
+e a rota não usa `404`.
+```
+
+e substituir por:
+
+```markdown
+e a rota não usa `404`. Um `tenantId` que não é GUID não casa a rota (restrição `:guid`): é um caminho não mapeado, que responde `404` a quem está autenticado e não diz nada sobre tenant nenhum.
+```
+
+- [ ] **Passo 3: v2.7 — as demais marcas, de uma vez**
+
+Todas as outras ocorrências são a marca solta depois de uma frase, de um título de linha ou de um comentário de código; apagar ` (D2, planejado)`, com o espaço da frente, deixa o texto certo.
+
+Run: `sed -i 's/ (D2, planejado)//g' docs/especificacao-arquitetural-v2.7.md`
+
+Run: `grep -c "D2, planejado" docs/especificacao-arquitetural-v2.7.md`
+Expected: `0`.
+
+Run: `grep -cF -- "$(printf '\134u0026')" docs/especificacao-arquitetural-v2.7.md`
+Expected: `2` — a sequência de escape da errata E1 continua nas duas linhas. Se der menos, um `Edit` a decodificou: refaça essas linhas pelo caminho do Passo 21 da Tarefa 12 (marcador e `perl`).
+
+Run: `git diff --stat -- docs/especificacao-arquitetural-v2.7.md`
+Expected: cerca de 33 linhas alteradas, nenhuma inserida nem removida além das do Passo 2.
+
+Leia o diff inteiro (`git diff -- docs/especificacao-arquitetural-v2.7.md`): cada linha alterada tem que continuar sendo uma frase. Atenção às três do código de referência da §11.7 e à da §11.8, que são comentários (`// Authorization/SameTenantRequirement.cs`).
+
+**O que a execução desmentiu.** Compare o código entregue pelas Tarefas 13 a 15 com o texto da v2.7 nas §6.4, §8, §10.1, §11.7, §11.8, §11.9 e §13. Para cada divergência de **decisão** (não de redação nem de nome de variável), acrescente uma errata no fim da lista de erratas da §0, numerada a partir de `E9`, no formato das demais ("**E9** (§N): o que o texto dizia, e o que vale"), e corrija o trecho. Divergências já conhecidas ao escrever este plano: nenhuma — o código de referência da §11.7 já traz a checagem do tamanho do claim, e o complemento do `404` de rota entrou no Passo 2. Se não houver nenhuma, não acrescente nada.
+
+- [ ] **Passo 4: Documento de negócio**
+
+Em `docs/documentacao-negocio.md`:
+
+1. No cabeçalho, localizar:
+
+```markdown
+convite do admin inicial e tokens do Keycloak (primeira parte, D1) entregues.
+```
+
+e substituir por:
+
+```markdown
+convite do admin inicial e tokens do Keycloak (D1 e D2) entregues.
+```
+
+2. Na "Nota da versão 1.4", localizar as três últimas linhas da nota:
+
+```markdown
+> RN-028 (pertença do ator ao tenant) e a RN-029 (separação de funções). O que só a segunda parte da fatia
+> entrega — a rota `GET /tenants/{tenantId}` e as regras que a protegem — está marcado **"(D2, planejado)"**. As
+> citações `§N` continuam válidas.
+```
+
+e substituir por:
+
+```markdown
+> RN-028 (pertença do ator ao tenant) e a RN-029 (separação de funções). O que só a segunda parte da fatia
+> entregava — a rota `GET /tenants/{tenantId}` e as regras que a protegem — ficou marcado como planejado até a D2
+> ser entregue, quando as marcas saíram. As citações `§N` continuam válidas.
+```
+
+3. As demais, de uma vez:
+
+Run: `sed -i 's/ (D2, planejado)//g' docs/documentacao-negocio.md`
+
+Run: `grep -c "D2, planejado" docs/documentacao-negocio.md`
+Expected: `0`.
+
+Leia o diff (`git diff -- docs/documentacao-negocio.md`): cerca de 21 linhas, cada uma ainda uma frase. A matriz de permissões e as RN-028 e RN-029 deixam de dizer "planejado" e passam a descrever o que a rota faz — confira que o texto delas bate com o comportamento: `403` para o platform-admin, pertença em `Invited` ou `Active`, e quem acumula `platform-admin` e `tenant-admin` negado.
+
+- [ ] **Passo 5: README**
+
+Em `README.md` (a demonstração já ganhou o passo 6 na Tarefa 16):
+
+1. No parágrafo de estado, localizar o título:
+
+```markdown
+admin inicial e tokens do Keycloak (D1) entregues.**
+```
+
+e substituir por:
+
+```markdown
+admin inicial e tokens do Keycloak (D1 e D2) entregues.**
+```
+
+2. No mesmo parágrafo, localizar:
+
+```markdown
+M0 "primeiro `curl` com token do Keycloak". **Próximo passo:** a D2, a primeira rota de tenant
+(`GET /api/v1/tenants/{tenantId}`), em que o admin convidado lê o próprio tenant.
+```
+
+e substituir por:
+
+```markdown
+M0 "primeiro `curl` com token do Keycloak". A segunda parte acrescentou a primeira rota de tenant,
+`GET /api/v1/tenants/{tenantId}`: o admin convidado lê o próprio tenant, e a autorização confere o token **e** a
+pertença no banco (ADR-011). **Próximo passo:** a decidir — a proposta do design é a auditoria, que destrava a
+leitura de tenant pelo platform-admin.
+```
+
+3. No fim do mesmo parágrafo, o link do handoff passa a ser o da D2. Localizar:
+
+```markdown
+[handoff da D1](docs/superpowers/specs/
+```
+
+e substituir a linha inteira por (com a data real do Passo 7 no lugar de `AAAA-MM-DD`):
+
+```markdown
+[handoff da D2](docs/superpowers/specs/AAAA-MM-DD-tokens-keycloak-d2-handoff.md).
+```
+
+4. Na tabela de ADRs, localizar:
+
+```markdown
+| 011 | Nas rotas de governança, autorização é token mais pertença no banco (decidido; a rota que o usa chega com a D2) |
+```
+
+e substituir por:
+
+```markdown
+| 011 | Nas rotas de governança, autorização é token mais pertença no banco |
+```
+
+5. A contagem de testes (a linha que começa com `# Toda a suíte —`) recebe os números do Passo 6.
+
+- [ ] **Passo 6: Suíte completa**
+
+Docker Desktop ligado.
+
+Run: `dotnet build IdentityGateway.slnx`
+Expected: `0 Aviso(s)`, `0 Erro(s)`.
+
+Run: `dotnet build -c Release tools/jornada-compose.cs`
+Expected: compila, sem avisos.
+
+Run: `dotnet test`
+Expected: 0 falhas, 0 skips nos cinco projetos. Em relação ao handoff da D1, a D2 acrescenta: `Application.UnitTests` +2, `ArchitectureTests` +3, `Infrastructure.IntegrationTests` +7, `Api.FunctionalTests` +76 (23 da Tarefa 13, 17 da 14, 34 da 15 e 2 da 16). Um total diferente não é erro por si — mas explique a diferença no handoff.
+
+Atualizar a linha `# Toda a suíte —` do README com os números observados, no mesmo formato, e rodar de novo `dotnet test tests/IdentityGateway.ArchitectureTests` (há regras que leem o README).
+
+- [ ] **Passo 7: Handoff da D2**
+
+Criar `docs/superpowers/specs/AAAA-MM-DD-tokens-keycloak-d2-handoff.md` (data de `date +%F`), no formato do handoff da D1, com estas seções e o que foi **observado** em cada uma — nada de valor esperado no lugar de valor observado:
+
+````markdown
+# Handoff — tokens do Keycloak, parte D2 entregue
+
+> **Data:** AAAA-MM-DD · **Marco:** M0 + M1 (fatia D, segunda parte) · **Status:** implementada, build e suíte
+> completa verdes. Push e PR aguardam autorização do autor.
+> **Onde parou:** as Tarefas 13 a 17 estão commitadas na branch `feat/leitura-do-tenant`; falta a revisão final da
+> branch, enviar, abrir o PR contra `main`, acompanhar a CI e mesclar.
+>
+> Sucede o handoff da D1. Design: [`2026-09-30-tokens-keycloak-design.md`](2026-09-30-tokens-keycloak-design.md).
+> Plano: [`2026-09-30-tokens-keycloak.md`](../plans/2026-09-30-tokens-keycloak.md). Referência normativa:
+> [`especificacao-arquitetural-v2.7.md`](../../especificacao-arquitetural-v2.7.md).
+
+---
+
+## Estado do repositório
+
+| O quê | Estado |
+|---|---|
+| Branch | `feat/leitura-do-tenant`, <N> commits sobre `main` (`<hash do merge da D1>`) |
+| Working tree | Limpa depois do commit desta tarefa |
+| Realm, compose e one-shot | **Não tocados.** `git diff --stat main -- keycloak docker-compose.yml` vazio: quem já subiu o compose depois da D1 não precisa de `down -v` |
+| Push / PR | **Pendentes de autorização** |
+
+## O que a D2 entregou
+
+| Camada | Entregue |
+|---|---|
+| Api | `Authorization/RoleRequirement`, `NotPlatformAdminRequirement`, `SameTenantRequirement`, `MemberRequirement` e `MemberRequirementHandler`; `AutorizacaoDaGateway.AddAutorizacaoDaGateway` (policies, fallback, `InvokeHandlersAfterFailure` falso, handler da pertença registrado depois do `AddAuthorization`); `Policies.TenantAdmin` e `Policies.DeTenant`; `GET /api/v1/tenants/{tenantId}` no `TenantsModule`, com a falha do handler traduzida no mesmo `403` |
+| Application | `IMemberQueries`; `GetTenantQuery`, `GetTenantHandler`, `TenantDetailsResponse`, `TenantPlanResponse`; `ITenantQueries.GetDetailsAsync` e `TenantDetailsView` |
+| Infrastructure | `MemberQueries`; `TenantQueries.GetDetailsAsync` |
+| Testes | Unitários da policy com um handler que aprova tudo; a pertença por estado, numa tabela escrita à mão; a ordem dos handlers, no contêiner de teste e na composição real; a suíte negativa de autorização por HTTP; o conjunto exato de chaves do `200`; o teste de subida das policies de tenant; as consultas contra o PostgreSQL; a volta inteira com Keycloak real e o ataque do grupo; as regras de arquitetura novas |
+| CI e demonstração | A fase `jornada` do app com o admin convidado lendo o próprio tenant; o passo 6 da demonstração do README |
+| Documentos | As marcas "(D2, planejado)" fechadas na v2.7 e no documento de negócio; README; este handoff |
+
+## O que mudou em relação ao plano
+
+<Uma entrada numerada por desvio: o que o plano supunha, o que a execução achou, o commit, e onde a v2.7 registra
+(errata E9 em diante, se houve). Se nada mudou, "nada".>
+
+## Suíte completa
+
+<A tabela por projeto, como no handoff da D1, com os totais observados e a diferença em relação à D1.>
+
+## Prova por mutação
+
+<Uma linha por mutação das tabelas das Tarefas 13 a 16: a mutação, o teste que ficou vermelho e a mensagem
+observada. As duas mutações que ficam verdes sozinhas (Tarefa 14, 7 e 8) entram como "verde, equivalente; vermelha
+em par".>
+
+## Verificação ao vivo
+
+<A jornada no projeto isolado `igverif` (Tarefa 16, Passo 5): as etapas e os tempos. E, depois do PR aberto, o tempo
+do job `Compose`.>
+
+## Pendências
+
+**Para o autor decidir:**
+- A leitura do `tenantId` da rota: o plano implementou "qualquer formato de GUID na rota, só o formato `D` no claim"
+  (a §5.2 do design); a §4.3 do design dizia formato `D` nos dois.
+- <O que mais a execução levantou.>
+
+**Limites que continuam abertos** (v2.7, §19): o platform-admin recebe `403` na leitura de tenant até existir a
+auditoria; `Invited` passa na pertença até o aceite do convite ser sincronizado; o Data Plane continua exposto ao
+`tenant_id` por grupo; a pertença não contém quem tem a chave da Gateway; e-mail digitado errado dá a leitura do
+tenant ao destinatário errado.
+
+**Segue pendente do M0:** a tabela de auditoria, o armazenamento de eventos do realm e o RabbitMQ.
+
+## Próximo passo
+
+1. Revisão final da branch.
+2. Autorizar o push e abrir o PR contra `main`. Não há aviso de `down -v` desta vez.
+3. Acompanhar a CI e mesclar; depois, acrescentar o número do PR na linha da fatia D da §16 da v2.7.
+4. Decidir a próxima fatia (o design propõe a auditoria, que destrava o `TenantReadAccess`).
+````
+
+Run: `grep -n "<\|AAAA-MM-DD" docs/superpowers/specs/*-tokens-keycloak-d2-handoff.md README.md`
+Expected: nenhuma linha — toda lacuna do modelo começa com `<`.
+
+Run: `git diff --stat main -- keycloak docker-compose.yml`
+Expected: vazio. É a afirmação "a D2 não toca o realm nem o compose", conferida.
+
+- [ ] **Passo 8: Commit**
+
+Run: `git status --short`
+Expected: `M` para `docs/especificacao-arquitetural-v2.7.md`, `docs/documentacao-negocio.md` e `README.md`, e `??` para o handoff da D2. Nada em `src/`, `tests/`, `tools/`, `keycloak/`, `.github/` nem `docker-compose.yml`.
+
+```bash
+git add docs README.md
+git commit -m "docs: fecha os itens planejados da v2.7 com a D2 entregue, README e handoff
+
+A rota GET /tenants/{tenantId}, a policy TenantAdmin e a pertenca no banco
+existem: saem as marcas de planejado da especificacao v2.7 e do documento
+de negocio, o ADR-011 passa a implementado, a linha da fatia D da secao 16
+fica entregue, e a secao 8 registra que um tenantId que nao e GUID nao
+casa a rota. O README atualiza o andamento e a contagem de testes, e o
+handoff traz a suite, a tabela de mutacoes e a jornada rodada ao vivo."
+```
+
+Run: `git log -1 --format=%B | grep -Eci "co-authored|generated with"`
+Expected: `0`.
+
+Push e PR ficam para autorização do autor.
+
+---
+
+## Autorrevisão do plano
+
+Feita ao fechar a redação, contra a spec:
+
+- **Cobertura.** §4.2 → Tarefas 6 a 8. §4.3 → Tarefas 13 a 15. §4.4 → Tarefas 2 e 3. §4.5 → Tarefa 10. §4.6 → Tarefas 4, 5, 11 e 16. §4.7 → Tarefas 10, 11 e 16. §5.1 e §5.2 → cada linha tem tarefa dona, citada no cabeçalho "Spec:" da tarefa. §5.3 → as tabelas 🧪; as três mutações que o plano trata como equivalentes estão ditas onde aparecem (o `azp` lido por `FindFirst`, na Tarefa 8; `InvokeHandlersAfterFailure` e o `HasFailed`, cada um sozinho, na Tarefa 14; "consultar o tenant antes de autorizar", decomposta em duas, na Tarefa 15). §9 e §11 → Tarefas 12 e 17.
+- **Sem lacunas de redação.** Os únicos `<…>` do plano estão nos modelos dos dois handoffs e na contagem de testes do README, que só existem depois da execução; cada um tem um passo que confere que foram preenchidos.
+- **Consistência de nomes.** Os nomes produzidos por uma tarefa e consumidos por outra estão no bloco "Interfaces" das duas. Conferidos na redação: `Policies.TenantAdmin` e `Policies.DeTenant`; `SameTenantRequirement.ParametroDaRota`; `AddAutorizacaoDaGateway`; `IMemberQueries.GetStatusAsync`; `PertencaFalsa`; `MontagemDaAutorizacao`; `TenantsModule.ParaRespostaDoTenant`; `IdentityGatewayApiFactory.Emissor.Emitir(sub, roles, tenantId, ajustar)`; `ApiComKeycloakFactory.CriarClienteComoAsync`; os métodos do `KeycloakFixture` e do `HarnessDeLogin`.
+- **Uma divergência da spec, deliberada e registrada para o autor:** o `tenantId` da rota em qualquer formato de GUID (Tarefa 13).
