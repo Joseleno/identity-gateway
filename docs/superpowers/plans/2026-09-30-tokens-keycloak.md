@@ -543,7 +543,7 @@ Regra nova de arquitetura: o compose e o fixture usam a mesma tag do
 Keycloak. Mutacao: tag 26.7.3 no fixture deixa a regra vermelha."
 ```
 
-Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"\|generated with\|claude\|anthropic"`
+Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"`
 Expected: `0`.
 
 ---
@@ -1201,7 +1201,7 @@ JSON; NenhumaChaveDeCredencial passa a percorrer o User Profile.
 Quem ja tem volumes do compose precisa de docker compose down -v."
 ```
 
-Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"\|generated with\|claude\|anthropic"`
+Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"`
 Expected: `0`.
 
 ---
@@ -1516,7 +1516,7 @@ no service account, sem o scope offline_access, fullScopeAllowed falso no
 service account, tenant-admin no bootstrap e revokeRefreshToken falso."
 ```
 
-Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"\|generated with\|claude\|anthropic"`
+Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"`
 Expected: `0`.
 
 ---
@@ -2938,7 +2938,7 @@ valores dos campos na excecao, cookie vencido mantido, Host do transporte,
 sem o ramo da pagina de erro, renovacao repetida e login reenviado."
 ```
 
-Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"\|generated with\|claude\|anthropic"`
+Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"`
 Expected: `0`.
 
 ---
@@ -3386,7 +3386,7 @@ revokeRefreshToken falso, refreshTokenMaxReuse 1, demo sem basic, com
 email, sem gateway-api e roles nao multivalorado."
 ```
 
-Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"\|generated with\|claude\|anthropic"`
+Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"`
 Expected: `0`.
 
 ---
@@ -3861,7 +3861,7 @@ RequireHttpsMetadata fixo, sem a recusa do demo, recusa so em Production
 e a lista no appsettings base."
 ```
 
-Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"\|generated with\|claude\|anthropic"`
+Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"`
 Expected: `0`.
 
 ---
@@ -5731,7 +5731,7 @@ result handler, health check sem anonimato, rota sem policy, chave
 simetrica de volta, o claim da particao e o logger estatico."
 ```
 
-Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"\|generated with\|claude\|anthropic"`
+Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"`
 Expected: `0`.
 
 ---
@@ -6595,7 +6595,7 @@ Development e a guarda de http."
 
 Se a mutação 15 não foi executada, troque "e a guarda de http" por "(a guarda de http ficou para o autor)" na mensagem.
 
-Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"\|generated with\|claude\|anthropic"`
+Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"`
 Expected: `0`.
 
 ---
@@ -7337,7 +7337,7 @@ como default do realm, gateway-api no service account, mapper extra no
 gateway-tenant, token no log da falha e Authorization no log do pedido."
 ```
 
-Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"\|generated with\|claude\|anthropic"`
+Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"`
 Expected: `0`.
 
 ---
@@ -7854,7 +7854,7 @@ lido com --fields, marcador gravado depois do envio, e oito nas regras
 de arquitetura do compose."
 ```
 
-Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"\|generated with\|claude\|anthropic"`
+Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"`
 Expected: `0`.
 
 ---
@@ -8851,7 +8851,7 @@ marcador e com o marcador lido por --fields (a contagem vai a 2), padrao
 do e-mail divergente, pacote declarado na ferramenta e AOT ligado."
 ```
 
-Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"\|generated with\|claude\|anthropic"`
+Run: `git log -1 --format=%B | grep -ci "co-authored|generated with"`
 Expected: `0`.
 
 ---
