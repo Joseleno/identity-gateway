@@ -29,4 +29,12 @@
     <PackageReference Include="Testcontainers.Keycloak" />
   </ItemGroup>
 
+  <!--
+    O harness tem um construtor interno que recebe o transporte e a espera, para ser testado sem Keycloak e sem
+    esperar os 5 s do device flow. Quem o testa é o projeto de integração.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="IdentityGateway.Infrastructure.IntegrationTests" />
+  </ItemGroup>
+
 </Project>

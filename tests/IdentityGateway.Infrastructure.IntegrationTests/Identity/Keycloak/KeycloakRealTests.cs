@@ -156,9 +156,17 @@ public sealed class KeycloakRealTests(KeycloakFixture keycloak)
             credentials = new[] { new { type = "password", value = senha, temporary = false } },
         }, ct);
 
-        string token = await keycloak.TokenDeUsuarioComumAsync(username, senha, ct);
+        using HarnessDeLogin harness = keycloak.CriarHarness(KeycloakFixture.ClientDeConta);
+        TokensDeUsuario tokens = await harness.TokenPorDispositivoAsync(username, senha, ct);
+
+        // O client de device flow do fixture herda os scopes default do realm, como qualquer client criado pela Admin
+        // API: o token dele serve à Account API (aud account) e não à Gateway. É a prova, no realm vivo, de que a
+        // audiência da Gateway não é default.
+        PayloadDoJwt.Audiencias(PayloadDoJwt.Ler(tokens.AccessToken))
+            .Should().Contain("account").And.NotContain("identity-gateway-api");
+
         using HttpClient conta = new() { BaseAddress = new Uri($"{keycloak.BaseUrl}/") };
-        conta.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        conta.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
         conta.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         Uri rota = new($"realms/{KeycloakFixture.Realm}/account/", UriKind.Relative);
 

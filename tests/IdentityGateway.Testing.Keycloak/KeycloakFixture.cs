@@ -1,7 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
@@ -34,6 +33,11 @@ namespace IdentityGateway.Testing.Keycloak;
 /// Organizations com slug aleatório e usa e-mails únicos com <c>+</c>, e nunca afirma sobre contagem global. O
 /// mailpit é sempre filtrado pelo destinatário exato.
 /// </para>
+/// <para>
+/// <b>Sem ROPC no realm da aplicação (ADR-003).</b> Token de usuário, aqui, só pelo harness de device flow. O
+/// <c>grant_type=password</c> que resta é o do <c>admin-cli</c> do realm <b>master</b>, em
+/// <see cref="CriarClienteMasterAsync"/>: é a infraestrutura do Testcontainers, fora do realm da aplicação.
+/// </para>
 /// </remarks>
 public sealed class KeycloakFixture : IAsyncLifetime
 {
@@ -57,12 +61,32 @@ public sealed class KeycloakFixture : IAsyncLifetime
     /// </remarks>
     public const string EmailDoPlatformAdmin = "platform-admin@identity-gateway.test";
 
+    /// <summary>O client público de demonstração do realm: só device flow, com os scopes da Gateway.</summary>
+    public const string ClientDeDemonstracao = "identity-gateway-demo";
+
+    /// <summary>
+    /// Client público criado pelo fixture, em runtime, só com device flow, <b>herdando os scopes default do realm</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Existe para o teste da Account REST API, que exige <c>manage-account</c> e <c>aud=account</c> (do scope
+    /// <c>roles</c>, um default do realm) — o que o client de demonstração não emite. Nunca é declarado no JSON.
+    /// </para>
+    /// <para>
+    /// <b>Sem <c>defaultClientScopes</c> de propósito:</b> ele recebe exatamente o que um client qualquer criado pela
+    /// Admin API receberia. O token dele NÃO traz a audiência da Gateway — e é isso que prova, no realm vivo, que
+    /// <c>gateway-api</c> não é scope default. Com os scopes listados aqui, a prova seria vacuosa.
+    /// </para>
+    /// </remarks>
+    public const string ClientDeConta = "fixture-conta-dispositivo";
+
     private const int PortaDoMailpit = 8025;
 
-    // Montada com o host e o realm das constantes, e não repetindo os dois numa regex literal.
-    private static readonly Regex LinkDeAcoes = new(
-        Regex.Escape(HostnamePublico) + "/realms/" + Regex.Escape(Realm) + @"/login-actions/action-token\?key=\S+",
-        RegexOptions.CultureInvariant);
+    private static readonly string[] AcoesDoConvite = ["UPDATE_PASSWORD", "VERIFY_EMAIL"];
+
+    private static readonly string[] SoPlatformAdmin = ["platform-admin"];
+
+    private ClienteDoMailpit? _mailpitCliente;
 
     private readonly INetwork _rede;
     private readonly IContainer _mailpit;
@@ -105,14 +129,19 @@ public sealed class KeycloakFixture : IAsyncLifetime
     /// <summary>Interface e API do mailpit, pela porta mapeada.</summary>
     public string MailpitUrl => $"http://{_mailpit.Hostname}:{_mailpit.GetMappedPublicPort(PortaDoMailpit)}";
 
+    /// <summary>O cliente da API do mailpit deste fixture.</summary>
+    public ClienteDoMailpit Mailpit => _mailpitCliente ??= new ClienteDoMailpit(new Uri(MailpitUrl));
+
     public async ValueTask InitializeAsync()
     {
         await _rede.CreateAsync();
         await Task.WhenAll(_mailpit.StartAsync(), _container.StartAsync());
+        await CriarClientDeContaAsync(CancellationToken.None);
     }
 
     public async ValueTask DisposeAsync()
     {
+        _mailpitCliente?.Dispose();
         await _container.DisposeAsync();
         await _mailpit.DisposeAsync();
         await _rede.DisposeAsync();
@@ -276,129 +305,134 @@ public sealed class KeycloakFixture : IAsyncLifetime
         return [.. lista.RootElement.EnumerateArray().Select(papel => papel.GetProperty("name").GetString()!)];
     }
 
+    /// <summary>Um harness de login (uma sessão de navegador nova) apontado para este Keycloak.</summary>
+    public HarnessDeLogin CriarHarness(string clientId = ClientDeDemonstracao, Action<string>? log = null) =>
+        new(new Uri(HostnamePublico), new Uri(BaseUrl), clientId, log, Realm);
+
     /// <summary>
-    /// Token de um usuário comum do realm, por senha, num client de teste criado para isso.
+    /// Cria um usuário pelo master, com os papéis e o tenant pedidos, e conclui o convite dele pelo link do e-mail.
     /// </summary>
     /// <remarks>
-    /// Um client próprio, público e com direct grant: o <c>admin-cli</c> do realm não tem <c>fullScopeAllowed</c>, e o
-    /// token dele não traria os papéis do client <c>account</c> que a Account REST API exige.
+    /// O caminho é o do convite real: o usuário nasce sem senha, com as duas ações obrigatórias; o Keycloak manda o
+    /// e-mail; o harness segue o link e define uma senha gerada. Nenhuma senha é atribuída pela Admin API.
     /// </remarks>
-    public async Task<string> TokenDeUsuarioComumAsync(string username, string senha, CancellationToken cancellationToken)
+    public async Task<UsuarioDeTeste> NovoUsuarioAsync(
+        IReadOnlyList<string> papeis, string? tenantId, CancellationToken cancellationToken)
     {
-        string clientId = $"teste-conta-{Guid.NewGuid():N}"[..24];
+        ArgumentNullException.ThrowIfNull(papeis);
 
-        using (HttpClient master = await CriarClienteMasterAsync(cancellationToken))
+        string email = EmailUnico();
+        string senha = SenhasDeTeste.Gerar();
+
+        Dictionary<string, object> usuario = new()
         {
-            using HttpResponseMessage criado = await master.PostAsJsonAsync(
-                $"admin/realms/{Realm}/clients",
-                new
-                {
-                    clientId,
-                    publicClient = true,
-                    directAccessGrantsEnabled = true,
-                    standardFlowEnabled = false,
-                    fullScopeAllowed = true,
-                },
-                cancellationToken);
-            criado.EnsureSuccessStatusCode();
+            ["username"] = email,
+            ["email"] = email,
+            ["enabled"] = true,
+            ["emailVerified"] = false,
+            ["requiredActions"] = AcoesDoConvite,
+        };
+
+        if (tenantId is not null)
+        {
+            usuario["attributes"] = new Dictionary<string, string[]> { ["tenant_id"] = [tenantId] };
         }
 
-        using HttpClient http = new() { BaseAddress = new Uri($"{BaseUrl}/") };
-        using FormUrlEncodedContent corpo = new(
-        [
-            new("grant_type", "password"),
-            new("client_id", clientId),
-            new("username", username),
-            new("password", senha),
-        ]);
+        string id = await CriarUsuarioComoMasterAsync(usuario, cancellationToken);
 
-        using HttpResponseMessage resposta = await http.PostAsync(
-            new Uri($"realms/{Realm}/protocol/openid-connect/token", UriKind.Relative), corpo, cancellationToken);
+        foreach (string papel in papeis)
+        {
+            await AtribuirPapelDeRealmComoMasterAsync(id, papel, cancellationToken);
+        }
+
+        await EnviarEmailDeAcoesComoMasterAsync(id, cancellationToken);
+
+        using HarnessDeLogin harness = CriarHarness();
+        await harness.ConcluirLinkDeAcoesAsync(await LinkDoConviteAsync(email, cancellationToken), senha, cancellationToken);
+
+        return new UsuarioDeTeste(id, email, senha);
+    }
+
+    /// <summary>Um platform-admin próprio do teste, com o convite já concluído.</summary>
+    /// <remarks>
+    /// <b>Um por teste.</b> No Testcontainers não há one-shot, e o link de ações é de uso único: com um platform-admin
+    /// só, dois testes paralelos disputariam o link, e o segundo receberia "Action expired". O platform-admin do JSON
+    /// (<see cref="EmailDoPlatformAdmin"/>) fica para a prova do realm importado.
+    /// </remarks>
+    public Task<UsuarioDeTeste> NovoPlatformAdminAsync(CancellationToken cancellationToken) =>
+        NovoUsuarioAsync(SoPlatformAdmin, tenantId: null, cancellationToken);
+
+    /// <summary>Atribui um papel de realm ao usuário, como o master.</summary>
+    public async Task AtribuirPapelDeRealmComoMasterAsync(
+        string usuarioId, string papel, CancellationToken cancellationToken)
+    {
+        JsonElement representacao = await LerComoMasterAsync($"roles/{papel}", cancellationToken);
+
+        using HttpClient master = await CriarClienteMasterAsync(cancellationToken);
+        using HttpResponseMessage resposta = await master.PostAsJsonAsync(
+            $"admin/realms/{Realm}/users/{usuarioId}/role-mappings/realm",
+            new[] { new { id = representacao.GetProperty("id").GetString(), name = papel } },
+            cancellationToken);
         resposta.EnsureSuccessStatusCode();
+    }
 
-        using var token = JsonDocument.Parse(await resposta.Content.ReadAsStringAsync(cancellationToken));
-        return token.RootElement.GetProperty("access_token").GetString()!;
+    /// <summary>Dispara o e-mail de ações do usuário, como o master, com um link de 10 minutos.</summary>
+    public async Task EnviarEmailDeAcoesComoMasterAsync(string usuarioId, CancellationToken cancellationToken)
+    {
+        using HttpClient master = await CriarClienteMasterAsync(cancellationToken);
+        using HttpResponseMessage resposta = await master.PutAsJsonAsync(
+            $"admin/realms/{Realm}/users/{usuarioId}/execute-actions-email?lifespan=600",
+            AcoesDoConvite,
+            cancellationToken);
+        resposta.EnsureSuccessStatusCode();
+    }
+
+    // Uma vez por fixture: o ROPC que existia aqui criava um client por chamada, com direct grant, e não o removia.
+    private async Task CriarClientDeContaAsync(CancellationToken cancellationToken)
+    {
+        using HttpClient master = await CriarClienteMasterAsync(cancellationToken);
+        using HttpResponseMessage resposta = await master.PostAsJsonAsync(
+            $"admin/realms/{Realm}/clients",
+            new
+            {
+                clientId = ClientDeConta,
+                publicClient = true,
+                standardFlowEnabled = false,
+                implicitFlowEnabled = false,
+                directAccessGrantsEnabled = false,
+                serviceAccountsEnabled = false,
+                fullScopeAllowed = true,
+                attributes = new Dictionary<string, string> { ["oauth2.device.authorization.grant.enabled"] = "true" },
+            },
+            cancellationToken);
+        resposta.EnsureSuccessStatusCode();
     }
 
     /// <summary>Os ids das mensagens do mailpit cujo destinatário é exatamente o informado.</summary>
     /// <remarks>
     /// A busca <c>to:</c> do mailpit casa por trecho — <c>x@acme.test</c> acharia <c>pre.x@acme.test</c>. O filtro
-    /// exato é feito aqui, sobre <c>To[].Address</c>.
+    /// exato é feito no cliente do mailpit, sobre <c>To[].Address</c>.
     /// </remarks>
-    public async Task<IReadOnlyList<string>> MensagensParaAsync(string destinatario, CancellationToken cancellationToken)
-    {
-        using HttpClient http = new() { BaseAddress = new Uri($"{MailpitUrl}/") };
-        string consulta = Uri.EscapeDataString($"to:\"{destinatario}\"");
-
-        using var busca = JsonDocument.Parse(await http.GetStringAsync(
-            new Uri($"api/v1/search?query={consulta}", UriKind.Relative), cancellationToken));
-
-        return
-        [
-            .. busca.RootElement.GetProperty("messages").EnumerateArray()
-                .Where(mensagem => mensagem.GetProperty("To").EnumerateArray().Any(para =>
-                    string.Equals(para.GetProperty("Address").GetString(), destinatario, StringComparison.OrdinalIgnoreCase)))
-                .Select(mensagem => mensagem.GetProperty("ID").GetString()!),
-        ];
-    }
+    public Task<IReadOnlyList<string>> MensagensParaAsync(string destinatario, CancellationToken cancellationToken) =>
+        Mailpit.MensagensParaAsync(destinatario, cancellationToken);
 
     /// <summary>Espera até haver ao menos <paramref name="quantidade"/> mensagens para o destinatário (até 5 s).</summary>
     /// <remarks>
     /// O Keycloak envia dentro da requisição de <c>execute-actions-email</c>, então o e-mail já deveria estar lá quando
     /// a chamada volta; a espera curta só absorve a gravação do mailpit.
     /// </remarks>
-    public async Task<IReadOnlyList<string>> EsperarMensagensAsync(
-        string destinatario, int quantidade, CancellationToken cancellationToken)
-    {
-        for (int tentativa = 0; tentativa < 20; tentativa++)
-        {
-            IReadOnlyList<string> ids = await MensagensParaAsync(destinatario, cancellationToken);
-
-            if (ids.Count >= quantidade)
-            {
-                return ids;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
-        }
-
-        return await MensagensParaAsync(destinatario, cancellationToken);
-    }
+    public Task<IReadOnlyList<string>> EsperarMensagensAsync(
+        string destinatario, int quantidade, CancellationToken cancellationToken) =>
+        Mailpit.EsperarMensagensAsync(destinatario, quantidade, cancellationToken);
 
     /// <summary>O corpo em texto da mensagem (o HTML traz o <c>&amp;</c> do link escapado).</summary>
-    public async Task<string> TextoDaMensagemAsync(string id, CancellationToken cancellationToken)
-    {
-        using HttpClient http = new() { BaseAddress = new Uri($"{MailpitUrl}/") };
-
-        using var mensagem = JsonDocument.Parse(await http.GetStringAsync(
-            new Uri($"api/v1/message/{id}", UriKind.Relative), cancellationToken));
-
-        return mensagem.RootElement.GetProperty("Text").GetString()!;
-    }
+    public Task<string> TextoDaMensagemAsync(string id, CancellationToken cancellationToken) =>
+        Mailpit.TextoDaMensagemAsync(id, cancellationToken);
 
     /// <summary>O link de ações do convite mais recente para o destinatário, com o host público.</summary>
     /// <exception cref="FalhaDoHarnessException">Não há mensagem, ou ela não traz o link no endereço público.</exception>
-    public async Task<Uri> LinkDoConviteAsync(string destinatario, CancellationToken cancellationToken)
-    {
-        IReadOnlyList<string> ids = await EsperarMensagensAsync(destinatario, 1, cancellationToken);
-
-        if (ids.Count == 0)
-        {
-            throw new FalhaDoHarnessException(
-                FamiliaDeFalha.Mailpit, "convite", "nenhuma mensagem para o destinatário no mailpit.");
-        }
-
-        Match link = LinkDeAcoes.Match(await TextoDaMensagemAsync(ids[0], cancellationToken));
-
-        if (!link.Success)
-        {
-            throw new FalhaDoHarnessException(
-                FamiliaDeFalha.Mailpit, "convite",
-                "a mensagem não traz o link de ações no endereço público (KC_HOSTNAME).");
-        }
-
-        return new Uri(link.Value);
-    }
+    public Task<Uri> LinkDoConviteAsync(string destinatario, CancellationToken cancellationToken) =>
+        Mailpit.LinkDeAcoesAsync(destinatario, new Uri(HostnamePublico), Realm, cancellationToken);
 
     private static string CaminhoDoRealm() =>
         RaizDoRepositorio.Caminho("keycloak", "bootstrap", "realm-identity-gateway.json");
