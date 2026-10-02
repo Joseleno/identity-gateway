@@ -29,6 +29,14 @@ public sealed class RegrasDaApiTests
 {
     private static readonly Assembly Api = typeof(IdentityGateway.Api.AssemblyMarker).Assembly;
 
+    private static readonly Assembly[] CamadasDeProducao =
+    [
+        typeof(IdentityGateway.Domain.AssemblyMarker).Assembly,
+        typeof(IdentityGateway.Application.AssemblyMarker).Assembly,
+        typeof(IdentityGateway.Infrastructure.AssemblyMarker).Assembly,
+        Api,
+    ];
+
     private const string NamespaceEfCore = "Microsoft.EntityFrameworkCore";
     private const string NamespaceMediator = "Mediator";
 
@@ -284,6 +292,92 @@ public sealed class RegrasDaApiTests
         violacoes.Should().BeEmpty(
             "trocar OrderId por CustomerId numa chamada precisa ser erro de compilação, não bug em produção. "
             + "Violações: " + string.Join(" | ", violacoes));
+    }
+
+    /// <summary>
+    /// Nenhuma camada de produção assina ou valida token com chave simétrica.
+    /// </summary>
+    /// <remarks>
+    /// A Gateway não emite token, e quem valida usa as chaves públicas do provedor. Uma <c>SymmetricSecurityKey</c> em
+    /// produção é a chave de desenvolvimento publicada voltando — o risco que a troca para o Keycloak existe para
+    /// matar. O NetArchTest enxerga corpos de método, e este é um <b>tipo</b>: a regra não nasce vacuosa. (Ela não vê
+    /// propriedades como <c>IssuerSigningKey</c>; essas são conferidas nas opções resolvidas, em execução.)
+    /// </remarks>
+    [Fact]
+    public void NenhumaCamadaDeProducaoUsaChaveSimetrica()
+    {
+        foreach (Assembly camada in CamadasDeProducao)
+        {
+            ArchTestResult resultado = Types.InAssembly(camada)
+                .Should()
+                .NotHaveDependencyOn("Microsoft.IdentityModel.Tokens.SymmetricSecurityKey")
+                .GetResult();
+
+            resultado.Should().NaoTerViolacao(
+                $"{camada.GetName().Name}: token da Gateway é RS256 do provedor de identidade, validado por JWKS");
+        }
+    }
+
+    /// <summary>
+    /// A Api não usa o pacote legado <c>System.IdentityModel.Tokens.Jwt</c>.
+    /// </summary>
+    /// <remarks>
+    /// Era por ele que o serviço de emissão do template gerava token. O que a Api precisa de JWT hoje é ler um token já
+    /// validado, e isso é <c>Microsoft.IdentityModel.JsonWebTokens</c>. O pacote continua copiado (vem com o
+    /// JwtBearer); a regra é sobre o código da Api depender dele.
+    /// </remarks>
+    [Fact]
+    public void Api_NaoUsaOPacoteJwtLegado()
+    {
+        ArchTestResult resultado = Types.InAssembly(Api)
+            .Should()
+            .NotHaveDependencyOn("System.IdentityModel.Tokens.Jwt")
+            .GetResult();
+
+        resultado.Should().NaoTerViolacao("a Api não emite token; o claim do sujeito é o texto \"sub\"");
+    }
+
+    /// <summary>
+    /// Nenhuma camada liga o registro de dados pessoais ou de tokens inteiros da biblioteca de identidade.
+    /// </summary>
+    /// <remarks>
+    /// <c>ShowPII</c> e <c>LogCompleteSecurityArtifact</c> são propriedades estáticas de
+    /// <c>IdentityModelEventSource</c>: ligadas, as mensagens de falha passam a trazer o token e os claims — e-mail
+    /// inclusive. Ninguém em produção tem motivo para tocar nesse tipo.
+    /// </remarks>
+    [Fact]
+    public void NenhumaCamadaLigaPiiDaBibliotecaDeIdentidade()
+    {
+        foreach (Assembly camada in CamadasDeProducao)
+        {
+            ArchTestResult resultado = Types.InAssembly(camada)
+                .Should()
+                .NotHaveDependencyOn("Microsoft.IdentityModel.Logging.IdentityModelEventSource")
+                .GetResult();
+
+            resultado.Should().NaoTerViolacao($"{camada.GetName().Name}: ShowPII levaria tokens e claims para o log");
+        }
+    }
+
+    /// <summary>
+    /// A Api não transforma claims depois da validação.
+    /// </summary>
+    /// <remarks>
+    /// ADR-004: os claims vêm exclusivamente dos mappers do provedor. Um <c>IClaimsTransformation</c> acrescentaria
+    /// papel ou tenant do lado de cá — autorização decidida por algo que o token não diz.
+    /// </remarks>
+    [Fact]
+    public void Api_NaoTransformaClaims()
+    {
+        string[] transformadores =
+        [
+            .. Api.GetTypes()
+                .Where(tipo => tipo.GetInterfaces().Any(contrato =>
+                    contrato.FullName == "Microsoft.AspNetCore.Authentication.IClaimsTransformation"))
+                .Select(tipo => tipo.Name),
+        ];
+
+        transformadores.Should().BeEmpty("os claims vêm só do token (ADR-004)");
     }
 
     /// <summary>

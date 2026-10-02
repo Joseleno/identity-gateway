@@ -1,5 +1,8 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text.Json;
 
 namespace IdentityGateway.Api.FunctionalTests;
 
@@ -18,15 +21,16 @@ namespace IdentityGateway.Api.FunctionalTests;
 /// ser validado, o segundo é rejeitado pela assinatura.
 /// </para>
 /// <para>
-/// <b>Os testes usam <c>POST</c>, e não <c>GET</c>.</b> A rota protegida que existe é o registro de tenant; a
-/// autorização roda antes do model binding, então o <c>401</c> acontece sem o corpo importar. Com <c>GET</c>, o
-/// roteamento responderia <c>404</c> antes de a autorização ser consultada, e o teste passaria a não provar
-/// nada — que foi exatamente o motivo de eles terem nascido em <c>Skip</c>, antes de existir endpoint.
+/// <b>Um caminho que não existe também responde <c>401</c> sem token.</b> A policy de fallback exige usuário
+/// autenticado para tudo o que não declara outra coisa, inclusive para o que o roteamento não achou: quem não se
+/// identificou não fica sabendo o que existe. Com token, o mesmo caminho responde <c>404</c>.
 /// </para>
 /// </remarks>
 public sealed class SegurancaTests(IdentityGatewayApiFactory factory) : IClassFixture<IdentityGatewayApiFactory>
 {
     private const string RotaProtegida = "/api/v1/tenants";
+
+    private static readonly string[] PlatformAdmin = ["platform-admin"];
 
     [Fact]
     public async Task SemToken_Retorna401()
@@ -40,16 +44,15 @@ public sealed class SegurancaTests(IdentityGatewayApiFactory factory) : IClassFi
     }
 
     [Fact]
-    public async Task ComTokenInvalido_Retorna401()
+    public async Task ComTokenAssinadoPorOutraChave_Retorna401()
     {
+        // RS256, com o mesmo kid que a Api conhece, assinado por outra chave: tudo confere menos a assinatura. É o caso
+        // que prova que ela é verificada — um HS256 qualquer seria recusado já pelo algoritmo, e provaria menos.
         CancellationToken ct = TestContext.Current.CancellationToken;
         using HttpClient client = factory.CreateClient();
-
-        // Assinado com outra chave — a forma é de um JWT, o conteúdo não confere. É o caso que prova que a
-        // validação de assinatura está ligada: sem ela, qualquer um emitiria o próprio token.
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer",
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmYWxzbyJ9.assinatura-invalida");
+        using var outraChave = RSA.Create(2048);
+        string token = factory.Emissor.Assinar(factory.Emissor.Payload(roles: PlatformAdmin), outraChave);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         HttpResponseMessage resposta = await client.PostAsync(RotaProtegida, content: null, ct);
 
@@ -86,5 +89,59 @@ public sealed class SegurancaTests(IdentityGatewayApiFactory factory) : IClassFi
         resposta.Headers.GetValues("X-Frame-Options").Should().Contain("DENY");
         resposta.Headers.GetValues("Referrer-Policy").Should().Contain("no-referrer");
         resposta.Headers.Should().Contain(cabecalho => cabecalho.Key == "Content-Security-Policy");
+    }
+
+    [Fact]
+    public async Task SemToken_OCorpoEProblemDetailsEOCabecalhoNaoDizPorQue()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        using HttpClient client = factory.CreateClient();
+
+        HttpResponseMessage resposta = await client.PostAsync(RotaProtegida, content: null, ct);
+
+        resposta.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        resposta.Headers.WwwAuthenticate.ToString().Should().Be("Bearer");
+        (resposta.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
+
+        JsonElement problema = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
+        problema.GetProperty("status").GetInt32().Should().Be(401);
+        problema.GetProperty("title").GetString().Should().Be("Não autenticado");
+        problema.GetProperty("type").GetString().Should().Contain("rfc9110");
+        problema.GetProperty("correlationId").GetString().Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task TokenValidoSemOPapel_Retorna403ComOProblemDetailsUnico()
+    {
+        // Autenticado, mas sem platform-admin. O 403 não diz o que faltou.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        using HttpClient client = factory.CreateClientAutenticado();
+
+        HttpResponseMessage resposta = await client.PostAsync(RotaProtegida, content: null, ct);
+
+        resposta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (resposta.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
+
+        JsonElement problema = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
+        problema.GetProperty("status").GetInt32().Should().Be(403);
+        problema.GetProperty("title").GetString().Should().Be("Acesso negado");
+        problema.GetProperty("detail").GetString().Should().NotContain("platform-admin").And.NotContain("roles");
+        problema.GetProperty("correlationId").GetString().Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task CaminhoNaoMapeado_SemToken401EComToken404()
+    {
+        // A prova da policy de fallback: nenhum endpoint responde aqui, e mesmo assim quem não se identificou leva 401.
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        using HttpClient anonimo = factory.CreateClient();
+        using HttpClient autenticado = factory.CreateClientAutenticado();
+        Uri caminho = new("/api/v1/nao-existe", UriKind.Relative);
+
+        HttpResponseMessage semToken = await anonimo.GetAsync(caminho, ct);
+        HttpResponseMessage comToken = await autenticado.GetAsync(caminho, ct);
+
+        semToken.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        comToken.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 }

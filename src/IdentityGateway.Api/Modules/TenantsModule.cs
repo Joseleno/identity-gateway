@@ -1,4 +1,5 @@
 using Carter;
+using IdentityGateway.Api.Authorization;
 using IdentityGateway.Api.Extensions;
 using IdentityGateway.Application.Common.Abstractions;
 using IdentityGateway.Application.Tenants.GetTenantProvisioning;
@@ -34,19 +35,23 @@ public sealed class TenantsModule : ICarterModule
         ArgumentNullException.ThrowIfNull(app);
 
         app.MapPost("/api/v1/tenants", RegistrarAsync)
-            .RequireAuthorization("PlatformAdmin")
+            .RequireAuthorization(Policies.PlatformAdmin)
             .WithName("RegistrarTenant")
             .WithSummary("Registra um tenant novo, ainda por provisionar.")
             .Produces<TenantAcceptedResponse>(StatusCodes.Status202Accepted)
             .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status409Conflict);
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         app.MapGet("/api/v1/tenants/{tenantId:guid}/provisioning", ConsultarProvisionamentoAsync)
-            .RequireAuthorization("PlatformAdmin")
+            .RequireAuthorization(Policies.PlatformAdmin)
             .WithName("ConsultarProvisionamento")
             .WithSummary("Estado do provisionamento de um tenant.")
             .Produces<TenantProvisioningResponse>(StatusCodes.Status200OK)
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
     }
 
     /// <remarks>

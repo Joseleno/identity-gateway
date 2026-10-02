@@ -32,9 +32,6 @@ public sealed class DependencyInjectionTests
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Database:ConnectionString"] = connectionString,
-                ["Jwt:Issuer"] = "identitygateway",
-                ["Jwt:Audience"] = "identitygateway-api",
-                ["Jwt:SigningKey"] = new string('k', 32),
                 ["Keycloak:Admin:BaseUrl"] = "http://keycloak.test:8080",
                 ["Keycloak:Admin:Realm"] = "identity-gateway",
                 ["Keycloak:Admin:ClientId"] = "identity-gateway",
@@ -130,29 +127,6 @@ public sealed class DependencyInjectionTests
 
         validar.Should().Throw<OptionsValidationException>()
             .WithMessage("*connection string*");
-    }
-
-    [Fact]
-    public void ChaveJwtCurta_FalhaAoValidar()
-    {
-        IConfiguration configuracao = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Database:ConnectionString"] = "Host=localhost;Database=x;Username=u;Password=p",
-                ["Jwt:Issuer"] = "identitygateway",
-                ["Jwt:Audience"] = "identitygateway-api",
-                ["Jwt:SigningKey"] = "curta",
-            })
-            .Build();
-
-        using ServiceProvider provider = Construir(configuracao);
-
-        // Chave menor que 256 bits é preenchida ou rejeitada conforme a biblioteca — nos dois casos, a
-        // segurança que se acredita ter não existe. Melhor falhar ao subir.
-        Action validar = () => _ = provider.GetRequiredService<IOptions<JwtOptions>>().Value;
-
-        validar.Should().Throw<OptionsValidationException>()
-            .WithMessage("*32 caracteres*");
     }
 
     [Fact]

@@ -38,9 +38,6 @@ internal static class ComposicaoDoProvisionamento
         Dictionary<string, string?> valores = new()
         {
             ["Database:ConnectionString"] = postgres.ConnectionString,
-            ["Jwt:Issuer"] = "identitygateway",
-            ["Jwt:Audience"] = "identitygateway-api",
-            ["Jwt:SigningKey"] = new string('k', 32),
             ["Keycloak:Admin:BaseUrl"] = keycloak.BaseUrl,
             ["Keycloak:Admin:PublicBaseUrl"] = KeycloakFixture.HostnamePublico,
             ["Keycloak:Admin:Realm"] = KeycloakFixture.Realm,

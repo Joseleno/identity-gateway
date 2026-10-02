@@ -29,6 +29,13 @@
     -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+
+    <!--
+      Usados direto no código dos testes: as opções do JwtBearer (conferidas em execução) e o sink em memória do
+      Serilog. Vêm transitivos pela Api, mas dependência usada no código é dependência declarada.
+    -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Serilog.AspNetCore" />
   </ItemGroup>
 
 </Project>

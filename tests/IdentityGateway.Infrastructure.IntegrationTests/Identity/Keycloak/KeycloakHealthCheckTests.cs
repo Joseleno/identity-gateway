@@ -30,9 +30,6 @@ public sealed class KeycloakHealthCheckTests
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Database:ConnectionString"] = "Host=localhost;Database=x;Username=u;Password=p",
-                ["Jwt:Issuer"] = "identitygateway",
-                ["Jwt:Audience"] = "identitygateway-api",
-                ["Jwt:SigningKey"] = new string('k', 32),
                 ["Keycloak:Admin:BaseUrl"] = baseUrl,
                 ["Keycloak:Admin:PublicBaseUrl"] = publicBaseUrl,
                 ["Keycloak:Admin:Realm"] = "identity-gateway",

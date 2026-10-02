@@ -81,8 +81,9 @@
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
 
     <!--
-      Validação de JWT (T6.2). O rate limiting não aparece aqui de propósito: Microsoft.AspNetCore.RateLimiting
-      faz parte do SDK Web desde o .NET 7 e não precisa de pacote.
+      Validação do access token do provedor de identidade, por metadados (JWKS). A Gateway não emite token. O rate
+      limiting não aparece aqui de propósito: Microsoft.AspNetCore.RateLimiting faz parte do SDK Web desde o .NET 7
+      e não precisa de pacote.
     -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
 
