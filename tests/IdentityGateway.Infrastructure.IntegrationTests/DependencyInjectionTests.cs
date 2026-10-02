@@ -24,7 +24,7 @@ namespace IdentityGateway.Infrastructure.IntegrationTests;
 /// </remarks>
 public sealed class DependencyInjectionTests
 {
-    private static readonly string ChaveDeTeste = Identity.Keycloak.ChavesDeTeste.Gerar().PemPrivado;
+    private static readonly string ChaveDeTeste = ChavesDeTeste.Gerar().PemPrivado;
 
     private static IConfiguration ConfiguracaoValida(
         string? connectionString = "Host=localhost;Database=identitygateway;Username=postgres;Password=x") =>

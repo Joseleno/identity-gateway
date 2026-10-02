@@ -1,16 +1,22 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-namespace IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
+namespace IdentityGateway.Testing.Keycloak;
 
 /// <summary>
 /// Par de chaves da Gateway gerado em memória para o teste.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <b>Nunca um <c>.pem</c> versionado.</b> O repositório é público, e o secret scanning do GitHub dispara em chave
 /// privada commitada — mesmo de teste. Gerar a cada execução custa milissegundos.
+/// </para>
+/// <para>
+/// Públicos: o fixture usa a chave no <c>GATEWAY_CLIENT_CERT</c>, e a coleção de testes da Api precisa do PEM para
+/// configurar a Gateway contra o mesmo Keycloak.
+/// </para>
 /// </remarks>
-internal static class ChavesDeTeste
+public static class ChavesDeTeste
 {
     public static ParDeChaves Gerar()
     {
@@ -32,4 +38,4 @@ internal static class ChavesDeTeste
 }
 
 /// <summary>A chave, sua forma PEM (o que a Gateway lê) e o certificado (o que o Keycloak registra).</summary>
-internal sealed record ParDeChaves(RSA Rsa, string PemPrivado, string CertificadoBase64);
+public sealed record ParDeChaves(RSA Rsa, string PemPrivado, string CertificadoBase64);

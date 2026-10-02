@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Biblioteca de suporte de testes, e NÃO projeto de teste: o fixture do Keycloak, o cliente do mailpit e o harness
+    de login, usados pelos projetos de integração e funcional e pelo app de CI (tools/jornada-compose.cs).
+
+    O tests/Directory.Build.props faz de todo projeto desta pasta um executável do xUnit v3. Aqui isso é desfeito, uma
+    propriedade e um pacote de cada vez: um executável de teste referenciado por um app de arquivo único dá dois Main
+    (CS7022), e `dotnet test` tentaria rodar um projeto sem teste nenhum.
+  -->
+  <PropertyGroup>
+    <IsTestProject>false</IsTestProject>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Remove="xunit.v3" />
+    <PackageReference Remove="Microsoft.Testing.Extensions.CodeCoverage" />
+    <PackageReference Remove="AwesomeAssertions" />
+  </ItemGroup>
+
+  <!--
+    Sem referência a src/: quem usa esta biblioteca não deve arrastar a Gateway junto (o app de CI fala com a API por
+    HTTP). O que depende de tipos da Gateway — o slug de teste, a composição da Infrastructure — fica como extensão
+    em cada projeto de teste.
+  -->
+  <ItemGroup>
+    <PackageReference Include="xunit.v3.extensibility.core" />
+    <PackageReference Include="Testcontainers.Keycloak" />
+  </ItemGroup>
+
+</Project>

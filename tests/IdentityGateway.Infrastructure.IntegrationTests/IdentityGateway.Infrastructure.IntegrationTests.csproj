@@ -10,6 +10,9 @@
     -->
     <ProjectReference Include="..\..\src\IdentityGateway.Domain\IdentityGateway.Domain.csproj" />
     <ProjectReference Include="..\..\src\IdentityGateway.Application\IdentityGateway.Application.csproj" />
+
+    <!-- O fixture do Keycloak, o mailpit e o harness de login: biblioteca compartilhada com os testes funcionais. -->
+    <ProjectReference Include="..\IdentityGateway.Testing.Keycloak\IdentityGateway.Testing.Keycloak.csproj" />
   </ItemGroup>
 
   <!--
@@ -19,7 +22,6 @@
   <ItemGroup>
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="Testcontainers.Redis" />
-    <PackageReference Include="Testcontainers.Keycloak" />
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
     <PackageReference Include="Bogus" />
 

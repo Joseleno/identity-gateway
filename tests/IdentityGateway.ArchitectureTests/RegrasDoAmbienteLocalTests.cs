@@ -45,12 +45,25 @@ public sealed partial class RegrasDoAmbienteLocalTests
     public void ComposeEFixtureUsamAMesmaTagDoMailpit()
     {
         Match imagem = ImagemDoMailpit().Match(Compose());
-        string fixture = File.ReadAllText(RaizDoRepositorio.Caminho(
-            "tests", "IdentityGateway.Infrastructure.IntegrationTests", "Identity", "Keycloak", "KeycloakFixture.cs"));
 
         imagem.Success.Should().BeTrue("o compose precisa do serviço mailpit com a versão fixada");
-        fixture.Should().Contain($"ImagemDoMailpit = \"{imagem.Groups["imagem"].Value}\"",
+        Fixture().Should().Contain($"ImagemDoMailpit = \"{imagem.Groups["imagem"].Value}\"",
             "o teste de integração precisa provar o mesmo mailpit que o compose sobe");
+    }
+
+    [Fact]
+    public void ComposeEFixtureUsamAMesmaTagDoKeycloak()
+    {
+        // Os fatos do Keycloak que o projeto usa foram verificados numa tag: testar contra uma e subir outra deixaria
+        // o compose sem prova. Todos os serviços do compose que usam a imagem precisam da mesma tag que o fixture.
+        string[] imagens =
+        [
+            .. ImagensDoKeycloak().Matches(Compose()).Select(achado => achado.Groups["imagem"].Value).Distinct(),
+        ];
+
+        imagens.Should().ContainSingle("o compose usa uma tag só do Keycloak");
+        Fixture().Should().Contain($"ImagemDoKeycloak = \"{imagens[0]}\"",
+            "o teste de integração precisa provar o mesmo Keycloak que o compose sobe");
     }
 
     [Fact]
@@ -70,6 +83,9 @@ public sealed partial class RegrasDoAmbienteLocalTests
 
     private static string Compose() => File.ReadAllText(RaizDoRepositorio.Caminho("docker-compose.yml"));
 
+    private static string Fixture() => File.ReadAllText(
+        RaizDoRepositorio.Caminho("tests", "IdentityGateway.Testing.Keycloak", "KeycloakFixture.cs"));
+
     /// <summary>
     /// Valor de uma variável de ambiente do compose (<c>CHAVE: valor</c> ou <c>CHAVE: "valor"</c>, numa linha só).
     /// </summary>
@@ -88,4 +104,7 @@ public sealed partial class RegrasDoAmbienteLocalTests
 
     [GeneratedRegex(@"^\s*image:\s*(?<imagem>axllent/mailpit:\S+)\s*$", RegexOptions.Multiline)]
     private static partial Regex ImagemDoMailpit();
+
+    [GeneratedRegex(@"^\s*image:\s*(?<imagem>quay\.io/keycloak/keycloak:\S+)\s*$", RegexOptions.Multiline)]
+    private static partial Regex ImagensDoKeycloak();
 }

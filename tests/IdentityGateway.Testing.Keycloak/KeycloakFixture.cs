@@ -5,14 +5,10 @@ using System.Text.RegularExpressions;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
-using IdentityGateway.Domain.Tenants;
-using IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
-using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.Keycloak;
+using Xunit;
 
-[assembly: AssemblyFixture(typeof(KeycloakFixture))]
-
-namespace IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
+namespace IdentityGateway.Testing.Keycloak;
 
 /// <summary>
 /// Um Keycloak 26.7.4 de verdade para o assembly inteiro, importando o MESMO realm que o compose usa, com um mailpit
@@ -20,8 +16,9 @@ namespace IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Um container por assembly</b>, e não por classe: o Keycloak leva dezenas de segundos para subir, e o xUnit v3
-/// rodaria as classes em paralelo, cada uma com o seu.
+/// <b>Um container por assembly de teste</b>, e não por classe: o Keycloak leva dezenas de segundos para subir, e o
+/// xUnit v3 rodaria as classes em paralelo, cada uma com o seu. O <c>[assembly: AssemblyFixture]</c> fica em cada
+/// projeto de teste que o usa — esta biblioteca não é um projeto de teste.
 /// </para>
 /// <para>
 /// <b>O realm é o arquivo do repositório</b>, não uma cópia de teste: o teste prova o arquivo que o compose importa.
@@ -38,7 +35,7 @@ namespace IdentityGateway.Infrastructure.IntegrationTests.Identity.Keycloak;
 /// mailpit é sempre filtrado pelo destinatário exato.
 /// </para>
 /// </remarks>
-public sealed partial class KeycloakFixture : IAsyncLifetime
+public sealed class KeycloakFixture : IAsyncLifetime
 {
     public const string Realm = "identity-gateway";
 
@@ -48,7 +45,15 @@ public sealed partial class KeycloakFixture : IAsyncLifetime
     /// <summary>A mesma tag do <c>docker-compose.yml</c> — um teste de arquitetura confere.</summary>
     public const string ImagemDoMailpit = "axllent/mailpit:v1.31.3";
 
+    /// <summary>A mesma tag do <c>docker-compose.yml</c> — um teste de arquitetura confere.</summary>
+    public const string ImagemDoKeycloak = "quay.io/keycloak/keycloak:26.7.4";
+
     private const int PortaDoMailpit = 8025;
+
+    // Montada com o host e o realm das constantes, e não repetindo os dois numa regex literal.
+    private static readonly Regex LinkDeAcoes = new(
+        Regex.Escape(HostnamePublico) + "/realms/" + Regex.Escape(Realm) + @"/login-actions/action-token\?key=\S+",
+        RegexOptions.CultureInvariant);
 
     private readonly INetwork _rede;
     private readonly IContainer _mailpit;
@@ -68,7 +73,7 @@ public sealed partial class KeycloakFixture : IAsyncLifetime
                 pedido.ForPort(PortaDoMailpit).ForPath("/readyz")))
             .Build();
 
-        _container = new KeycloakBuilder("quay.io/keycloak/keycloak:26.7.4")
+        _container = new KeycloakBuilder(ImagemDoKeycloak)
             .WithNetwork(_rede)
             .WithRealm(CaminhoDoRealm())
             .WithEnvironment("GATEWAY_CLIENT_CERT", Chaves.CertificadoBase64)
@@ -82,9 +87,8 @@ public sealed partial class KeycloakFixture : IAsyncLifetime
             .Build();
     }
 
-    // Internal, não public: ParDeChaves é internal (ChavesDeTeste.cs), e uma propriedade não pode ser mais
-    // acessível que o próprio tipo. Nenhum teste precisa da chave por fora — só CriarProvider a usa como padrão.
-    internal ParDeChaves Chaves { get; }
+    /// <summary>O par de chaves da Gateway registrado no realm. Quem compõe a Gateway contra este Keycloak usa o PEM.</summary>
+    public ParDeChaves Chaves { get; }
 
     public string BaseUrl => _container.GetBaseAddress().TrimEnd('/');
 
@@ -104,9 +108,6 @@ public sealed partial class KeycloakFixture : IAsyncLifetime
         await _rede.DisposeAsync();
     }
 
-    /// <summary>Slug aleatório, válido e curto — o isolamento entre testes.</summary>
-    public static TenantSlug SlugUnico() => TenantSlug.Create($"t-{Guid.NewGuid():N}"[..18]).Value;
-
     /// <summary>E-mail único com <c>+</c>: exercita o escape da query em todo teste e evita o conflito do D5.</summary>
     public static string EmailUnico() => $"admin+{Guid.NewGuid():N}@acme.test";
 
@@ -114,19 +115,6 @@ public sealed partial class KeycloakFixture : IAsyncLifetime
     public static string EmailUnicoDe254Caracteres() =>
         $"admin+{Guid.NewGuid():N}{new string('a', 26)}@{new string('b', 63)}.{new string('c', 63)}."
         + $"{new string('d', 56)}.test";
-
-    /// <summary>
-    /// A composição real (<c>AddInfrastructure</c>) apontada para este Keycloak, com handlers de teste opcionais
-    /// acrescentados antes de construir.
-    /// </summary>
-    public ServiceProvider CriarProvider(Action<IServiceCollection>? ajustar = null, string? pem = null)
-    {
-        ServiceCollection services = KeycloakHealthCheckTests.ColecaoDaComposicao(
-            BaseUrl, pem ?? Chaves.PemPrivado, HostnamePublico);
-        ajustar?.Invoke(services);
-
-        return services.BuildServiceProvider(validateScopes: true);
-    }
 
     /// <summary>Cliente HTTP autenticado como admin do realm master — para preparar e conferir estado.</summary>
     public async Task<HttpClient> CriarClienteMasterAsync(CancellationToken cancellationToken)
@@ -364,20 +352,29 @@ public sealed partial class KeycloakFixture : IAsyncLifetime
         return mensagem.RootElement.GetProperty("Text").GetString()!;
     }
 
-    /// <summary>O link de ações do primeiro convite para o destinatário, com o host público.</summary>
+    /// <summary>O link de ações do convite mais recente para o destinatário, com o host público.</summary>
+    /// <exception cref="FalhaDoHarnessException">Não há mensagem, ou ela não traz o link no endereço público.</exception>
     public async Task<Uri> LinkDoConviteAsync(string destinatario, CancellationToken cancellationToken)
     {
         IReadOnlyList<string> ids = await EsperarMensagensAsync(destinatario, 1, cancellationToken);
-        ids.Should().NotBeEmpty("o convite precisa estar no mailpit");
 
-        Match link = LinkDeAcoes().Match(await TextoDaMensagemAsync(ids[0], cancellationToken));
-        link.Success.Should().BeTrue("o e-mail precisa trazer o link com o endereço público (KC_HOSTNAME)");
+        if (ids.Count == 0)
+        {
+            throw new FalhaDoHarnessException(
+                FamiliaDeFalha.Mailpit, "convite", "nenhuma mensagem para o destinatário no mailpit.");
+        }
+
+        Match link = LinkDeAcoes.Match(await TextoDaMensagemAsync(ids[0], cancellationToken));
+
+        if (!link.Success)
+        {
+            throw new FalhaDoHarnessException(
+                FamiliaDeFalha.Mailpit, "convite",
+                "a mensagem não traz o link de ações no endereço público (KC_HOSTNAME).");
+        }
 
         return new Uri(link.Value);
     }
-
-    [GeneratedRegex(@"http://keycloak\.test:8081/realms/identity-gateway/login-actions/action-token\?key=\S+")]
-    private static partial Regex LinkDeAcoes();
 
     private static string CaminhoDoRealm() =>
         RaizDoRepositorio.Caminho("keycloak", "bootstrap", "realm-identity-gateway.json");
