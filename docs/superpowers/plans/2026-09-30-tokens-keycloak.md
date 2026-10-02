@@ -73,7 +73,7 @@ Nota para o revisor: **a D1 troca o mecanismo de autenticação inteiro**, e os 
 - **`Api/Authorization/Policies.cs` nasce na Tarefa 7 (D1)** só com `PlatformAdmin`, junto com o result handler do Problem Details, que mora na mesma pasta. A D2 acrescenta `TenantAdmin` e move o `AddAuthorization` para o `AddAutorizacaoDaGateway`.
 - **`ApiEmProducaoFactory` deriva de `WebApplicationFactory<Program>`, não da `IdentityGatewayApiFactory`:** os testes em `Production` terminam na autenticação e não precisam de PostgreSQL nem de Redis. Sem containers, as classes rodam em segundos e sem fixture.
 - **As checagens de `azp`, `typ` e `sub` leem o JSON do payload**, e não os claims: o `ClaimsPrincipal` achata um array de um elemento num claim só, e `"typ": ["Bearer"]` passaria. Visto no protótipo: para `azp` e `sub` que não sejam texto (array, número), a própria biblioteca já recusa o token ao lê-lo, antes das nossas checagens — por isso a mutação "ler o `azp` com `FindFirst`" da §5.3 da spec é equivalente, e a testemunha da leitura pelo JSON é o caso "`typ` em array".
-- **O `sub` é conferido pelo tamanho antes do parse:** `Guid.TryParseExact(…, "D")` aceita espaço nas pontas, e o formato `D` tem exatamente 36 caracteres.
+- **O `sub` é conferido pela ida e volta do GUID** (`id.ToString("D")` igual ao texto, sem diferenciar caixa): `Guid.TryParseExact(…, "D")` aceita espaço nas pontas e, em cada componente, o prefixo `0x` e o sinal de mais. A primeira versão do plano conferia só o tamanho, e a revisão da Tarefa 8, já na execução, mostrou que `0x99a000-0000-7000-8000-00000000000a` (36 caracteres) passava.
 - **O `Program.cs` passa a usar `UseSerilog(..., preserveStaticLogger: true)`** (Tarefa 7). Sem isso, cada host registra pelo `Log.Logger` estático do processo — o do último host construído —, e o sink em memória que a §5.5 da spec pede receberia os logs dos outros hosts de teste (visto no protótipo). Em produção há um host só, e nada muda.
 - **A fase `com-keycloak-parado` do app confere que o Keycloak não responde, e não o `/health/ready`** (como a §4.6 da spec descreve): a api guarda o token do service account em memória por até ~4,5 min (`ServiceAccountTokenCache`), e o ready continua `200` logo depois do `stop`.
 - **O aviso de chaves indisponíveis é limitado a um por 30 s, e só a falta de chave o dispara** (Tarefa 7). A spec (DT6) pede um `Warning` no `OnAuthenticationFailed` "quando a exceção é de chave ou de configuração". Na prática só um tipo de exceção chega ali (a biblioteca engole a falha da busca), e o mesmo tipo chega para um token de `kid` inventado assinado por outra chave — que qualquer anônimo manda, sem consumir cota. Sem o limite, o alerta do DT6 seria afogado. O limite é um serviço por host (`AvisoDeChavesIndisponiveis`), e não um campo estático, para os hosts de teste não se calarem uns aos outros. Visto no protótipo: com a chave certa e um `kid` desconhecido, o token é aceito (a biblioteca tenta todas as chaves) — não é brecha, e por isso o caso de teste usa outra chave.
@@ -83,7 +83,7 @@ Nota para o revisor: **a D1 troca o mecanismo de autenticação inteiro**, e os 
 - **O client de device flow do fixture nasce sem scopes declarados** (Tarefa 4), herdando os defaults do realm, e não "com o scope `roles`", como a §4.6 da spec descreve. É o que faz dele a testemunha de que `gateway-api` não é default do realm (§5.1 da spec): um client com scopes escolhidos à mão não provaria nada sobre os defaults. O token dele carrega `profile` e `email`, e por isso só é usado contra a Account API e no teste da audiência.
 - **A v2.7 não nomeia a "fatia E"** (Tarefa 12): onde a §9 da spec escreve "na fatia E", o texto da v2.7 diz "chega com a auditoria". A própria spec se contradiz — a decisão D-l manda a v2.7 não nomear as fatias seguintes —, e o plano segue a D-l. Fica para o autor confirmar.
 - **D2 — o `tenantId` da rota em qualquer formato de GUID, o claim só no formato `D`** (Tarefa 13). A §4.3 da spec diz formato `D` nos dois; a §5.2 tem como controle a rota no formato `N` respondendo `200`. O plano segue a §5.2 e deixa a divergência para o autor nos dois handoffs.
-- **D2 — o claim `tenant_id` é conferido pelo tamanho antes do parse** (Tarefa 13), pelo mesmo motivo do `sub`: `Guid.TryParseExact(…, "D")` aceita espaço nas pontas. Visto no protótipo.
+- **D2 — o claim `tenant_id` é conferido pela ida e volta do GUID** (Tarefa 13), pelo mesmo motivo do `sub`: `Guid.TryParseExact(…, "D")` aceita espaço nas pontas, prefixo `0x` e sinal de mais. Visto no protótipo.
 - **D2 — `Policies.DeTenant`** (Tarefa 13): a lista das policies que decidem pelo tenant da rota, lida pelo teste de subida. A spec fala do teste, não de onde ele tira a lista.
 - **D2 — o `TenantDetailsView` fica em `ITenantQueries.cs`**, ao lado do `TenantProvisioningView`, e não num arquivo próprio; e a resposta ganha o record `TenantPlanResponse` para o objeto `plan`.
 - **D2 — sem teste de "a consulta não rastreia"** (Tarefa 14): numa projeção de um campo, o teste fica verde com ou sem `AsNoTracking()`. Visto no protótipo.
@@ -5955,6 +5955,8 @@ Expected: `0`.
 
 Spec: §4.2 (`OnTokenValidated`, `ValidateOnStart`, lista vazia), §5.1 (linha "Host em `Production`"), §5.2 (os casos `F` e `P` da D1), §5.5 ("O host em `Production`"), DT3, DT4, DT6.
 
+> **Corrigido na execução (commit `c608aa8`).** O bloco do `sub` em `FormaDoAccessToken.cs`, como está escrito abaixo (`{ Length: 36 }` mais `Guid.TryParseExact(sub, "D", out _)`), aceita textos de 36 caracteres que não são GUID no formato `D`: o parse tolera, em cada componente, o prefixo `0x` e o sinal de mais (`0x99a000-0000-7000-8000-00000000000a`, `+199a000-…`, `0199a000-0x00-…`). A revisão da tarefa achou, e o código que ficou confere a ida e volta — `Guid.TryParseExact(sub, "D", out Guid id) && string.Equals(id.ToString("D"), sub, StringComparison.OrdinalIgnoreCase)` —, sem a checagem de tamanho. Os testes ganharam os três textos na theory da forma, dois por HTTP e o controle de um `sub` em maiúsculas, que continua aceito. As mutações 7 e 8 da tabela 🧪 desta tarefa passam a ser, no código que ficou: tirar a comparação da ida e volta (6 vermelhos: os dois de espaço e os de `0x` e `+`) e trocar `OrdinalIgnoreCase` por `Ordinal` (o controle em maiúsculas fica vermelho). O texto abaixo fica como foi executado, para a história bater com o commit `058d452`.
+
 A biblioteca confere assinatura, emissor, audiência e prazo. Esta tarefa acrescenta o que é da Gateway — qual client obteve o token, que ele é um access token, e que fala de um usuário identificável — e prova os ramos que só existem fora de Development, com o host de pé **e com pedidos**: a suíte inteira roda em Development, e um ramo de produção testado só na subida é verde vacuoso.
 
 **Arquivos:**
@@ -9827,11 +9829,11 @@ public sealed class SameTenantRequirement : AuthorizationHandler<SameTenantRequi
         if (context.User.FindAll("tenant_id").Take(2).ToArray() is not [Claim claim])
             return false;
 
-        // O claim, só no formato D. O tamanho antes do parse: Guid.TryParseExact tolera espaço nas pontas, e o
-        // formato D tem 36 caracteres. E a comparação é por Guid, não por texto: a rota com o GUID em maiúsculas
-        // é o mesmo tenant.
-        return claim.Value is { Length: 36 }
-            && Guid.TryParseExact(claim.Value, "D", out Guid doToken)
+        // O claim, só no formato D, conferido pela ida e volta: Guid.TryParseExact tolera espaço nas pontas e,
+        // em cada componente, o prefixo 0x e o sinal de mais. E a comparação com a rota é por Guid, não por
+        // texto: a rota com o GUID em maiúsculas é o mesmo tenant.
+        return Guid.TryParseExact(claim.Value, "D", out Guid doToken)
+            && string.Equals(doToken.ToString("D"), claim.Value, StringComparison.OrdinalIgnoreCase)
             && doToken == daRota;
     }
 }
@@ -10146,8 +10148,11 @@ internal static class FormaDoAccessToken
         if (!string.Equals(Texto(payload, "typ"), "Bearer", StringComparison.Ordinal))
             return "typ diferente de Bearer";
 
-        // O tamanho antes do parse: Guid.TryParseExact tolera espaço nas pontas, e o formato D tem 36 caracteres.
-        if (Texto(payload, "sub") is not { Length: 36 } sub || !Guid.TryParseExact(sub, "D", out _))
+        // A ida e volta, e não só o parse: Guid.TryParseExact tolera espaço nas pontas e, em cada componente, o
+        // prefixo 0x e o sinal de mais.
+        if (Texto(payload, "sub") is not { } sub
+            || !Guid.TryParseExact(sub, "D", out Guid id)
+            || !string.Equals(id.ToString("D"), sub, StringComparison.OrdinalIgnoreCase))
             return "sub ausente ou fora do formato de GUID";
 
         return null;
@@ -12369,7 +12374,7 @@ Expected: build sem avisos e suíte verde, com os totais do handoff da D1. Anote
 
 **A D2 não toca `keycloak/`, `docker-compose.yml` nem o one-shot.** Tudo o que ela consome do realm (o scope `gateway-tenant`, o catálogo, o client de demonstração) entrou na D1. Se uma tarefa daqui parecer pedir mudança no realm, pare: é erro de leitura, e custaria outro `docker compose down -v`.
 
-**Verificado ao escrever este plano (2026-10-01).** O código de produção e os testes das Tarefas 13 a 15 foram compilados com os analisadores do repositório e executados num clone descartável, sobre a `main` de hoje com a autorização da Tarefa 7 aplicada por cima (as policies e o Problem Details), e os tokens assinados pelo JWT simétrico do template no lugar do OIDC falso: 43 testes unitários da policy, 31 por HTTP (26 da rota e 5 da ordem dos handlers), as consultas contra o PostgreSQL e as regras de arquitetura, todos verdes; e cada mutação das tabelas 🧪 foi aplicada e vista vermelha, com as contagens que as tabelas trazem. O que **não** foi executado: a extensão da suíte negativa de autenticação à rota nova (Tarefa 15, Passo 7), que depende do OIDC falso, e a Tarefa 16 inteira (Keycloak real, app e CI).
+**Verificado ao escrever este plano (2026-10-01).** O código de produção e os testes das Tarefas 13 a 15 foram compilados com os analisadores do repositório e executados num clone descartável, sobre a `main` de hoje com a autorização da Tarefa 7 aplicada por cima (as policies e o Problem Details), e os tokens assinados pelo JWT simétrico do template no lugar do OIDC falso: 45 testes unitários da policy, 31 por HTTP (26 da rota e 5 da ordem dos handlers), as consultas contra o PostgreSQL e as regras de arquitetura, todos verdes; e cada mutação das tabelas 🧪 foi aplicada e vista vermelha, com as contagens que as tabelas trazem. O que **não** foi executado: a extensão da suíte negativa de autenticação à rota nova (Tarefa 15, Passo 7), que depende do OIDC falso, e a Tarefa 16 inteira (Keycloak real, app e CI).
 
 Docker Desktop ligado nas Tarefas 14 a 16.
 
@@ -12603,6 +12608,8 @@ public sealed class TenantAdminPolicyTests
     [InlineData("tenant_id com espaço depois", new[] { Tenant + " " })]
     [InlineData("tenant_id entre chaves", new[] { "{" + Tenant + "}" })]
     [InlineData("tenant_id no formato N", new[] { "0199a00000007000800000000000000a" })]
+    [InlineData("tenant_id com sinal de mais num componente", new[] { "+199a000-0000-7000-8000-00000000000a" })]
+    [InlineData("tenant_id com prefixo 0x num componente", new[] { "0199a000-0x00-7000-8000-00000000000a" })]
     [InlineData("dois tenant_id: o próprio e outro", new[] { Tenant, OutroTenant })]
     [InlineData("dois tenant_id: outro e o próprio", new[] { OutroTenant, Tenant })]
     [InlineData("dois tenant_id iguais ao próprio", new[] { Tenant, Tenant })]
@@ -12649,7 +12656,7 @@ public sealed class TenantAdminPolicyTests
 
 Quatro coisas sobre os casos:
 - **Cada veto diz quem vetou** (`DeveTerVetado<TQuemVeta>`). Com `InvokeHandlersAfterFailure` desligado há um motivo só, o do primeiro `Fail()`. Sem essa asserção, quando a Tarefa 14 puser a pertença na policy, um `SameTenantRequirement` que deixasse de vetar passaria despercebido nos casos de rota e de recurso: o handler da pertença vetaria no lugar dele, pelos mesmos motivos.
-- **`tenant_id` com espaço** está na lista porque `Guid.TryParseExact(…, "D")` aceita espaço nas pontas. É o mesmo achado do `sub`, na Tarefa 8.
+- **`tenant_id` com espaço, com `+` e com `0x`** estão na lista porque `Guid.TryParseExact(…, "D")` aceita espaço nas pontas e, em cada componente, o sinal de mais e o prefixo `0x`: `+199a000-…` e `0199a000-0x00-…` viram o mesmo GUID do tenant. Por isso o requirement confere a ida e volta do GUID, e não só o parse. É o mesmo achado do `sub`, na Tarefa 8.
 - **Um array de um elemento** (`"tenant_id": ["…"]`) não está: o `ClaimsPrincipal` o entrega como um claim só, indistinguível do texto, e é o mesmo tenant — não há ambiguidade a recusar.
 - **O claim em maiúsculas passa**: é o formato `D`, e a comparação é por `Guid`.
 
@@ -12834,11 +12841,12 @@ internal sealed class SameTenantRequirement : AuthorizationHandler<SameTenantReq
             return false;
         }
 
-        // O claim, só no formato D, que é como o Keycloak o emite. O tamanho antes do parse: Guid.TryParseExact tolera
-        // espaço nas pontas, e o formato D tem exatamente 36 caracteres. A comparação é por Guid, e não por texto: a
-        // rota com o GUID em maiúsculas é o mesmo tenant.
-        return claim.Value is { Length: 36 }
-            && Guid.TryParseExact(claim.Value, "D", out Guid doToken)
+        // O claim, só no formato D, que é como o Keycloak o emite — conferido pela ida e volta, porque o
+        // Guid.TryParseExact tolera espaço nas pontas e, em cada componente, o prefixo 0x e o sinal de mais:
+        // "0x99a000-…" viraria o GUID 0099a000-…. A comparação com a rota é por Guid, e não por texto: a rota com o
+        // GUID em maiúsculas é o mesmo tenant.
+        return Guid.TryParseExact(claim.Value, "D", out Guid doToken)
+            && string.Equals(doToken.ToString("D"), claim.Value, StringComparison.OrdinalIgnoreCase)
             && doToken == daRota;
     }
 }
@@ -12910,10 +12918,10 @@ Run: `dotnet build IdentityGateway.slnx`
 Expected: `0 Aviso(s)`, `0 Erro(s)`.
 
 Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-class "*TenantAdminPolicyTests"`
-Expected: `total: 23`, `falhou: 0`, em poucos segundos — nenhum container sobe.
+Expected: `total: 25`, `falhou: 0`, em poucos segundos — nenhum container sobe.
 
 Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests`
-Expected: verde, com 23 testes a mais que na `main`. São os funcionais da D1 que provam que mover o registro não mudou nada: o caminho não mapeado sem token continua `401` (a `FallbackPolicy`), e `TodoEndpoint_TemPolicyNomeadaOuAnonimatoDeclarado` continua verde.
+Expected: verde, com 25 testes a mais que na `main`. São os funcionais da D1 que provam que mover o registro não mudou nada: o caminho não mapeado sem token continua `401` (a `FallbackPolicy`), e `TodoEndpoint_TemPolicyNomeadaOuAnonimatoDeclarado` continua verde.
 
 - [ ] **Passo 7: 🧪 Provas por mutação**
 
@@ -12925,16 +12933,16 @@ Run (a cada mutação): `dotnet test tests/IdentityGateway.Api.FunctionalTests -
 |---|---|---|
 | 1 | Em `RoleRequirement`, apagar o `else { context.Fail(…); }` | 3: os três casos de `SemOPapelTenantAdmin_Veta` ("a policy não pode passar, nem com um handler que aprova tudo") |
 | 2 | Em `NotPlatformAdminRequirement`, trocar o `context.Fail(…);` por `return Task.CompletedTask;` | 1: `PlatformAdminQueTambemETenantAdminDoProprioTenant_Veta` |
-| 3 | Em `SameTenantRequirement`, apagar o `else { context.Fail(…); }` | 15: os onze de `TenantDoTokenQueNaoEODaRota_Veta`, os três de `RotaSemUmTenantIdUtilizavel_Veta` e `RecursoQueNaoEHttpContext_Veta` |
+| 3 | Em `SameTenantRequirement`, apagar o `else { context.Fail(…); }` | 17: os treze de `TenantDoTokenQueNaoEODaRota_Veta`, os três de `RotaSemUmTenantIdUtilizavel_Veta` e `RecursoQueNaoEHttpContext_Veta` |
 | 4 | Usar o **primeiro** claim: `if (context.User.FindFirst("tenant_id") is not Claim claim)` | 2: "o próprio e outro" e "iguais ao próprio" |
 | 5 | Usar o **último**: `if (context.User.FindAll("tenant_id").LastOrDefault() is not Claim claim)` | 2: "outro e o próprio" e "iguais ao próprio" |
-| 5a | Aceitar **algum** claim: tirar o `if` do claim único e devolver `context.User.FindAll("tenant_id").Any(claim => claim.Value is { Length: 36 } && Guid.TryParseExact(claim.Value, "D", out Guid doToken) && doToken == daRota)` | 3: "o próprio e outro", "outro e o próprio" e "iguais ao próprio" |
+| 5a | Aceitar **algum** claim: tirar o `if` do claim único e devolver `context.User.FindAll("tenant_id").Any(claim => Guid.TryParseExact(claim.Value, "D", out Guid doToken) && string.Equals(doToken.ToString("D"), claim.Value, StringComparison.OrdinalIgnoreCase) && doToken == daRota)` | 3: "o próprio e outro", "outro e o próprio" e "iguais ao próprio" |
 | 6 | Comparar como texto: trocar `&& doToken == daRota` por `&& string.Equals(claim.Value, http.GetRouteValue(ParametroDaRota)?.ToString(), StringComparison.Ordinal)` | 3: os controles "rota em maiúsculas", "rota no formato N" e "claim em maiúsculas" |
-| 7 | Tirar o `claim.Value is { Length: 36 } &&` | 2: "espaço antes" e "espaço depois" |
-| 8 | Trocar o retorno inteiro por `return Guid.TryParse(claim.Value, out Guid doToken) && doToken == daRota;` | 4: os dois de espaço, "entre chaves" e "formato N" |
+| 7 | Tirar a linha da ida e volta (`&& string.Equals(doToken.ToString("D"), claim.Value, StringComparison.OrdinalIgnoreCase)`) | 4: "espaço antes", "espaço depois", "sinal de mais num componente" e "prefixo 0x num componente" |
+| 8 | Trocar o retorno inteiro por `return Guid.TryParse(claim.Value, out Guid doToken) && doToken == daRota;` | 6: os dois de espaço, "sinal de mais", "prefixo 0x", "entre chaves" e "formato N" |
 | 9 | Em `AutorizacaoDaGateway`, tirar a linha `new NotPlatformAdminRequirement(),` da policy | 1: `PlatformAdminQueTambemETenantAdminDoProprioTenant_Veta` |
 
-As mutações 1 a 3 são as da §5.3 da spec ("`return` no lugar de `Fail()`"), e **só estes testes as pegam**: por HTTP, sem outro handler, a rota continuaria respondendo `403`. As contagens valem também no fim da D2, com a pertença já na policy (a mutação 3 continua em 15 nesta classe, por causa da asserção de quem vetou) — conferido ao escrever este plano.
+As mutações 1 a 3 são as da §5.3 da spec ("`return` no lugar de `Fail()`"), e **só estes testes as pegam**: por HTTP, sem outro handler, a rota continuaria respondendo `403`. As contagens valem também no fim da D2, com a pertença já na policy (a mutação 3 continua em 17 nesta classe, por causa da asserção de quem vetou) — conferido ao escrever este plano.
 
 - [ ] **Passo 8: Commit**
 
@@ -13644,7 +13652,7 @@ Run: `dotnet build IdentityGateway.slnx`
 Expected: `0 Aviso(s)`, `0 Erro(s)`.
 
 Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-namespace "*Autorizacao"`
-Expected: `total: 43`, `falhou: 0` — os 23 da Tarefa 13 e os 20 desta.
+Expected: `total: 45`, `falhou: 0` — os 25 da Tarefa 13 e os 20 desta.
 
 Run: `dotnet test tests/IdentityGateway.ArchitectureTests`
 Expected: verde, com 2 testes a mais.
@@ -15545,7 +15553,7 @@ Run: `dotnet build -c Release tools/jornada-compose.cs`
 Expected: compila, sem avisos.
 
 Run: `dotnet test`
-Expected: 0 falhas, 0 skips nos cinco projetos. Em relação ao handoff da D1, a D2 acrescenta: `Application.UnitTests` +2, `ArchitectureTests` +3, `Infrastructure.IntegrationTests` +7, `Api.FunctionalTests` +79 (23 da Tarefa 13, 20 da 14, 34 da 15 e 2 da 16). Um total diferente não é erro por si — mas explique a diferença no handoff.
+Expected: 0 falhas, 0 skips nos cinco projetos. Em relação ao handoff da D1, a D2 acrescenta: `Application.UnitTests` +2, `ArchitectureTests` +3, `Infrastructure.IntegrationTests` +7, `Api.FunctionalTests` +81 (25 da Tarefa 13, 20 da 14, 34 da 15 e 2 da 16). Um total diferente não é erro por si — mas explique a diferença no handoff.
 
 Atualizar a linha `# Toda a suíte —` do README com os números observados, no mesmo formato, e rodar de novo `dotnet test tests/IdentityGateway.ArchitectureTests` (há regras que leem o README).
 
