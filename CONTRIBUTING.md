@@ -73,6 +73,12 @@ Nenhuma mudança é considerada pronta sem teste no nível apropriado:
 | Repositório, interceptor, migration | `Infrastructure.IntegrationTests` — PostgreSQL real |
 | Endpoint | `Api.FunctionalTests` — caminho feliz **e pelo menos um erro** |
 | Estrutura ou convenção | `ArchitectureTests` |
+| Infraestrutura de teste contra o Keycloak, usada por mais de um projeto | `tests/IdentityGateway.Testing.Keycloak` — biblioteca de suporte, sem testes próprios |
+
+> **`tests/IdentityGateway.Testing.Keycloak` é biblioteca, não projeto de teste.** Guarda o que mais de um projeto
+> precisa para falar com um Keycloak real — o fixture do Keycloak, o cliente do mailpit e o harness de login por
+> device flow —, não referencia `src/`, e é usada pelos projetos de integração e funcional e pelo app de CI em
+> `tools/`. Teste novo vai num dos cinco projetos acima; para lá, só infraestrutura de teste compartilhada.
 
 > **O provider InMemory do EF Core é proibido** em teste de integração. Ele não tem constraint, não tem
 > transação e não fala SQL: aprova o que o PostgreSQL reprovaria. Teste de integração usa Testcontainers.
@@ -105,7 +111,7 @@ Outras convenções: comentário em **português**, identificadores em **inglês
 e exception fica para falha de infraestrutura; `IDateTimeProvider` em vez de `DateTime.UtcNow`;
 `CancellationToken` propagado em toda chamada assíncrona; um caso de uso é **uma pasta** com tudo dentro.
 
-A [especificação arquitetural v2.6](docs/especificacao-arquitetural-v2.6.md) descreve as camadas, os
+A [especificação arquitetural v2.7](docs/especificacao-arquitetural-v2.7.md) descreve as camadas, os
 agregados e os contratos que um caso de uso novo precisa respeitar.
 
 ## Commits

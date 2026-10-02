@@ -14,8 +14,8 @@ nenhum login e de nenhuma requisição de negócio.**
 
 ## Estado do projeto
 
-**M0/M1 em andamento — vertical de registro, fundação Keycloak, consumidor do provisionamento e convite do
-admin inicial entregues.**
+**M0/M1 em andamento — vertical de registro, fundação Keycloak, consumidor do provisionamento, convite do
+admin inicial e tokens do Keycloak (D1) entregues.**
 
 O repositório parte do template [CleanStart](https://github.com/Joseleno/CleanStart) e já traz a fundação
 funcionando — Clean Architecture em quatro camadas, Outbox transacional, cache de dois níveis, middlewares
@@ -23,13 +23,16 @@ de correlação e segurança, testes de arquitetura e CI. **O domínio do Identi
 agregado `Tenant` e `POST /api/v1/tenants` (PR #1) gravam o tenant e publicam `TenantRegistered` no
 Outbox; a fundação Keycloak (PR #2) acrescentou o realm `identity-gateway` com Organizations e a autenticação
 `private_key_jwt` do service account; o consumidor do provisionamento (PR #3) consome o evento pelo próprio
-Outbox e decide entre repetir e desistir pela janela de provisionamento; e esta branch fecha o provisionamento
-da §9.1: o tenant só fica `Active` depois que o admin inicial é convidado no Keycloak — o e-mail de convite
-chega ao mailpit, com um link que abre no navegador —, e a ativação reserva a vaga do admin e registra o
-membro num commit só. **Próximo passo:** o resto do M1 (suspensão, encerramento, reconciliação, retry manual).
-O roadmap está em [`docs/especificacao-arquitetural-v2.6.md`](docs/especificacao-arquitetural-v2.6.md) §16
+Outbox e decide entre repetir e desistir pela janela de provisionamento; o convite do admin inicial (PR #5)
+fechou o provisionamento da §9.1 — o tenant só fica `Active` depois que o admin é convidado no Keycloak —; e
+a primeira parte da fatia D trocou a autenticação: **a API aceita só access tokens do Keycloak** (RS256, com emissor, audiência,
+client de origem e forma conferidos), o JWT simétrico do template deixou de existir, o primeiro platform-admin
+nasce sem senha e é convidado por e-mail, e a demonstração obtém o token pelo device flow. Fecha o critério do
+M0 "primeiro `curl` com token do Keycloak". **Próximo passo:** a D2, a primeira rota de tenant
+(`GET /api/v1/tenants/{tenantId}`), em que o admin convidado lê o próprio tenant.
+O roadmap está em [`docs/especificacao-arquitetural-v2.7.md`](docs/especificacao-arquitetural-v2.7.md) §16
 (referência normativa atual — as anteriores ficam como registro histórico), e o estado detalhado no
-[handoff do convite do admin inicial](docs/superpowers/specs/2026-09-30-convite-admin-inicial-handoff.md).
+[handoff da D1](docs/superpowers/specs/2026-10-02-tokens-keycloak-d1-handoff.md).
 
 | Marco | Entrega | Estado |
 |---|---|---|
@@ -50,7 +53,7 @@ Precisa de .NET 10 e Docker. O Docker não é opcional: os testes de integraçã
 26.7.4 (um contêiner por assembly) por Testcontainers.
 
 ```bash
-# Toda a suíte — 491 testes, 0 skips (160 domínio, 70 application, 41 arquitetura, 189 integração, 31 funcional)
+# Toda a suíte — 676 testes, 0 skips (161 domínio, 70 application, 67 arquitetura, 233 integração, 145 funcional)
 dotnet test
 
 # As dependências, as migrations e a API junto (--build: a imagem da API acompanha o código)
@@ -116,7 +119,7 @@ convém saber:
 A API exige a configuração do Keycloak para subir. Com o compose rodando só as dependências:
 
 ```powershell
-docker compose up -d postgres redis mailpit keycloak
+docker compose up -d postgres redis mailpit keycloak platform-admin-invite
 $pem = docker run --rm -v identitygateway_gateway-keys:/k alpine cat /k/api/private.pem | Out-String
 dotnet user-secrets set "Keycloak:Admin:PrivateKeyPem" $pem --project src/IdentityGateway.Api
 ```
@@ -244,7 +247,7 @@ acima, com uma senha gerada em memória. Ele nunca imprime token, link, código 
 | Documento | O que responde |
 |---|---|
 | [**Documentação de negócio**](docs/documentacao-negocio.md) | **Comece aqui.** O que a solução faz, para quem e como funciona — com 16 diagramas |
-| [**Especificação arquitetural v2.6**](docs/especificacao-arquitetural-v2.6.md) | A referência de implementação: domínio, endpoints, ADRs, código de referência |
+| [**Especificação arquitetural v2.7**](docs/especificacao-arquitetural-v2.7.md) | A referência de implementação: domínio, endpoints, ADRs, código de referência |
 | [**Revisão crítica**](docs/revisao-critica.md) | Os 33 achados que produziram as correções |
 
 ---
@@ -272,7 +275,7 @@ resiliente à queda do Keycloak. Registrar isso faz parte do projeto.
 
 ## Decisões arquiteturais
 
-Dez ADRs, com o texto completo na [especificação §4](docs/especificacao-arquitetural-v2.6.md#4-decisões-arquiteturais-adrs).
+Onze ADRs, com o texto completo na [especificação §4](docs/especificacao-arquitetural-v2.7.md#4-decisões-arquiteturais-adrs).
 
 | ADR | Decisão |
 |---|---|
@@ -286,6 +289,7 @@ Dez ADRs, com o texto completo na [especificação §4](docs/especificacao-arqui
 | 008 | Integração com o Keycloak isolada atrás de uma porta |
 | 009 | Na v1, um usuário pertence a um único tenant |
 | 010 | Um só executor por job de fundo, via advisory lock |
+| 011 | Nas rotas de governança, autorização é token mais pertença no banco (decidido; a rota que o usa chega com a D2) |
 
 ---
 
@@ -296,7 +300,7 @@ competem** — cada versão fecha pontos que a anterior deixou em aberto, e **ne
 em nenhum dos saltos**.
 
 ```
-ideia → v2.0 → [revisão crítica: 33 achados] → v2.1 → [documentação de negócio] → v2.2 → v2.3 → v2.4 → v2.5 → v2.6
+ideia → v2.0 → [revisão crítica: 33 achados] → v2.1 → [documentação de negócio] → v2.2 → v2.3 → v2.4 → v2.5 → v2.6 → v2.7
 ```
 
 - **v2.1** incorporou a revisão crítica — três frentes independentes, 33 achados e 8 contradições.
@@ -313,6 +317,9 @@ ideia → v2.0 → [revisão crítica: 33 achados] → v2.1 → [documentação 
 - **v2.6** registrou a fatia C, o convite do admin inicial, e duas erratas verificadas no código do Keycloak: o
   convidado nasce habilitado (o Keycloak recusa e-mail e clique de usuário desabilitado), e o destinatário do
   client assertion é o endereço público do Keycloak, não o de transporte.
+- **v2.7** registrou a fatia D, os tokens do Keycloak: a API valida só tokens RS256 do realm, o primeiro
+  platform-admin é convidado por e-mail, e entram o ADR-011 e oito erratas — entre elas a do override do
+  platform-admin, que, como estava descrito, nunca funcionaria.
 
 Vale registrar o que a revisão **não** conseguiu derrubar: dos oito alvos examinados, sete
 resistiram inteiros. E das cinco afirmações verificadas contra documentação oficial, duas
@@ -326,7 +333,9 @@ resistiram inteiros. E das cinco afirmações verificadas contra documentação 
 **No compose hoje:** .NET 10 · PostgreSQL · Redis · Keycloak 26.7.4 · Mailpit · EF Core 10 · Carter ·
 Serilog · OpenTelemetry · Seq · Jaeger · xUnit v3 · Testcontainers
 
-**Entra no M0:** RabbitMQ
+**Pendente do M0:** RabbitMQ — a especificação o mantém entre as pendências do M0. O design da fatia D propõe, sem
+decidir, levá-lo para antes do M5, quando existir o primeiro consumidor fora do processo
+([§7 do design](docs/superpowers/specs/2026-09-30-tokens-keycloak-design.md)).
 
 Parte do template [CleanStart](https://github.com/Joseleno/CleanStart).
 
