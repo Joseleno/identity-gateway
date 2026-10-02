@@ -156,7 +156,9 @@ jobs:
     name: Compose
     runs-on: ubuntu-latest
     needs: build
-    timeout-minutes: 20
+    # Acima do que o job leva, e não rente: estourado este teto, o passo de diagnóstico não roda, e a falha fica sem
+    # a causa. Quem corta um passo travado é o teto do próprio passo.
+    timeout-minutes: 30
     env:
       # Lido pelo compose (o e-mail gravado no realm) e pelo app (o destinatário que ele procura no mailpit).
       PLATFORM_ADMIN_EMAIL: platform-admin@identity-gateway.local
@@ -243,11 +245,14 @@ jobs:
           dotnet run --configuration Release tools/jornada-compose.cs -- convites --esperado 0
 
       # Os serviços um a um, e NUNCA o gateway-keys: ele imprime a senha do admin master na primeira subida. Do
-      # mailpit, só os metadados — o corpo traz o link, que troca a senha do convidado.
+      # mailpit, só os metadados — o corpo traz o link, que troca a senha do convidado. O migrate e o keycloak-db
+      # entram porque estão na cadeia de que a api depende: se a subida parar num dos dois, a causa está no log deles.
       - name: Diagnóstico em caso de falha
         if: failure()
         run: |
           docker compose ps -a || true
+          docker compose logs --no-color keycloak-db || true
+          docker compose logs --no-color migrate || true
           docker compose logs --no-color platform-admin-invite || true
           docker compose logs --no-color api || true
           docker compose logs --no-color keycloak || true
