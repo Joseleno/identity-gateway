@@ -1814,11 +1814,16 @@ public static IServiceCollection AddKeycloakIdentity(this IServiceCollection ser
             token.RequireHttpsMetadata = !keycloak.Value.AllowInsecureHttp;
         })
         .Validate(token => !string.IsNullOrWhiteSpace(token.Audience), "Keycloak:Auth:Audience é obrigatório.")
-        // Fora de Development, o client de demonstração não pode estar na lista. Lista vazia sobe: a API recusa
+        // Um item em branco na lista é erro de configuração, e a subida falha. Lista vazia sobe: a API recusa
         // todo token de usuário e registra um aviso (fail-closed).
+        .Validate(
+            token => token.AllowedClients.All(client => !string.IsNullOrWhiteSpace(client)),
+            "Keycloak:Auth:AllowedClients não aceita item vazio.")
+        // Fora de Development, o client de demonstração não pode estar na lista. Comparação ordinal, como a do azp.
         .Validate<IHostEnvironment>(
-            (token, ambiente) => ambiente.IsDevelopment() || !token.AllowedClients.Contains("identity-gateway-demo"),
-            "Keycloak:Auth:AllowedClients contém um client que só é aceito no ambiente Development.")
+            (token, ambiente) => ambiente.IsDevelopment()
+                || !token.AllowedClients.Contains("identity-gateway-demo", StringComparer.Ordinal),
+            "Keycloak:Auth:AllowedClients traz um client aceito só no ambiente Development.")
         .ValidateOnStart();
 
     // A chave é importada para RSA uma vez; o cache do token é singleton porque o
@@ -1981,8 +1986,18 @@ internal static class FormaDoAccessToken
     /// </remarks>
     internal static string? Recusar(JsonWebToken token, IReadOnlyList<string> clientsPermitidos)
     {
-        using var documento = JsonDocument.Parse(Base64UrlEncoder.DecodeBytes(token.EncodedPayload));
-        JsonElement payload = documento.RootElement;
+        JsonElement payload;
+
+        // Payload que não é base64url, ou não é JSON: recusa com motivo fixo — 401, e não exceção.
+        try
+        {
+            using var documento = JsonDocument.Parse(Base64UrlEncoder.DecodeBytes(token.EncodedPayload));
+            payload = documento.RootElement.Clone();
+        }
+        catch (Exception excecao) when (excecao is JsonException or FormatException or ArgumentException)
+        {
+            return "payload ilegível";
+        }
 
         string? azp = Texto(payload, "azp");
 
@@ -2004,9 +2019,12 @@ internal static class FormaDoAccessToken
         return null;
     }
 
-    // Só texto: array, número, objeto e ausência devolvem null.
+    // Só texto: array, número, objeto e ausência devolvem null. A guarda do objeto vem primeiro: num payload que é
+    // JSON e não é objeto, o TryGetProperty lançaria.
     private static string? Texto(JsonElement payload, string claim) =>
-        payload.TryGetProperty(claim, out JsonElement valor) && valor.ValueKind == JsonValueKind.String
+        payload.ValueKind == JsonValueKind.Object
+        && payload.TryGetProperty(claim, out JsonElement valor)
+        && valor.ValueKind == JsonValueKind.String
             ? valor.GetString()
             : null;
 }

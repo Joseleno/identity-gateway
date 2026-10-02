@@ -5,9 +5,9 @@
 > da CI nunca foi executado** — a CI só roda em push na `main` ou em PR —, **e duas provas por mutação da Tarefa 11
 > ficaram por fazer**, com a derrubada do ambiente de verificação, bloqueadas pelo sistema de permissões do ambiente
 > (ver "Pendências"). Push e PR aguardam autorização do autor.
-> **Onde parou:** as 12 tarefas da D1 estão commitadas na branch `feat/tokens-keycloak`; falta a revisão final da
-> branch, enviar a branch, abrir o PR contra `main`, acompanhar a CI e mesclar. A D2 (Tarefas 13–17) começa depois
-> do merge, a partir da `main`.
+> **Onde parou:** as 12 tarefas da D1 e as correções da revisão final da branch estão commitadas em
+> `feat/tokens-keycloak`; falta conferir essas correções, enviar a branch, abrir o PR contra `main`, acompanhar a CI
+> e mesclar. A D2 (Tarefas 13–17) começa depois do merge, a partir da `main`.
 >
 > Sucede o [handoff do design da fatia D](2026-10-01-tokens-keycloak-design-handoff.md) e o
 > [handoff do convite do admin inicial](2026-09-30-convite-admin-inicial-handoff.md) (fatia C, PR #5). Design da
@@ -31,7 +31,8 @@ Três frentes de commits compõem a branch: **planejamento** (12 `docs` — desi
 design e os 8 do plano, dois deles, `b46f1aa` e `4a896e6`, feitos durante a execução para corrigir o plano),
 **Tarefas 1–11** (12 — **5** `feat`, **5** `test`, 1 `fix`, da rodada de correção da Tarefa 8, e 1 `ci`; nenhum
 `refactor` nem `chore`) e a **Tarefa 12** (1 `docs`: especificação v2.7, documento de negócio, README, CONTRIBUTING e
-este handoff).
+este handoff). Depois da revisão final da branch veio uma quarta, de **correção**: 3 commits (1 `test`, 1 `ci` e
+1 `docs`), sem tocar código de produção — item 12 de "O que mudou em relação ao plano".
 
 **Aviso para quem já tem volumes do compose: rode `docker compose down -v` uma vez, depois
 `docker compose up -d --build`. É a quarta vez que o projeto pede isso.** O realm só é importado na primeira subida
@@ -112,6 +113,33 @@ O plano foi escrito antes de o código existir. O que a execução encontrou:
     ajustada para dizer isso. Detalhe em "Pendências".
 11. **O build de um app de arquivo único não imprime o resumo "0 Aviso(s), 0 Erro(s)"** que o plano esperava
     (Tarefas 11 e 12): a evidência é o código de saída `0` e a ausência de linhas de aviso.
+12. **A revisão final da branch pediu correções em testes, no workflow e em documentos — nenhuma em código de
+    produção.** Uma linha por correção; as mutações estão na segunda tabela de "Prova por mutação", com "RF" na
+    primeira coluna:
+    - **O teto de `MetadadosFrios_…` subiu de 7 s para 15 s:** a folga de 1,7 s sobre os 5,3 s medidos era pouca para
+      um runner carregado, e o que o teto precisa reprovar é o prazo padrão, de 60 s.
+    - **O teto do job `Compose` subiu de 20 para 30 min**, para o diagnóstico em falha chegar a rodar; e o diagnóstico
+      passou a imprimir também os logs de `keycloak-db` e de `migrate`. O `gateway-keys` continua de fora.
+    - **O harness resolve o `action` do formulário e o link de prosseguir sempre contra a página**
+      (`new Uri(pagina, texto)`), sem perguntar antes ao `Uri.TryCreate(…, UriKind.Absolute)`, que responde diferente
+      por sistema. Quatro casos novos em `HarnessDeLoginTests`. **O que cada um prova:** o endereço relativo ao esquema
+      (`//host/…`) reprovou o código antigo aqui, no Windows, onde ele vira um caminho UNC; o relativo à raiz
+      (`/realms/…`) passa com o código antigo no Windows e só o reprovaria num sistema Unix, onde vira
+      `file:///realms/…` (comportamento documentado do .NET) — **e em Unix nada disto foi executado**.
+    - **O exportador de spans dos testes achata a tag cujo valor é uma lista.** Antes, um `string[]` virava o texto
+      `System.String[]`, e o teste de vazamento não veria um token num cabeçalho capturado como tag.
+    - **O teste de vazamento procura também nos cabeçalhos do conteúdo e nos trailers**, e ganhou controles de
+      presença: o corpo não é vazio, o `Content-Type` do Problem Details está no texto procurado e, nos `401`, o
+      `WWW-Authenticate` também.
+    - **As três asserções de `Content-Type` do item 2 trocaram os parênteses por uma variável local**
+      (`string? tipoDoCorpo = …; tipoDoCorpo.Should().Be(…)`): a asserção não depende mais de um par de parênteses.
+    - **README:** a fase `jornada` do app não para o Keycloak (os passos com ele parado são outras três fases), e o
+      app deixa no diretório temporário um arquivo de estado com o refresh token — com o comando para apagá-lo.
+    - **v2.7, §11.8:** os blocos de referência passaram a trazer a validação "`AllowedClients` não aceita item
+      vazio", a mensagem da recusa do client de demonstração como está no código, o `StringComparer.Ordinal`, o ramo
+      "payload ilegível" e a guarda de objeto do `Texto`.
+    - **Este handoff:** o risco do Outbox e a origem do 137 da `api`, em "Pendências", foram reescritos — o primeiro
+      afirmava um limite que a configuração desmente, e o segundo, uma anterioridade que ninguém mediu.
 
 ## Suíte completa
 
@@ -122,21 +150,26 @@ imprime o resumo de avisos e erros.
 `dotnet test` (solução inteira, Docker rodando, HEAD `751f8c9`, com as edições de documentação desta tarefa já na
 árvore e antes do commit dela, em 2026-10-02, das 10:28 às 10:30): **676 total, 0 falhas, 0 skips**, em 1 min 48 s.
 A saída da solução inteira só traz o total geral; os totais por projeto vêm de uma segunda execução, projeto a
-projeto, com `--no-build`, das 10:31 às 10:34, todas com 0 falhas e 0 skips.
+projeto, com `--no-build`, das 10:31 às 10:34, todas com 0 falhas e 0 skips: 161, 70, 67, 233 e 145.
+
+**Depois das correções da revisão final** (item 12 de "O que mudou em relação ao plano"), os cinco projetos rodaram
+de novo, um a um, com as correções na árvore e antes dos commits delas, em 2026-10-02, das 11:35 às 11:38:
+**680 total, 0 falhas, 0 skips**. Os 4 a mais são os casos novos do harness, na integração. A tabela é a dessa
+execução:
 
 | Projeto | Total | Falhas | Skips |
 |---|---|---|---|
 | `IdentityGateway.Domain.UnitTests` | 161 | 0 | 0 |
 | `IdentityGateway.Application.UnitTests` | 70 | 0 | 0 |
 | `IdentityGateway.ArchitectureTests` | 67 | 0 | 0 |
-| `IdentityGateway.Infrastructure.IntegrationTests` | 233 | 0 | 0 |
+| `IdentityGateway.Infrastructure.IntegrationTests` | 237 | 0 | 0 |
 | `IdentityGateway.Api.FunctionalTests` | 145 | 0 | 0 |
-| **Total** | **676** | **0** | **0** |
+| **Total** | **680** | **0** | **0** |
 
 `IdentityGateway.Testing.Keycloak` é biblioteca de suporte e não tem testes: não aparece no resumo. O handoff da
 fatia C registrava 491 testes; a Tarefa 1 contou **493** no commit de partida (161 no domínio e 190 na integração,
 e não 160 e 189), e a origem da diferença não foi investigada. O design estimava de 50 a 55 testes novos na D1;
-**entraram 183** (26 na arquitetura, 43 na integração e 114 nos funcionais). Depois de trocar os números no README,
+**entraram 187** (26 na arquitetura, 47 na integração e 114 nos funcionais). Depois de trocar os números no README,
 `IdentityGateway.ArchitectureTests` rodou de novo: 67/67.
 
 ## Prova por mutação
@@ -169,7 +202,7 @@ autenticação. O vermelho foi por asserção, salvo onde a linha diz "exceção
 | `RequireHttpsMetadata=false` fixo | P: opções resolvidas em `Production` | Vermelha. P (Tarefa 8): `OpcoesResolvidas_ExigemHttpsNosMetadadosComPrazoDe5s` («Expected jwt.RequireHttpsMetadata to be True, but found False»). Na Tarefa 6, sobre a option: `RequireHttpsMetadata_SegueOAllowInsecureHttp` e `IssuerEMetadadosNaConfiguracao_SaoIgnorados` |
 | A guarda `HttpSoEmDesenvolvimento` sempre verdadeira | P: a subida com `BaseUrl` `http` deixa de falhar | **Executada e vista vermelha** (Tarefa 8) — na fatia C, ela tinha ficado sem prova. `TransporteEmHttpComAllowInsecureHttp_ASubidaFalha` e `EnderecoPublicoEmHttp_ASubidaFalha` («Expected falha not to be null because a subida precisava falhar com esta configuração», nos dois); o controle `ConfiguracaoDeProducaoValida_SobeEOLiveResponde` continuou verde. Aplicada com uma alternativa sempre verdadeira na condição (`ambiente.EnvironmentName.Length >= 0`), porque o `return true;` do plano não compila (`CS0162`). O ambiente de execução não recusou rodá-la. Os testes de `KeycloakAdminOptionsTests`, na integração, sob esta mutação, não constam do relatório da Tarefa 8 |
 | `IncludeErrorDetails=true` | Configuração: opções resolvidas; P: `error_description` no `WWW-Authenticate` | Vermelha. Tarefa 7: 16 — `AResposta_NaoDetalhaOErro…` («Expected jwt.IncludeErrorDetails to be False because o WWW-Authenticate ecoaria o iss e o aud recusados, but found True.») e 15 dos 16 casos recusados («Expected resposta.Headers.WwwAuthenticate.ToString() to be the same string because o motivo da recusa fica no log, não na resposta, but they differ at index 6»); o caso `Bearer vazio` não chega à validação. Tarefa 8, com o host em Production: 32, entre eles `AudienciaErrada_401SemDetalheDoErroTambemEmProducao` e `OpcoesResolvidas_…` |
-| `BackchannelTimeout` padrão | P: metadados frios passam de ~7 s | Vermelha (Tarefa 8): `MetadadosFrios_401EmPoucosSegundosComOAvisoESemOTokenNoLog` («Expected relogio.Elapsed to be less than 7s, but found 1m, 49ms…»), `OpcoesResolvidas_ExigemHttpsNosMetadadosComPrazoDe5s` e `OsMetadados_VemPeloEnderecoDeTransporteComPrazoCurto` («Expected 5s, but found 1m»). Com o código certo, o teste dos metadados frios leva 5,3 s, contra o teto de 7 s |
+| `BackchannelTimeout` padrão | P: metadados frios passam de ~7 s | Vermelha (Tarefa 8): `MetadadosFrios_401EmPoucosSegundosComOAvisoESemOTokenNoLog` («Expected relogio.Elapsed to be less than 7s, but found 1m, 49ms…»), `OpcoesResolvidas_ExigemHttpsNosMetadadosComPrazoDe5s` e `OsMetadados_VemPeloEnderecoDeTransporteComPrazoCurto` («Expected 5s, but found 1m»). Com o código certo, o teste dos metadados frios leva 5,3 s, contra o teto de 7 s. **O teto passou a 15 s na correção da revisão final**, e a mutação foi refeita: `MetadadosFrios_…` («Expected relogio.Elapsed to be less than 15s, but found 1m, 42ms…») e `OpcoesResolvidas_…` («Expected 5s, but found 1m») |
 | Tirar o log do `OnAuthenticationFailed`, ou logar o token | P: metadados frios sem o `Warning`; vazamento: o token no log | Vermelhas. **Sem o aviso** (Tarefa 8, sem a chamada `ChavesIndisponiveis`): `MetadadosFrios_…` («Expected api.Logs.Eventos … to have an item matching …"indisponíveis"…») e `AvisoDeChaveNoLogTests` («Expected logs.Eventos.Count(EhOAvisoDeChave) to be 1 …, but found 0»). **Token no log da falha** (o cabeçalho `Authorization` junto do tipo): na Tarefa 8, `MetadadosFrios_…` — a mensagem inteira não consta do relatório, porque a saída trazia o token de teste; na Tarefa 9, os casos `vencido`, `audiência errada` e `assinatura inválida` do teste de vazamento («Expected logs.Any(…) to be False because o e-mail em base64url (alinhamento 0) não pode aparecer no log, but found True.»). **`Authorization` no log do pedido** (Tarefa 9): os seis casos, com a mesma mensagem |
 | `MapInboundClaims=true` | F: todos os `202` | Vermelha (Tarefa 7): 17 — `AResposta_…` («Expected jwt.MapInboundClaims to be False because …, but found True.»), os 3 casos aceitos e todo teste autenticado que esperava `202`, `200`, `400`, `404` ou `409` («…but found Forbidden {403}.») |
 | Tirar a `FallbackPolicy` | F: caminho não mapeado sem token deixa de levar `401` | Vermelha (Tarefa 7): só `CaminhoNaoMapeado_SemToken401EComToken404` («Expected semToken.StatusCode to be Unauthorized {401}, but found NotFound {404}.»). `TodoEndpoint_TemPolicyNomeadaOuAnonimatoDeclarado` continuou verde, como previsto |
@@ -241,6 +274,12 @@ autenticação. O vermelho foi por asserção, salvo onde a linha diz "exceção
 | 11 | Um `#:package` declarado no app | `FerramentasNaoDeclaramPacotes`: «Did not expect File.ReadAllText(ferramenta) "#:package Humanizer@2.14.1 ..." to contain #:package» |
 | 11 | O app sem `#:property PublishAot=false` | `AppDaJornadaUsaABibliotecaDoHarnessESemAot`: «Expected app "#:project ../tests/IdentityGateway.Testing.Keycloak ..." to contain #:property PublishAot=false»; e o build do app falha com `IL2026` e `IL3050` |
 | 11 | O one-shot sem o marcador, e o marcador lido com `--fields attributes`, com o app como testemunha | **Não executadas** — ver "Pendências" |
+| RF | Harness: o código anterior à correção (`Uri.TryCreate(…, UriKind.Absolute)` antes de resolver contra a página), com os casos novos | No Windows, 2 dos 4: os dois de endereço relativo ao esquema, `AcaoDoFormularioSemEsquema_…` e `LinkDeProsseguirSemEsquema_…` («Expected pedidos[1].Endereco to be the same string, but they differ at index 68: "…ns/proximo%3Fexecution=x&tab_id=y"» — o `?` da query engolido pelo caminho UNC). Os dois de endereço relativo à raiz ficaram **verdes**: no Windows o código antigo acerta |
+| RF | Harness: o resultado que o .NET documenta para Unix, imitado à mão (`file://` + o caminho, quando o texto começa com `/`) | Os dois casos de endereço relativo à raiz: «Expected pedidos[1].Endereco to be the same string, but they differ at index 0: "file:///realms/identity-gateway/login-actions/prox…"». É imitação, e não execução em Unix: prova que os casos afirmam o endereço discado, e não que o .NET faz isso lá |
+| RF | O `Authorization` numa tag do span, com o valor em array (`new[] { … }`) | **Com o exportador anterior: verde, 9/9** — o detector estava cego para essa forma. Com o exportador novo: os seis casos de vazamento («…não pode aparecer nos spans, but found True.») |
+| RF | Sem o result handler do Problem Details, refeita com as asserções novas | 39 dos 145 funcionais: `SegurancaTests` (2) e `AutenticacaoNegativaTests` (32), com «Expected tipoDoCorpo to be "application/problem+json", but found null.»; e 5 casos do teste de vazamento — os quatro `401` e o `403` — com «Expected (corpo.Length > 0) to be True because o corpo da resposta precisa ter sido lido, but found False.» |
+| RF | No teste de vazamento, o texto procurado só com os cabeçalhos da resposta (o código anterior), com o controle novo | Os seis casos: «Expected cabecalhos.Contains("Content-Type: application/problem+json", StringComparison.Ordinal) to be True because os cabeçalhos do conteúdo precisam estar no texto procurado, but found False.» |
+| RF | No teste de vazamento, o texto procurado sem os cabeçalhos da resposta | Os quatro casos `401`: «Expected cabecalhos.Contains("WWW-Authenticate: Bearer", StringComparison.Ordinal) to be True because os cabeçalhos da resposta precisam estar no texto procurado, but found False.» |
 
 ## Verificação ao vivo
 
@@ -301,7 +340,11 @@ exige verificação na 26.7.4.
 
 - **O job `Compose` da CI, o passo novo do job `build` e o app em Linux nunca rodaram** — inclusive o ramo que
   aplica a permissão 600 ao arquivo de estado (`File.SetUnixFileMode`). O `ci.yml` passou no `actionlint` 1.7.12, e
-  a mesma sequência de comandos rodou localmente, em Windows. A primeira execução real é a do PR.
+  a mesma sequência de comandos rodou localmente, em Windows. A primeira execução real é a do PR. **A edição da
+  correção da revisão final (o teto do job e as duas linhas de `logs` do diagnóstico) foi conferida só por leitura:
+  o `actionlint` não rodou de novo sobre o arquivo.**
+- **O harness em Unix.** Os testes de device flow e os casos novos de endereço sem esquema rodaram só em Windows; o
+  caminho que a correção do harness fecha — o `Uri.TryCreate` lendo `/realms/…` como arquivo — só existe em Unix.
 - **O `0` do `grep` de token no log da `api` não é prova.** Ele veio de um contêiner recriado pelo `down` e `up` da
   segunda subida, e não cobre nenhum pedido da jornada: nem a recusa da receita HS256, nem os `POST /tenants`, nem o
   login e o device flow no log do Keycloak. O que os contêineres parados mostram — `eyJ`, `action-token?key=` e
@@ -379,13 +422,21 @@ falta é a testemunha que a CI usa. Elas **não** são critério de aceite do PR
   `localhost:5341`) sem destino; sem os dois, menos de 0,2 s — medido na revisão da Tarefa 9. Efeito colateral que
   já existia: com o compose de desenvolvimento de pé, os hosts de teste mandam spans e logs para o Jaeger e o Seq
   locais. A escolha é entre neutralizar os destinos na factory e condicionar o OTLP a um endpoint configurado.
-- **A `api` sai com 137 no `stop`** — morta depois dos 10 s de tolerância, em vez de encerrar no `SIGTERM`. É
-  comportamento de produto que já existia, fora desta fatia, e a causa não foi investigada. Custa cerca de 10 s em
-  cada `down`, inclusive na CI.
-- **Risco de vermelho sem defeito na CI:** se o Keycloak levar perto dos 180 s do laço para voltar num runner lento
-  e o teto de tentativas do Outbox for baixo, o tenant registrado com o Keycloak parado vira `ProvisioningFailed`.
-  Localmente, o Keycloak voltou em menos de 20 s. E o teto do job `Compose` (20 min) é menor que a soma dos tetos dos
-  passos (34 min): num caminho já patológico, o job é cancelado, e o diagnóstico não roda.
+- **A `api` sai com 137 no `stop`** — morta depois dos 10 s de tolerância, em vez de encerrar no `SIGTERM`. Foi
+  observado nesta fatia, na verificação ao vivo da Tarefa 11. **Não há medição anterior:** se o comportamento já
+  existia antes da fatia não foi verificado, e a origem não foi investigada. Custa cerca de 10 s em cada `down`,
+  inclusive na CI.
+- **Risco de vermelho sem defeito na CI — pelos prazos do passo, e não pelo Outbox.** O tenant registrado com o
+  Keycloak parado **não** vira `ProvisioningFailed` por demora: diante de uma falha transitória, o provisionamento só
+  desiste quando a janela `Provisioning:MaxPendingHours` (24 h) se esgota, e o Outbox insiste por mais que ela —
+  `Outbox:MaxAttempts` é 1500, com recuo de 10 s a 60 s (`src/IdentityGateway.Api/appsettings.json`), e a subida
+  recusa uma configuração em que as tentativas não cubram a janela. O que pode estourar num runner lento é o
+  tempo: o laço de 180 s que espera o Keycloak voltar a `healthy` (falha com mensagem própria) e, depois dele, os
+  150 s que a fase `depois-de-voltar` dá para o tenant chegar a `Active` — contra até 72 s de recuo (o teto de 60 s
+  mais a variação de até 20%), o ciclo de 5 s do Outbox e a tentativa em si. Localmente, o Keycloak voltou em menos
+  de 20 s, e o tenant ficou `Active` em 15,1 s. O teto do job `Compose` subiu de 20 para 30 min na correção da
+  revisão final; continua abaixo da soma dos tetos dos passos (34 min), e só um caminho em que quase todos os passos
+  estouram ainda cancelaria o job antes do diagnóstico.
 - **O `kc()` do one-shot cala o stderr do `kcadm`**, de propósito, para nunca ecoar uma resposta: a causa real de
   uma falha (SMTP, `403`, conexão) não aparece, só a mensagem genérica com a instrução.
 - **`PLATFORM_ADMIN_EMAIL` com `+`** não foi testado na busca do one-shot (`-q email=`). A falha é fechada — o
@@ -437,38 +488,37 @@ RabbitMQ fora da lista do M0. Nenhuma está na v2.7.
 certo como destino; a frase "sem código escrito até esta versão", da nota "Natureza do artefato", está desatualizada
 desde a vertical de registro; e o documento explica nove ADRs, sem ficha para o ADR-010 nem para o ADR-011.
 
-**Achados menores das revisões por tarefa, adiados para a revisão final da branch:**
+**Achados menores das revisões por tarefa, adiados para a revisão final da branch.** A revisão final mandou
+corrigir parte deles (item 12 de "O que mudou em relação ao plano"); a lista abaixo é a do que **ficou**:
 - **App da jornada** (`tools/jornada-compose.cs`): o título do `::error` sai cortado na vírgula, nas quatro etapas
   que têm vírgula, e sem escape de `%` nem de quebra de linha; uma exceção fora das quatro capturas sai com stack
   trace e código 134, sem família de falha; `convites` sem `--esperado` sai com `10`, e não com `2`; o arquivo de
   estado guarda o refresh token, recebe a permissão 600 só depois de gravado e tem nome previsível no diretório
   temporário; e a função que mascara segredos no log da CI é o único caminho pelo qual um segredo chega à saída, e
   depende de a linha começar por `::add-mask::` — a saída do app nunca pode ser encanada.
-- **Workflow:** o diagnóstico em falha não imprime `migrate`, `keycloak-db`, `postgres` nem `mailpit`; e o `rm -f`
-  do arquivo de estado vem depois do `down -v`, e não roda se ele falhar.
-- **README:** a demonstração diz que o comando `-- jornada` percorre os passos dela, mas ele não para o Keycloak — os
-  passos com o Keycloak parado são as outras três fases, intercaladas com `stop` e `start`; e não avisa que a fase
-  deixa o arquivo de estado, com o refresh token.
-- **Testes:** em `Logs/CapturaDeSpans.cs`, uma tag do tipo `string[]` vira o texto `System.String[]`, e o detector
-  não veria um token num cabeçalho capturado assim; em `VazamentoDoEmailNoTokenTests`, a busca nos cabeçalhos não
-  inclui os do conteúdo, e nenhuma mutação exercita a ausência no corpo nem nos cabeçalhos; em `HostEmProducaoTests`,
-  a asserção negativa do token imprimiria os textos do log, com o token de teste, se falhasse; o teto de 7 s de
-  `MetadadosFrios_…` tem 1,7 s de folga sobre os 5,3 s observados; e as regras textuais do compose e das ferramentas
-  não pegam variantes de forma (`- KC_CLI_PASSWORD=x` em lista, `-F attributes`, uma linha comentada).
+- **Workflow:** o diagnóstico em falha não imprime `postgres` nem `mailpit` (os logs de `migrate` e de
+  `keycloak-db` entraram na correção); o `rm -f` do arquivo de estado vem depois do `down -v`, e não roda se ele
+  falhar; e não há, no job, a checagem de segredo nos logs do compose (item 3 das pendências do autor, acima).
+- **Testes:** em `VazamentoDoEmailNoTokenTests`, a ausência do segredo no corpo e nos cabeçalhos continua sem
+  mutação que a exercite — o que entrou foram controles de presença —, e os trailers entram no texto procurado sem
+  controle de presença; em `HostEmProducaoTests`, a asserção negativa do token imprimiria os textos do log, com o
+  token de teste, se falhasse; cinco comentários, em quatro arquivos de teste, citam um "Foco de revisão" do plano,
+  que só resolve para quem tem o plano aberto; e as regras textuais do compose e das ferramentas não pegam variantes
+  de forma (`- KC_CLI_PASSWORD=x` em lista, `-F attributes`, uma linha comentada).
 - **Regras do realm:** `AudienciaDaGatewaySoNoScopeGatewayApi` não tem mutação para "Audience Mapper em outro
   lugar"; e duas regras caem por exceção, e não por asserção, quando a chave some (tabela de mutações).
 - **Log do framework:** em Development, o `kid` do token — texto controlado por quem manda o token — aparece no log
   do `JwtBearerHandler` (`IDX10503`, em `Information`). Em produção, a categoria `Microsoft.AspNetCore` fica em
   `Warning`. Os logs da Gateway não o registram.
-- **v2.7, §11.8:** os blocos de código são referência, e não cópia. O do `AddKeycloakIdentity` não traz a validação
-  "`AllowedClients` não aceita item vazio", que o código tem, e a mensagem da recusa do client de demonstração difere
-  em palavras; o `FormaDoAccessToken.Recusar` de referência não traz o ramo do payload ilegível.
+- **v2.7, §11.8:** os blocos de código são referência, e não cópia — nomes de variável, comentários e chaves diferem
+  do código. O que a revisão final apontou como omitido (a validação do item vazio, o `StringComparer.Ordinal`, o
+  ramo do payload ilegível, a guarda de objeto e o texto da mensagem de recusa) entrou na correção.
 - **Pacotes:** `OpenTelemetry.Exporter.InMemory` continua no `Directory.Packages.props` com um comentário que não
   vale mais — quem o referencia é o projeto de integração.
 
 ## Próximo passo
 
-1. Revisão final da branch inteira, com a lista de pendências acima.
+1. Conferir as correções da revisão final (item 12 de "O que mudou em relação ao plano").
 2. O autor derruba o `igverif` e, se quiser, fecha as duas mutações do marcador e a checagem de token nos logs
    ("Pendências").
 3. Autorizar o push e abrir o PR contra `main`, com o aviso de `docker compose down -v` no corpo.

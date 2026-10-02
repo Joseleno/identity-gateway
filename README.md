@@ -53,7 +53,7 @@ Precisa de .NET 10 e Docker. O Docker não é opcional: os testes de integraçã
 26.7.4 (um contêiner por assembly) por Testcontainers.
 
 ```bash
-# Toda a suíte — 676 testes, 0 skips (161 domínio, 70 application, 67 arquitetura, 233 integração, 145 funcional)
+# Toda a suíte — 680 testes, 0 skips (161 domínio, 70 application, 67 arquitetura, 237 integração, 145 funcional)
 dotnet test
 
 # As dependências, as migrations e a API junto (--build: a imagem da API acompanha o código)
@@ -237,8 +237,23 @@ do token, que só aparece se você o colar numa linha de comando. Se precisar co
 dotnet run tools/jornada-compose.cs -- jornada
 ```
 
-O app conclui o convite pelo link do mailpit, faz o device flow submetendo as páginas do Keycloak e percorre os passos
-acima, com uma senha gerada em memória. Ele nunca imprime token, link, código nem senha.
+O app conclui o convite pelo link do mailpit, faz o device flow submetendo as páginas do Keycloak, registra um tenant,
+espera ele ficar `Active` e confere o convite do admin do tenant no mailpit, com uma senha gerada em memória. Ele
+nunca imprime token, link, código nem senha.
+
+**Essa fase não para o Keycloak.** Os passos 3 a 5 acima são outras três fases do mesmo app — `antes-de-parar`,
+`com-keycloak-parado` e `depois-de-voltar` —, que o job intercala com `docker compose stop keycloak` e
+`docker compose start keycloak`; a sequência está no passo "Registrar com o Keycloak parado e provisionar quando ele
+volta" de `.github/workflows/ci.yml`.
+
+**O app deixa um arquivo com credencial.** A fase `jornada` grava `ig-jornada-estado.json` no diretório temporário
+do sistema (ou no caminho da variável `IG_ESTADO`), com o refresh token do platform-admin local: é por ele que as
+outras fases continuam a sessão. A CI apaga o arquivo no fim do job; na sua máquina, apague você:
+
+```bash
+rm -f "${TMPDIR:-/tmp}/ig-jornada-estado.json"
+# no PowerShell: Remove-Item "$env:TEMP\ig-jornada-estado.json"
+```
 
 ---
 
