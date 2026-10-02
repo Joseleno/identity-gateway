@@ -81,10 +81,20 @@ public sealed class FormaDoAccessTokenTests : IDisposable
     [InlineData("0199a00000007000800000000000000a")]             // formato N
     [InlineData("{0199a000-0000-7000-8000-00000000000a}")]       // formato B
     [InlineData(" 0199a000-0000-7000-8000-00000000000a")]        // espaço
+    [InlineData("0x99a000-0000-7000-8000-00000000000a")]         // prefixo 0x, 36 caracteres
+    [InlineData("+199a000-0000-7000-8000-00000000000a")]         // sinal, 36 caracteres
+    [InlineData("0199a000-0x00-7000-8000-00000000000a")]         // prefixo 0x num componente do meio
     [InlineData("")]
     public void SubForaDoFormatoD_ERecusado(string sub)
     {
         Recusar(payload => payload["sub"] = sub).Should().Contain("sub");
+    }
+
+    [Fact]
+    public void SubEmMaiusculasNoFormatoD_EAceito()
+    {
+        // O controle da ida e volta: a caixa não faz parte do formato D.
+        Recusar(payload => payload["sub"] = "0199A000-0000-7000-8000-00000000000A").Should().BeNull();
     }
 
     [Fact]

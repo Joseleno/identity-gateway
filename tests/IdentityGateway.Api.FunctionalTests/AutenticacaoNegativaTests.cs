@@ -119,6 +119,10 @@ public sealed class AutenticacaoNegativaTests(IdentityGatewayApiFactory factory)
         Com("sem sub", payload => payload.Remove("sub")),
         Com("sub que não é GUID", payload => payload["sub"] = "joao"),
         Com("sub no formato N", payload => payload["sub"] = Guid.NewGuid().ToString("N")),
+
+        // 36 caracteres e aceitos pelo parse do formato D, que tolera prefixo 0x e sinal em cada componente.
+        Com("sub com prefixo 0x", payload => payload["sub"] = "0x99a000-0000-7000-8000-00000000000a"),
+        Com("sub com sinal", payload => payload["sub"] = "+199a000-0000-7000-8000-00000000000a"),
         Com("sub em array", payload => payload["sub"] = new[] { Guid.NewGuid().ToString() }),
 
         // Foco de revisão 4: com o detalhe do erro ligado, o iss iria para o WWW-Authenticate, o Kestrel recusaria o

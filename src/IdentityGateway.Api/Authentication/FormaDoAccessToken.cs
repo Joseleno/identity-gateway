@@ -61,9 +61,13 @@ internal static class FormaDoAccessToken
             return "typ diferente de Bearer";
         }
 
-        // O tamanho antes do parse: Guid.TryParseExact tolera espaço nas pontas, e o formato D tem exatamente 36
-        // caracteres.
-        if (Texto(payload, "sub") is not { Length: 36 } sub || !Guid.TryParseExact(sub, "D", out _))
+        // A ida e volta, e não só o parse: Guid.TryParseExact com "D" tolera espaço nas pontas e, em cada componente,
+        // o prefixo 0x e o sinal + — textos que ele aceita e que não são o GUID que devolve. Escrito de volta no formato
+        // D, o GUID só coincide com o texto recebido se o texto já estava nesse formato. Sem distinguir a caixa: um
+        // GUID em maiúsculas continua sendo formato D.
+        if (Texto(payload, "sub") is not { } sub
+            || !Guid.TryParseExact(sub, "D", out Guid id)
+            || !string.Equals(id.ToString("D"), sub, StringComparison.OrdinalIgnoreCase))
         {
             return "sub ausente ou fora do formato de GUID";
         }
