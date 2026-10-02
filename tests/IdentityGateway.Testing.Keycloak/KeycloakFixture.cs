@@ -150,6 +150,20 @@ public sealed class KeycloakFixture : IAsyncLifetime
         return http;
     }
 
+    /// <summary>
+    /// Lê um recurso do realm pela Admin API, como admin do master — o JSON cru, nunca um DTO de quem está sob teste.
+    /// </summary>
+    /// <param name="caminho">Relativo a <c>admin/realms/identity-gateway/</c>; vazio lê o próprio realm.</param>
+    public async Task<JsonElement> LerComoMasterAsync(string caminho, CancellationToken cancellationToken)
+    {
+        using HttpClient master = await CriarClienteMasterAsync(cancellationToken);
+        string json = await master.GetStringAsync(
+            new Uri($"admin/realms/{Realm}/{caminho}".TrimEnd('/'), UriKind.Relative), cancellationToken);
+
+        using var documento = JsonDocument.Parse(json);
+        return documento.RootElement.Clone();
+    }
+
     /// <summary>Cria uma Organization por fora da Gateway, como o master faria.</summary>
     public async Task<string> CriarOrganizacaoComoMasterAsync(
         string alias, string? tenantId, CancellationToken cancellationToken)

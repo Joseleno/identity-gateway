@@ -21,8 +21,7 @@ public sealed class KeycloakRealTests(KeycloakFixture keycloak)
     private static readonly string[] PapeisProibidos =
         ["impersonation", "realm-admin", "manage-realm", "manage-clients", "manage-identity-providers"];
 
-    private static readonly string[] PapeisDeRealmAceitos =
-        ["default-roles-identity-gateway", "offline_access", "uma_authorization"];
+    private static readonly string[] PapeisDeRealmAceitos = ["default-roles-identity-gateway"];
 
     [Fact]
     public async Task ComAChaveRegistrada_ObtemToken()
