@@ -48,6 +48,15 @@ public sealed class KeycloakFixture : IAsyncLifetime
     /// <summary>A mesma tag do <c>docker-compose.yml</c> — um teste de arquitetura confere.</summary>
     public const string ImagemDoKeycloak = "quay.io/keycloak/keycloak:26.7.4";
 
+    /// <summary>
+    /// O e-mail do platform-admin do bootstrap — o <c>${PLATFORM_ADMIN_EMAIL}</c> do realm.
+    /// </summary>
+    /// <remarks>
+    /// Em minúsculas, como o import o grava. Este usuário serve à prova viva do realm importado; os testes que
+    /// precisam de um platform-admin logado criam o seu, porque o link de ações é de uso único.
+    /// </remarks>
+    public const string EmailDoPlatformAdmin = "platform-admin@identity-gateway.test";
+
     private const int PortaDoMailpit = 8025;
 
     // Montada com o host e o realm das constantes, e não repetindo os dois numa regex literal.
@@ -84,6 +93,7 @@ public sealed class KeycloakFixture : IAsyncLifetime
             .WithEnvironment("SMTP_HOST", "mailpit")
             .WithEnvironment("SMTP_PORT", "1025")
             .WithEnvironment("SMTP_FROM", "convites@identity-gateway.test")
+            .WithEnvironment("PLATFORM_ADMIN_EMAIL", EmailDoPlatformAdmin)
             .Build();
     }
 

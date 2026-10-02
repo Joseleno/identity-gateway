@@ -3,7 +3,15 @@
   "enabled": true,
   "organizationsEnabled": true,
   "resetPasswordAllowed": false,
+  "registrationAllowed": false,
+  "bruteForceProtected": true,
   "adminEventsEnabled": true,
+  "accessTokenLifespan": 300,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "attributes": {
+    "CreateDefaultClientScopes": "true"
+  },
   "smtpServer": {
     "host": "${SMTP_HOST}",
     "port": "${SMTP_PORT}",
@@ -20,6 +28,26 @@
       {
         "name": "tenant-admin",
         "description": "Administrador de um tenant. O tenant vem do atributo tenant_id do usuário."
+      },
+      {
+        "name": "platform-admin",
+        "description": "Operador da plataforma. Não pertence a nenhum tenant."
+      },
+      {
+        "name": "financial-manager",
+        "description": "Gestor financeiro de um tenant."
+      },
+      {
+        "name": "reader",
+        "description": "Leitura dentro de um tenant."
+      },
+      {
+        "name": "offline_access",
+        "description": "Declarado só para ficar fora do papel padrão: o projeto não emite offline tokens."
+      },
+      {
+        "name": "uma_authorization",
+        "description": "Declarado só para ficar fora do papel padrão: o projeto não usa UMA."
       }
     ]
   },
@@ -36,6 +64,97 @@
       }
     ]
   },
+  "clientScopes": [
+    {
+      "name": "gateway-roles",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "roles-plano",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "gateway-tenant",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant-id-plano",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "aggregate.attrs": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "gateway-api",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "audiencia-identity-gateway-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "identity-gateway-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "offline_access",
+      "protocol": "openid-connect",
+      "attributes": {
+        "display.on.consent.screen": "false"
+      }
+    }
+  ],
+  "scopeMappings": [
+    {
+      "clientScope": "gateway-roles",
+      "roles": [
+        "platform-admin",
+        "tenant-admin",
+        "financial-manager",
+        "reader"
+      ]
+    }
+  ],
   "clients": [
     {
       "clientId": "identity-gateway",
@@ -53,7 +172,38 @@
       "attributes": {
         "jwt.credential.certificate": "${GATEWAY_CLIENT_CERT}",
         "token.endpoint.auth.signing.alg": "PS256"
-      }
+      },
+      "fullScopeAllowed": true,
+      "defaultClientScopes": [
+        "basic",
+        "roles"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "identity-gateway-demo",
+      "name": "Demonstração por curl (device flow)",
+      "description": "Client público de demonstração, SÓ do ambiente local: Device Authorization Grant e nada mais. Não vai ao Terraform de produção.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "attributes": {
+        "oauth2.device.authorization.grant.enabled": "true",
+        "oauth2.device.code.lifespan": "300"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "acr",
+        "gateway-roles",
+        "gateway-tenant",
+        "gateway-api"
+      ],
+      "optionalClientScopes": []
     }
   ],
   "users": [
@@ -67,6 +217,19 @@
           "manage-users"
         ]
       }
+    },
+    {
+      "username": "${PLATFORM_ADMIN_EMAIL}",
+      "email": "${PLATFORM_ADMIN_EMAIL}",
+      "enabled": true,
+      "emailVerified": false,
+      "requiredActions": [
+        "UPDATE_PASSWORD",
+        "VERIFY_EMAIL"
+      ],
+      "realmRoles": [
+        "platform-admin"
+      ]
     }
   ]
 }
