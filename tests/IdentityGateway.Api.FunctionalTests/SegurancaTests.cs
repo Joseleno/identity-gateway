@@ -99,9 +99,12 @@ public sealed class SegurancaTests(IdentityGatewayApiFactory factory) : IClassFi
 
         HttpResponseMessage resposta = await client.PostAsync(RotaProtegida, content: null, ct);
 
+        // Numa variável: sem corpo o ContentType é nulo, e um `?.` encadeado até o Should() pularia a asserção.
+        string? tipoDoCorpo = resposta.Content.Headers.ContentType?.MediaType;
+
         resposta.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         resposta.Headers.WwwAuthenticate.ToString().Should().Be("Bearer");
-        (resposta.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
+        tipoDoCorpo.Should().Be("application/problem+json");
 
         JsonElement problema = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
         problema.GetProperty("status").GetInt32().Should().Be(401);
@@ -119,8 +122,11 @@ public sealed class SegurancaTests(IdentityGatewayApiFactory factory) : IClassFi
 
         HttpResponseMessage resposta = await client.PostAsync(RotaProtegida, content: null, ct);
 
+        // Numa variável, pelo mesmo motivo do teste acima: o `?.` não pode alcançar o Should().
+        string? tipoDoCorpo = resposta.Content.Headers.ContentType?.MediaType;
+
         resposta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (resposta.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
+        tipoDoCorpo.Should().Be("application/problem+json");
 
         JsonElement problema = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
         problema.GetProperty("status").GetInt32().Should().Be(403);

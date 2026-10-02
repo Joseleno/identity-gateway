@@ -1,4 +1,5 @@
 using System.Buffers.Text;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
@@ -22,10 +23,19 @@ internal sealed class ExportadorDeSpansEmMemoria : BaseExporter<Activity>
     [
         .. _spans.Select(span =>
             $"{span.DisplayName} {span.StatusDescription} "
-            + $"{string.Join(' ', span.TagObjects.Select(tag => $"{tag.Key}={tag.Value}"))} "
+            + $"{string.Join(' ', span.TagObjects.Select(tag => $"{tag.Key}={Valor(tag.Value)}"))} "
             + string.Join(' ', span.Events.Select(evento =>
-                $"{evento.Name} {string.Join(' ', evento.Tags.Select(tag => $"{tag.Key}={tag.Value}"))}"))),
+                $"{evento.Name} {string.Join(' ', evento.Tags.Select(tag => $"{tag.Key}={Valor(tag.Value)}"))}"))),
     ];
+
+    /// <summary>O valor de uma tag como texto, com os itens à vista quando ele é uma lista.</summary>
+    /// <remarks>
+    /// Uma tag pode levar um array — pela convenção semântica, é assim que um cabeçalho HTTP capturado chega
+    /// (<c>http.request.header.authorization</c>). O <c>ToString</c> de um array é o nome do tipo: sem achatar, o
+    /// segredo estaria no span e o texto procurado diria só <c>System.String[]</c>.
+    /// </remarks>
+    private static object? Valor(object? valor) =>
+        valor is IEnumerable itens and not string ? string.Join(',', itens.Cast<object?>()) : valor;
 
     public override ExportResult Export(in Batch<Activity> batch)
     {

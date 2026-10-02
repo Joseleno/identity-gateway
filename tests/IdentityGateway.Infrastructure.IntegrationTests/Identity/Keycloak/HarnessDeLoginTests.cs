@@ -30,8 +30,13 @@ public sealed class HarnessDeLoginTests
     private const string TokensEmitidos =
         """{"access_token":"ACCESS-SECRETO","refresh_token":"REFRESH-SECRETO","expires_in":300}""";
 
-    private static HarnessDeLogin Criar(HandlerFalso transporte, List<TimeSpan>? esperas = null) => new(
-        new Uri(Publico),
+    /// <summary>Para onde os casos de endereço sem esquema têm de discar, já no endereço de transporte.</summary>
+    private const string ProximoPassoNoTransporte =
+        "http://127.0.0.1:18081/realms/identity-gateway/login-actions/proximo?execution=x&tab_id=y";
+
+    private static HarnessDeLogin Criar(
+        HandlerFalso transporte, List<TimeSpan>? esperas = null, string publico = Publico) => new(
+        new Uri(publico),
         new Uri("http://127.0.0.1:18081"),
         "identity-gateway-demo",
         transporte,
@@ -313,6 +318,92 @@ public sealed class HarnessDeLoginTests
         discado!.Authority.Should().Be("127.0.0.1:18081");
         discado.PathAndQuery.Should().Be("/realms/identity-gateway/x?key=1&tab=2");
         host.Should().Be("keycloak.test:8081");
+    }
+
+    /// <summary>
+    /// Endereços que a página pode trazer sem esquema, com o endereço público do harness em cada caso.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Relativo à raiz</b> (<c>/realms/…</c>): num sistema Unix, <c>Uri.TryCreate(texto, UriKind.Absolute)</c> lê o
+    /// texto como caminho de arquivo e devolve <c>file:///realms/…</c>; no Windows devolve falso. Um harness que
+    /// decidisse "absoluto ou relativo" por ele pediria um <c>file://</c> só no Unix — que é onde a CI roda.
+    /// </para>
+    /// <para>
+    /// <b>Relativo ao esquema</b> (<c>//host/…</c>): no Windows o mesmo <c>TryCreate</c> lê um caminho UNC e devolve
+    /// <c>file://host/…</c>, com a query engolida pelo caminho. É o caso que reprova, também no Windows, um harness
+    /// que decida por ele. O endereço público vai sem porta porque um UNC não aceita <c>host:porta</c>, e o
+    /// <c>TryCreate</c> devolveria falso.
+    /// </para>
+    /// </remarks>
+    public static TheoryData<string, string> EnderecosSemEsquema => new()
+    {
+        { Publico, "/realms/identity-gateway/login-actions/proximo?execution=x&amp;tab_id=y" },
+        {
+            "http://keycloak.test",
+            "//keycloak.test/realms/identity-gateway/login-actions/proximo?execution=x&amp;tab_id=y"
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(EnderecosSemEsquema))]
+    public async Task AcaoDoFormularioSemEsquema_EResolvidaContraAPagina(string publico, string acao)
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        List<(HttpMethod Metodo, string Endereco, string? Host)> pedidos = [];
+        using HandlerFalso transporte = new((pedido, _) =>
+        {
+            pedidos.Add((pedido.Method, pedido.RequestUri!.AbsoluteUri, pedido.Headers.Host));
+
+            return Task.FromResult(pedidos.Count == 1
+                ? Html(
+                    $"""
+                    <html><head><title>Update password</title></head><body>
+                    <form id="kc-passwd-update-form" action="{acao}" method="post">
+                      <input type="password" name="password-new"><input type="password" name="password-confirm">
+                    </form></body></html>
+                    """)
+                : Html(PaginaFinal));
+        });
+        using HarnessDeLogin harness = Criar(transporte, publico: publico);
+
+        await harness.ConcluirLinkDeAcoesAsync(
+            new Uri($"{publico}/realms/identity-gateway/login-actions/action-token?key=1"), "s", ct);
+
+        pedidos.Should().HaveCount(2);
+        pedidos[1].Metodo.Should().Be(HttpMethod.Post);
+        pedidos[1].Endereco.Should().Be(ProximoPassoNoTransporte);
+        pedidos[1].Host.Should().Be(new Uri(publico).Authority);
+    }
+
+    [Theory]
+    [MemberData(nameof(EnderecosSemEsquema))]
+    public async Task LinkDeProsseguirSemEsquema_EResolvidoContraAPagina(string publico, string href)
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        List<(HttpMethod Metodo, string Endereco, string? Host)> pedidos = [];
+        using HandlerFalso transporte = new((pedido, _) =>
+        {
+            pedidos.Add((pedido.Method, pedido.RequestUri!.AbsoluteUri, pedido.Headers.Host));
+
+            return Task.FromResult(pedidos.Count == 1
+                ? Html(
+                    $"""
+                    <html><head><title>Perform the following action(s)</title></head><body>
+                    <div id="kc-info-message"><p>Update Password</p><a href="{href}">Click here to proceed</a></div>
+                    </body></html>
+                    """)
+                : Html(PaginaFinal));
+        });
+        using HarnessDeLogin harness = Criar(transporte, publico: publico);
+
+        await harness.ConcluirLinkDeAcoesAsync(
+            new Uri($"{publico}/realms/identity-gateway/login-actions/action-token?key=1"), "s", ct);
+
+        pedidos.Should().HaveCount(2);
+        pedidos[1].Metodo.Should().Be(HttpMethod.Get);
+        pedidos[1].Endereco.Should().Be(ProximoPassoNoTransporte);
+        pedidos[1].Host.Should().Be(new Uri(publico).Authority);
     }
 
     [Fact]

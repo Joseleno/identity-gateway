@@ -162,9 +162,12 @@ public sealed class AutenticacaoNegativaTests(IdentityGatewayApiFactory factory)
         {
             using HttpResponseMessage resposta = await EnviarAsync(metodo, rota, token(factory), ct);
 
+            // Numa variável: sem corpo o ContentType é nulo, e um `?.` encadeado até o Should() pularia a asserção.
+            string? tipoDoCorpo = resposta.Content.Headers.ContentType?.MediaType;
+
             resposta.StatusCode.Should().Be(HttpStatusCode.Unauthorized, $"{metodo} {rota}");
             resposta.Headers.WwwAuthenticate.ToString().Should().Be("Bearer", "o motivo da recusa fica no log, não na resposta");
-            (resposta.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
+            tipoDoCorpo.Should().Be("application/problem+json");
         }
     }
 

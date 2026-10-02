@@ -135,7 +135,9 @@ public sealed class VazamentoDoEmailNoTokenTests : IClassFixture<IdentityGateway
 
         using HttpResponseMessage resposta = await client.SendAsync(pedido, ct);
         string corpo = await resposta.Content.ReadAsStringAsync(ct);
-        string cabecalhos = resposta.Headers.ToString();
+
+        // Os três conjuntos: o `Headers` da resposta não inclui os do conteúdo nem os trailers.
+        string cabecalhos = $"{resposta.Headers}{resposta.Content.Headers}{resposta.TrailingHeaders}";
 
         resposta.StatusCode.Should().Be(esperado);
 
@@ -156,6 +158,19 @@ public sealed class VazamentoDoEmailNoTokenTests : IClassFixture<IdentityGateway
         DoPedido(spans, rota).Should().BeTrue("o span do pedido precisa ter sido capturado");
         coletor.Eventos.Any(evento => EmDebugDoAspNetCore(evento, rota))
             .Should().BeTrue("o log do pedido precisa ter sido capturado com o Microsoft.AspNetCore em Debug");
+
+        // E a resposta: os seis casos respondem um Problem Details, e o texto dos cabeçalhos junta os da resposta e os
+        // do conteúdo — o Content-Type é do conteúdo, e o WWW-Authenticate do 401, da resposta. Por booleano, como as
+        // ausências: uma asserção sobre o texto o imprimiria inteiro ao falhar.
+        (corpo.Length > 0).Should().BeTrue("o corpo da resposta precisa ter sido lido");
+        cabecalhos.Contains("Content-Type: application/problem+json", StringComparison.Ordinal)
+            .Should().BeTrue("os cabeçalhos do conteúdo precisam estar no texto procurado");
+
+        if (esperado == HttpStatusCode.Unauthorized)
+        {
+            cabecalhos.Contains("WWW-Authenticate: Bearer", StringComparison.Ordinal)
+                .Should().BeTrue("os cabeçalhos da resposta precisam estar no texto procurado");
+        }
 
         (string Nome, string Valor)[] segredos =
         [

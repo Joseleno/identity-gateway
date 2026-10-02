@@ -469,10 +469,16 @@ public sealed partial class HarnessDeLogin : IDisposable
         public bool TemInformacao { get; } = html.Contains("id=\"kc-info-message\"", StringComparison.Ordinal);
 
         /// <summary>O link "clique para prosseguir" da página de informação — só o que continua o fluxo de login.</summary>
+        /// <remarks>
+        /// Sempre resolvido contra a página, como o navegador faz: um href absoluto sai como veio, e um só de caminho
+        /// ganha o esquema e o host dela. Perguntar antes ao <c>Uri.TryCreate</c> se o texto é absoluto dá resposta
+        /// diferente por sistema: no Unix, <c>/realms/…</c> é um caminho de arquivo, e viraria
+        /// <c>file:///realms/…</c>.
+        /// </remarks>
         public Uri? LinkDeProsseguir { get; } = Links().Matches(html)
             .Select(achado => WebUtility.HtmlDecode(achado.Groups[1].Value))
             .Where(href => href.Contains("/login-actions/", StringComparison.Ordinal))
-            .Select(href => Uri.TryCreate(href, UriKind.Absolute, out Uri? absoluto) ? absoluto : new Uri(endereco, href))
+            .Select(href => new Uri(endereco, href))
             .FirstOrDefault();
 
         public Formulario? Formulario(string id) => _formularios.FirstOrDefault(formulario => formulario.Id == id);
@@ -504,8 +510,8 @@ public sealed partial class HarnessDeLogin : IDisposable
             string abertura = Abertura().Match(html).Value;
             Id = Atributo(abertura, "id");
 
-            string acao = WebUtility.HtmlDecode(Atributo(abertura, "action"));
-            Acao = Uri.TryCreate(acao, UriKind.Absolute, out Uri? absoluta) ? absoluta : new Uri(pagina, acao);
+            // Resolvido contra a página, sem perguntar ao Uri.TryCreate se é absoluto: ver LinkDeProsseguir.
+            Acao = new Uri(pagina, WebUtility.HtmlDecode(Atributo(abertura, "action")));
 
             _campos =
             [

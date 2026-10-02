@@ -261,8 +261,9 @@ public sealed class HostEmProducaoTests
     public async Task MetadadosFrios_401EmPoucosSegundosComOAvisoESemOTokenNoLog()
     {
         // DT5 e DT6. O provedor aceita a conexão e nunca responde, e a Api ainda não tem os metadados: o pedido leva
-        // 401 (não 500), em cerca de 5 s (o prazo dos metadados; o padrão de 60 s reprovaria), e o log diz que o
-        // problema é a busca das chaves — sem o token.
+        // 401 (não 500), em cerca de 5 s (o prazo dos metadados), e o log diz que o problema é a busca das chaves — sem
+        // o token. O teto é de 15 s, e não rente aos 5: num runner carregado, com as outras classes subindo
+        // contêineres ao mesmo tempo, a folga some — e o que o teto precisa reprovar é o prazo padrão, de 60 s.
         CancellationToken ct = TestContext.Current.CancellationToken;
         using TcpListener mudo = new(IPAddress.Loopback, 0);
         mudo.Start();
@@ -279,7 +280,7 @@ public sealed class HostEmProducaoTests
         relogio.Stop();
 
         resposta.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        relogio.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(7));
+        relogio.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(15));
         api.Logs.Eventos.Should().Contain(evento =>
             evento.Level == LogEventLevel.Warning
             && evento.MessageTemplate.Text.Contains("indisponíveis", StringComparison.Ordinal));
