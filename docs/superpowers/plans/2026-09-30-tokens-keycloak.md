@@ -43,6 +43,8 @@ Dois achados dessa execução entraram no plano: **senha errada fazia o harness 
 
 O que **não** foi executado na D1 e fica por conta dos testes de cada tarefa: a integração com o `Program.cs` real e o `WebApplicationFactory` (as peças de autenticação rodaram num protótipo à parte), as fases do app de arquivo único contra a API e o job da CI.
 
+**Revisão por seis especialistas (2026-10-01), antes da execução.** Autenticação, autorização, realm/compose/CI, harness e testes com Keycloak, cobertura da spec e âncoras contra o repositório. Três achados impediam a execução e foram corrigidos: o workflow usava o contexto `runner` no `env` do job (inválido — nenhum job rodaria), três asserções da Tarefa 2 não compilavam (descarte em árvore de expressão) e um teste público da Tarefa 9 expunha um tipo interno. As correções que mexeram em código foram reexecutadas: as regras do realm e do compose no clone, com as mutações; o script do one-shot ao vivo, inclusive os quatro ramos de falha que nunca tinham sido exercitados; o limite do aviso de chaves no protótipo de autenticação; e o app da jornada, recompilado nas duas versões.
+
 **Da D2**, o código de produção e os testes das Tarefas 13 a 15 foram compilados com os analisadores do repositório e executados num clone, com as provas por mutação das tabelas; o detalhe está na abertura da Parte D2. A Tarefa 16 não foi executada.
 
 ## Foco de revisão
@@ -74,8 +76,12 @@ Nota para o revisor: **a D1 troca o mecanismo de autenticação inteiro**, e os 
 - **O `sub` é conferido pelo tamanho antes do parse:** `Guid.TryParseExact(…, "D")` aceita espaço nas pontas, e o formato `D` tem exatamente 36 caracteres.
 - **O `Program.cs` passa a usar `UseSerilog(..., preserveStaticLogger: true)`** (Tarefa 7). Sem isso, cada host registra pelo `Log.Logger` estático do processo — o do último host construído —, e o sink em memória que a §5.5 da spec pede receberia os logs dos outros hosts de teste (visto no protótipo). Em produção há um host só, e nada muda.
 - **A fase `com-keycloak-parado` do app confere que o Keycloak não responde, e não o `/health/ready`** (como a §4.6 da spec descreve): a api guarda o token do service account em memória por até ~4,5 min (`ServiceAccountTokenCache`), e o ready continua `200` logo depois do `stop`.
+- **O aviso de chaves indisponíveis é limitado a um por 30 s, e só a falta de chave o dispara** (Tarefa 7). A spec (DT6) pede um `Warning` no `OnAuthenticationFailed` "quando a exceção é de chave ou de configuração". Na prática só um tipo de exceção chega ali (a biblioteca engole a falha da busca), e o mesmo tipo chega para um token de `kid` inventado assinado por outra chave — que qualquer anônimo manda, sem consumir cota. Sem o limite, o alerta do DT6 seria afogado. O limite é um serviço por host (`AvisoDeChavesIndisponiveis`), e não um campo estático, para os hosts de teste não se calarem uns aos outros. Visto no protótipo: com a chave certa e um `kid` desconhecido, o token é aceito (a biblioteca tenta todas as chaves) — não é brecha, e por isso o caso de teste usa outra chave.
 - **O aviso da lista de `azp` vazia é um `IHostedService`** (`AvisoDeClientsPermitidos`): é o que roda na subida do host real e do `WebApplicationFactory`, e por isso tem teste.
 - **O teste de vazamento do e-mail no token usa a factory do OIDC falso** (Tarefa 9), com um sink do Serilog e um exportador OpenTelemetry em memória, as duas exceções declaradas à regra "só configuração" (§5.5 da spec).
+- **A ordem das tarefas da D1 não segue a §6 da spec**, que pede o bootstrap e o app de CI "o mais cedo que a ordem permite", antes da troca da autenticação. Aqui o one-shot é a Tarefa 10 e o app, a 11, depois das Tarefas 6 a 9: é a decomposição fixada no handoff do design. A Tarefa 10 tira `Jwt__SigningKey` do compose e a fase `jornada` do app precisa da API já aceitando tokens do Keycloak — as duas dependem da Tarefa 7. O risco que a §6 queria antecipar (uma premissa falsa sobre o bootstrap) foi reduzido de outro jeito: o script do one-shot foi executado ao vivo ao escrever este plano, inclusive os ramos de falha.
+- **O client de device flow do fixture nasce sem scopes declarados** (Tarefa 4), herdando os defaults do realm, e não "com o scope `roles`", como a §4.6 da spec descreve. É o que faz dele a testemunha de que `gateway-api` não é default do realm (§5.1 da spec): um client com scopes escolhidos à mão não provaria nada sobre os defaults. O token dele carrega `profile` e `email`, e por isso só é usado contra a Account API e no teste da audiência.
+- **A v2.7 não nomeia a "fatia E"** (Tarefa 12): onde a §9 da spec escreve "na fatia E", o texto da v2.7 diz "chega com a auditoria". A própria spec se contradiz — a decisão D-l manda a v2.7 não nomear as fatias seguintes —, e o plano segue a D-l. Fica para o autor confirmar.
 - **D2 — o `tenantId` da rota em qualquer formato de GUID, o claim só no formato `D`** (Tarefa 13). A §4.3 da spec diz formato `D` nos dois; a §5.2 tem como controle a rota no formato `N` respondendo `200`. O plano segue a §5.2 e deixa a divergência para o autor nos dois handoffs.
 - **D2 — o claim `tenant_id` é conferido pelo tamanho antes do parse** (Tarefa 13), pelo mesmo motivo do `sub`: `Guid.TryParseExact(…, "D")` aceita espaço nas pontas. Visto no protótipo.
 - **D2 — `Policies.DeTenant`** (Tarefa 13): a lista das policies que decidem pelo tenant da rota, lida pelo teste de subida. A spec fala do teste, não de onde ele tira a lista.
@@ -103,7 +109,7 @@ Nota para o revisor: **a D1 troca o mecanismo de autenticação inteiro**, e os 
 - Create `Common/Abstractions/IMemberQueries.cs`, `Tenants/GetTenant/GetTenantQuery.cs`, `GetTenantHandler.cs`, `TenantDetailsResponse.cs`; modify `Common/Abstractions/ITenantQueries.cs` (o método `GetDetailsAsync` e o record `TenantDetailsView`).
 
 **Api**
-- Create `Authentication/ValidacaoDoAccessToken.cs`, `Authentication/AutenticacaoLogs.cs` (Tarefa 7); `Authentication/FormaDoAccessToken.cs`, `Authentication/AvisoDeClientsPermitidos.cs` (Tarefa 8).
+- Create `Authentication/ValidacaoDoAccessToken.cs`, `Authentication/AutenticacaoLogs.cs`, `Authentication/AvisoDeChavesIndisponiveis.cs` (Tarefa 7); `Authentication/FormaDoAccessToken.cs`, `Authentication/AvisoDeClientsPermitidos.cs` (Tarefa 8).
 - Create `Authorization/Policies.cs`, `Authorization/RespostasDeAutorizacao.cs`, `Authorization/ProblemDetailsDeAutorizacao.cs` (Tarefa 7); D2: `Authorization/RoleRequirement.cs`, `NotPlatformAdminRequirement.cs`, `SameTenantRequirement.cs`, `MemberRequirement.cs`, `MemberRequirementHandler.cs`, `AutorizacaoDaGateway.cs`.
 - Modify `DependencyInjection.cs`, `Program.cs`, `Services/HttpCurrentUser.cs`, `Modules/TenantsModule.cs`, `appsettings.json`, `appsettings.Development.json`, `IdentityGateway.Api.csproj`.
 - Delete `Security/JwtTokenService.cs`.
@@ -116,7 +122,7 @@ Nota para o revisor: **a D1 troca o mecanismo de autenticação inteiro**, e os 
 **Testes**
 - Architecture: `RegrasDoRealmTests.cs`, `RegrasDoAmbienteLocalTests.cs`, `RegrasDaApiTests.cs`; create `RegrasDeFerramentasTests.cs`; D2: `RegrasDaApiTests.cs`, `RegrasDeDominioTests.cs`, create `RegrasDeLeituraTests.cs`.
 - Integration: create `Identity/Keycloak/KeycloakFixtureExtensions.cs`, `RealmVivoTests.cs`, `HarnessDeLoginTests.cs`, `HarnessContraKeycloakTests.cs`, `FormaDoTokenContraKeycloakTests.cs`, `AccessTokenValidationOptionsTests.cs`; modify `GlobalUsings.cs`, `KeycloakRealTests.cs`, `KeycloakHealthCheckTests.cs`, `DependencyInjectionTests.cs`, `Provisioning/ComposicaoDoProvisionamento.cs`, o `.csproj`; delete `Identity/Keycloak/KeycloakFixture.cs`, `ChavesDeTeste.cs`, `RaizDoRepositorio.cs`. D2: create `Persistence/MemberQueriesTests.cs`, `Persistence/TenantDetailsTests.cs`.
-- Functional: create `Oidc/OidcFalso.cs`, `Oidc/EmissorDeTeste.cs`, `Logs/ColetorDeLogsDaApi.cs`, `Logs/CapturaDeSpans.cs`, `ApiEmProducaoFactory.cs`, `EmissorEstritoTests.cs`, `OpcoesDoJwtBearerTests.cs`, `LogsPorHostTests.cs`, `AutenticacaoNegativaTests.cs`, `FormaDoAccessTokenTests.cs`, `HostEmProducaoTests.cs`, `EndpointsDeclaramAutorizacaoTests.cs`, `ApiComKeycloakFactory.cs`, `ColecaoComKeycloak.cs`, `TokensDoKeycloakNaApiTests.cs`, `VazamentoDoEmailNoTokenTests.cs`; rewrite `IdentityGatewayApiFactory.cs`; modify `SegurancaTests.cs`, o `.csproj`. Application (D2): create `Tenants/GetTenant/GetTenantHandlerTests.cs`. D2: create `Autorizacao/MontagemDaAutorizacao.cs`, `Autorizacao/TenantAdminPolicyTests.cs`, `Autorizacao/PertencaFalsa.cs`, `Autorizacao/PertencaNaPolicyTenantAdminTests.cs`, `Autorizacao/OrdemDosHandlersTests.cs`, `Autorizacao/RespostaDaLeituraDeTenantTests.cs`, `LeituraDeTenantTests.cs`, `LeituraDeTenantComKeycloakTests.cs`; modify `EndpointsDeclaramAutorizacaoTests.cs`, `AutenticacaoNegativaTests.cs`, `ApiComKeycloakFactory.cs`, o `.csproj`.
+- Functional: create `Oidc/OidcFalso.cs`, `Oidc/EmissorDeTeste.cs`, `Logs/ColetorDeLogsDaApi.cs`, `Logs/CapturaDeSpans.cs`, `ApiEmProducaoFactory.cs`, `EmissorEstritoTests.cs`, `AvisoDeChavesIndisponiveisTests.cs`, `AvisoDeChaveNoLogTests.cs`, `OpcoesDoJwtBearerTests.cs`, `LogsPorHostTests.cs`, `AutenticacaoNegativaTests.cs`, `FormaDoAccessTokenTests.cs`, `HostEmProducaoTests.cs`, `EndpointsDeclaramAutorizacaoTests.cs`, `ApiComKeycloakFactory.cs`, `ColecaoComKeycloak.cs`, `TokensDoKeycloakNaApiTests.cs`, `VazamentoDoEmailNoTokenTests.cs`; rewrite `IdentityGatewayApiFactory.cs`; modify `SegurancaTests.cs`, o `.csproj`. Application (D2): create `Tenants/GetTenant/GetTenantHandlerTests.cs`. D2: create `Autorizacao/MontagemDaAutorizacao.cs`, `Autorizacao/TenantAdminPolicyTests.cs`, `Autorizacao/PertencaFalsa.cs`, `Autorizacao/PertencaNaPolicyTenantAdminTests.cs`, `Autorizacao/OrdemDosHandlersTests.cs`, `Autorizacao/RespostaDaLeituraDeTenantTests.cs`, `LeituraDeTenantTests.cs`, `LeituraDeTenantComKeycloakTests.cs`; modify `EndpointsDeclaramAutorizacaoTests.cs`, `AutenticacaoNegativaTests.cs`, `ApiComKeycloakFactory.cs`, o `.csproj`.
 
 **Documentos**
 - Create `docs/especificacao-arquitetural-v2.7.md`; modify `docs/documentacao-negocio.md`, `README.md`, `CONTRIBUTING.md`; create os handoffs da D1 e da D2 em `docs/superpowers/specs/`.
@@ -249,7 +255,7 @@ Criar `tests/IdentityGateway.Testing.Keycloak/IdentityGateway.Testing.Keycloak.c
 </Project>
 ```
 
-Em `IdentityGateway.slnx`, dentro de `<Folder Name="/tests/">`, depois da linha do `IdentityGateway.Infrastructure.IntegrationTests` (o arquivo é CRLF; mantenha):
+Em `IdentityGateway.slnx`, dentro de `<Folder Name="/tests/">`, depois da linha do `IdentityGateway.Infrastructure.IntegrationTests` (mantenha o fim de linha que o arquivo tiver):
 
 ```xml
     <Project Path="tests/IdentityGateway.Testing.Keycloak/IdentityGateway.Testing.Keycloak.csproj" />
@@ -609,7 +615,10 @@ Em `tests/IdentityGateway.ArchitectureTests/RegrasDoRealmTests.cs`:
     private static readonly string[] AcoesDoBootstrap = ["UPDATE_PASSWORD", "VERIFY_EMAIL"];
 
     private static readonly string[] ChavesObrigatoriasDoClient =
-        ["fullScopeAllowed", "directAccessGrantsEnabled", "defaultClientScopes", "optionalClientScopes"];
+    [
+        "fullScopeAllowed", "directAccessGrantsEnabled", "standardFlowEnabled", "defaultClientScopes",
+        "optionalClientScopes",
+    ];
 
     private static readonly string[] ChavesQueOBootstrapNaoTem = ["attributes", "groups", "clientRoles", "credentials"];
 ```
@@ -632,6 +641,10 @@ Em `tests/IdentityGateway.ArchitectureTests/RegrasDoRealmTests.cs`:
     private static bool Verdadeiro(JsonElement elemento, string propriedade) =>
         elemento.TryGetProperty(propriedade, out JsonElement valor) && valor.ValueKind == JsonValueKind.True;
 
+    // Num método, e não direto na lambda da asserção: NotContain e OnlyContain recebem árvore de expressão, e árvore
+    // de expressão não aceita o descarte do out (CS8207).
+    private static bool Tem(JsonElement elemento, string propriedade) => elemento.TryGetProperty(propriedade, out _);
+
     private static JsonElement ConfigDoMapperUnico(string scope, string tipo)
     {
         JsonElement[] mappers = [.. Scope(scope).GetProperty("protocolMappers").EnumerateArray()];
@@ -643,7 +656,7 @@ Em `tests/IdentityGateway.ArchitectureTests/RegrasDoRealmTests.cs`:
     }
 ```
 
-3. Em `NenhumaChaveDeCredencial`, trocar `.. Percorrer(Realm(), "$")` por:
+3. Em `NenhumaChaveDeCredencial`, trocar a linha `.. Percorrer(Realm(), "$")` — a que vem logo antes de `.Where(item => ChavesProibidas.Any(chave =>`; o mesmo texto abre o array de outros três testes, e só este muda — por:
 
 ```csharp
             // O User Profile é um JSON em texto dentro do JSON: sem percorrê-lo também, uma chave proibida ali passaria.
@@ -663,7 +676,7 @@ Em `tests/IdentityGateway.ArchitectureTests/RegrasDoRealmTests.cs`:
 
         papeis.Select(papel => papel.GetProperty("name").GetString())
             .Should().BeEquivalentTo(PapeisDeclarados);
-        papeis.Should().NotContain(papel => Verdadeiro(papel, "composite") || papel.TryGetProperty("composites", out _),
+        papeis.Should().NotContain(papel => Verdadeiro(papel, "composite") || Tem(papel, "composites"),
             "nenhum papel do catálogo é composto");
         realm.TryGetProperty("defaultRole", out _).Should().BeFalse(
             "o papel padrão é o que o import monta; declarado aqui, levaria papéis para todo usuário novo");
@@ -754,14 +767,15 @@ Em `tests/IdentityGateway.ArchitectureTests/RegrasDoRealmTests.cs`:
     [Fact]
     public void TodoClientDeclaraEscoposEFluxos()
     {
-        // Client sem defaultClientScopes herda os defaults do realm; sem fullScopeAllowed, vale o padrão (true); com
-        // direct grant, é ROPC (ADR-003). Nada disso pode ficar por conta do padrão do Keycloak.
+        // Client sem defaultClientScopes herda os defaults do realm; sem fullScopeAllowed, vale o padrão (true); sem
+        // standardFlowEnabled, também (ligado); com direct grant, é ROPC (ADR-003). Nada disso pode ficar por conta do
+        // padrão do Keycloak.
         foreach (JsonElement client in Realm().GetProperty("clients").EnumerateArray())
         {
             string id = client.GetProperty("clientId").GetString()!;
 
             ChavesObrigatoriasDoClient.Should().OnlyContain(
-                chave => client.TryGetProperty(chave, out _), $"o client {id} declara as quatro chaves");
+                chave => Tem(client, chave), $"o client {id} declara as cinco chaves");
             Verdadeiro(client, "directAccessGrantsEnabled").Should().BeFalse($"{id}: sem ROPC");
             Verdadeiro(client, "serviceAccountsEnabled").Should().Be(id == ClientDaGateway,
                 "só a Gateway tem service account");
@@ -869,7 +883,7 @@ Em `tests/IdentityGateway.ArchitectureTests/RegrasDoRealmTests.cs`:
         admin.GetProperty("emailVerified").GetBoolean().Should().BeFalse();
         Textos(admin, "realmRoles").Should().Equal("platform-admin");
         Textos(admin, "requiredActions").Should().BeEquivalentTo(AcoesDoBootstrap);
-        ChavesQueOBootstrapNaoTem.Should().NotContain(chave => admin.TryGetProperty(chave, out _));
+        ChavesQueOBootstrapNaoTem.Should().NotContain(chave => Tem(admin, chave));
     }
 ```
 
@@ -2868,7 +2882,7 @@ Depois da edição, o arquivo não usa mais `System.Text.RegularExpressions`; ti
 
 - [ ] **Passo 8: O teste da Account API passa a usar o device flow**
 
-Em `tests/IdentityGateway.Infrastructure.IntegrationTests/Identity/Keycloak/KeycloakRealTests.cs`, no teste `UsuarioComum_NaoAlteraOTenantIdPelaAccountApi`, trocar as duas linhas
+Em `tests/IdentityGateway.Infrastructure.IntegrationTests/Identity/Keycloak/KeycloakRealTests.cs`, no teste `UsuarioComum_NaoAlteraOTenantIdPelaAccountApi`, trocar as três linhas
 
 ```csharp
         string token = await keycloak.TokenDeUsuarioComumAsync(username, senha, ct);
@@ -2902,8 +2916,8 @@ Expected: `0 Aviso(s)`, `0 Erro(s)`.
 Run (Docker ligado): `dotnet test tests/IdentityGateway.Infrastructure.IntegrationTests`
 Expected: PASS — `total: 208` (196 + 12), `falhou: 0`. `UsuarioComum_NaoAlteraOTenantIdPelaAccountApi` leva alguns segundos a mais: o device flow espera um `interval` de 5 s.
 
-Run: `grep -rn '"password"' tests/IdentityGateway.Testing.Keycloak --include=*.cs`
-Expected: só as linhas de `CriarClienteMasterAsync` (o `grant_type` e o campo `password` do `admin-cli` do master). Nenhuma outra.
+Run: `grep -n '"password"' tests/IdentityGateway.Testing.Keycloak/KeycloakFixture.cs`
+Expected: só as linhas de `CriarClienteMasterAsync` (o `grant_type` e o campo `password` do `admin-cli` do master). Nenhuma outra: o fixture não obtém mais token de usuário por senha. (No `HarnessDeLogin.cs` o texto `"password"` também aparece — é o nome do campo do formulário de login do Keycloak, que o harness preenche.)
 
 Run: `grep -rn "directAccessGrantsEnabled = true\|TokenDeUsuarioComumAsync" tests --include=*.cs`
 Expected: nenhuma linha.
@@ -3239,7 +3253,8 @@ public sealed class FormaDoTokenContraKeycloakTests(KeycloakFixture keycloak)
         (payload.GetProperty("exp").GetInt64() - payload.GetProperty("iat").GetInt64()).Should().Be(300);
 
         // DT11: o token não carrega e-mail nem nome — ele vai a histórico de shell, a proxies e à demonstração.
-        ClaimsQueNaoPodemSair.Should().NotContain(claim => payload.TryGetProperty(claim, out _));
+        // Filtrado fora da asserção: um NotContain com lambda recebe árvore de expressão, que não aceita o descarte do out.
+        ClaimsQueNaoPodemSair.Where(claim => payload.TryGetProperty(claim, out _)).Should().BeEmpty();
     }
 
     [Fact]
@@ -3299,7 +3314,8 @@ public sealed class FormaDoTokenContraKeycloakTests(KeycloakFixture keycloak)
 
         TokensDeUsuario renovado = await harness.RenovarAsync(primeiro.RefreshToken, ct);
 
-        renovado.RefreshToken.Should().NotBe(primeiro.RefreshToken);
+        // Comparado fora da asserção: um NotBe que falhasse imprimiria os dois refresh tokens na mensagem.
+        (renovado.RefreshToken == primeiro.RefreshToken).Should().BeFalse("a renovação devolve um refresh token novo");
         PayloadDoJwt.Ler(renovado.AccessToken).GetProperty("sub").GetString().Should().Be(usuario.Id);
 
         Func<Task> reuso = () => harness.RenovarAsync(primeiro.RefreshToken, ct);
@@ -3888,12 +3904,12 @@ Spec: §4.2 (JwtBearer, `OnAuthenticationFailed`, autorização global, Problem 
 O código de produção desta tarefa e da seguinte (`ValidacaoDoAccessToken`, `FormaDoAccessToken`, o handler de Problem Details), o `OidcFalso`, o `EmissorDeTeste`, o coletor de logs e a suíte negativa foram compilados com os analisadores do repositório e executados num host mínimo ao escrever este plano: os 34 casos da suíte, o HTTPS com certificado confiado pela impressão digital e os metadados frios (`401` em 5,1 s, com o aviso) passaram. O que **não** foi executado é a integração com o `Program.cs` e a `WebApplicationFactory` reais — é o que os passos abaixo provam.
 
 **Arquivos:**
-- Create: `src/IdentityGateway.Api/Authentication/ValidacaoDoAccessToken.cs`, `Authentication/AutenticacaoLogs.cs`
+- Create: `src/IdentityGateway.Api/Authentication/ValidacaoDoAccessToken.cs`, `Authentication/AutenticacaoLogs.cs`, `Authentication/AvisoDeChavesIndisponiveis.cs`
 - Create: `src/IdentityGateway.Api/Authorization/Policies.cs`, `Authorization/RespostasDeAutorizacao.cs`, `Authorization/ProblemDetailsDeAutorizacao.cs`
 - Modify: `src/IdentityGateway.Api/DependencyInjection.cs`, `Program.cs`, `Services/HttpCurrentUser.cs`, `Modules/TenantsModule.cs`, `appsettings.json`, `IdentityGateway.Api.csproj`
 - Delete: `src/IdentityGateway.Api/Security/JwtTokenService.cs`, `src/IdentityGateway.Infrastructure/Configuration/JwtOptions.cs`
 - Modify: `src/IdentityGateway.Infrastructure/DependencyInjection.cs` (sai o registro de `JwtOptions`), `Directory.Packages.props` (comentário)
-- Create (testes funcionais): `Oidc/EmissorDeTeste.cs`, `Oidc/OidcFalso.cs`, `Logs/ColetorDeLogsDaApi.cs`, `EmissorEstritoTests.cs`, `OpcoesDoJwtBearerTests.cs`, `AutenticacaoNegativaTests.cs`, `EndpointsDeclaramAutorizacaoTests.cs`
+- Create (testes funcionais): `Oidc/EmissorDeTeste.cs`, `Oidc/OidcFalso.cs`, `Logs/ColetorDeLogsDaApi.cs`, `EmissorEstritoTests.cs`, `AvisoDeChavesIndisponiveisTests.cs`, `AvisoDeChaveNoLogTests.cs`, `OpcoesDoJwtBearerTests.cs`, `LogsPorHostTests.cs`, `AutenticacaoNegativaTests.cs`, `EndpointsDeclaramAutorizacaoTests.cs`
 - Rewrite: `tests/IdentityGateway.Api.FunctionalTests/IdentityGatewayApiFactory.cs`
 - Modify: `tests/IdentityGateway.Api.FunctionalTests/SegurancaTests.cs`, `IdentityGateway.Api.FunctionalTests.csproj`
 - Modify: `tests/IdentityGateway.ArchitectureTests/RegrasDaApiTests.cs`
@@ -3903,6 +3919,7 @@ O código de produção desta tarefa e da seguinte (`ValidacaoDoAccessToken`, `F
 - Consome: `AccessTokenValidationOptions` (Tarefa 6): `Issuer`, `MetadataAddress`, `RequireHttpsMetadata`, `Audience`, `AllowedClients`; `ICorrelationIdProvider.CorrelationId` (existente).
 - Produz, na Api (`internal`, visíveis ao projeto funcional por `InternalsVisibleTo`):
   - `static class ValidacaoDoAccessToken` (namespace `IdentityGateway.Api.Authentication`): `const string Categoria = "IdentityGateway.Api.Authentication"`; `static readonly TimeSpan Tolerancia`, `PrazoDosMetadados`, `IntervaloDeRefresh`; `static void Configurar(JwtBearerOptions jwt, AccessTokenValidationOptions validacao)`; `static IssuerValidator EmissorEstrito(string esperado)`; `static bool EhFalhaDeChaveOuDeMetadados(Exception excecao)`.
+  - `sealed class AvisoDeChavesIndisponiveis` (serviço, um por host): `bool PodeAvisar()` — verdadeiro uma vez a cada `IntervaloDeRefresh`.
   - `static partial class AutenticacaoLogs`: `ChavesIndisponiveis(ILogger, string tipo)` (2100, Warning), `TokenRecusado(ILogger, string tipo)` (2101, Debug), `FormaRecusada(ILogger, string motivo)` (2102, Debug), `NenhumClientPermitido(ILogger)` (2103, Warning).
   - `static class Policies` (namespace `IdentityGateway.Api.Authorization`): `const string PlatformAdmin = "PlatformAdmin"`.
   - `static class RespostasDeAutorizacao`: `static IResult Proibido(HttpContext contexto)`, `static IResult NaoAutenticado(HttpContext contexto)`, e as constantes `TipoDoProibido`, `TituloDoProibido`, `DetalheDoProibido`, `TipoDoNaoAutenticado`, `TituloDoNaoAutenticado`, `DetalheDoNaoAutenticado`.
@@ -3954,7 +3971,7 @@ Em `tests/IdentityGateway.ArchitectureTests/RegrasDaApiTests.cs`, acrescentar (o
     /// A Api não usa o pacote legado <c>System.IdentityModel.Tokens.Jwt</c>.
     /// </summary>
     /// <remarks>
-    /// Era por ele que o <c>JwtTokenService</c> emitia token. O que a Api precisa de JWT hoje é ler um token já
+    /// Era por ele que o serviço de emissão do template gerava token. O que a Api precisa de JWT hoje é ler um token já
     /// validado, e isso é <c>Microsoft.IdentityModel.JsonWebTokens</c>. O pacote continua copiado (vem com o
     /// JwtBearer); a regra é sobre o código da Api depender dele.
     /// </remarks>
@@ -4014,7 +4031,7 @@ Em `tests/IdentityGateway.ArchitectureTests/RegrasDaApiTests.cs`, acrescentar (o
 ```
 
 Run: `dotnet test tests/IdentityGateway.ArchitectureTests --filter-class "*RegrasDaApiTests"`
-Expected: FAIL em `NenhumaCamadaDeProducaoUsaChaveSimetrica` (IdentityGateway.Api: `DependencyInjection` e `JwtTokenService`) e em `Api_NaoUsaOPacoteJwtLegado` (`JwtTokenService`, `DependencyInjection`). É o vermelho que prova que as duas regras enxergam o que proíbem. As outras duas passam: travam o que ainda não existe.
+Expected: FAIL em `NenhumaCamadaDeProducaoUsaChaveSimetrica` (IdentityGateway.Api: `DependencyInjection` e `JwtTokenService`) e em `Api_NaoUsaOPacoteJwtLegado` (ao menos `JwtTokenService`; o `DependencyInjection` só usa do pacote uma constante, que não deixa dependência no binário). É o vermelho que prova que as duas regras enxergam o que proíbem. As outras duas passam: travam o que ainda não existe, e por isso só são vistas vermelhas por mutação (Passo 13, mutações 17 e 18).
 
 - [ ] **Passo 2: A infraestrutura de teste — emissor, OIDC falso e coletor de logs**
 
@@ -4615,6 +4632,127 @@ public sealed class EmissorEstritoTests
 }
 ```
 
+`tests/IdentityGateway.Api.FunctionalTests/AvisoDeChavesIndisponiveisTests.cs` (sem fixture):
+
+```csharp
+using IdentityGateway.Api.Authentication;
+using Microsoft.IdentityModel.Tokens;
+
+namespace IdentityGateway.Api.FunctionalTests;
+
+/// <summary>
+/// Quando a falha de autenticação vale um aviso, e quantas vezes.
+/// </summary>
+/// <remarks>
+/// O aviso existe para o provedor de identidade fora do ar não virar <c>401</c> em silêncio. Dois erros o estragariam:
+/// tratar qualquer recusa como "chaves indisponíveis" (o alerta deixaria de querer dizer alguma coisa), e avisar a cada
+/// pedido (quem manda um token com <c>kid</c> inventado encheria o log sem se autenticar).
+/// </remarks>
+public sealed class AvisoDeChavesIndisponiveisTests
+{
+    [Theory]
+    [InlineData(typeof(SecurityTokenSignatureKeyNotFoundException), true)]
+    [InlineData(typeof(SecurityTokenExpiredException), false)]
+    [InlineData(typeof(SecurityTokenInvalidAudienceException), false)]
+    [InlineData(typeof(SecurityTokenInvalidIssuerException), false)]
+    [InlineData(typeof(SecurityTokenInvalidSignatureException), false)]
+    [InlineData(typeof(SecurityTokenMalformedException), false)]
+    [InlineData(typeof(InvalidOperationException), false)]
+    [InlineData(typeof(HttpRequestException), false)]
+    [InlineData(typeof(TaskCanceledException), false)]
+    public void SoAFaltaDeChave_EFalhaDeChave(Type tipoDaExcecao, bool esperado)
+    {
+        ArgumentNullException.ThrowIfNull(tipoDaExcecao);
+        var excecao = (Exception)Activator.CreateInstance(tipoDaExcecao)!;
+
+        ValidacaoDoAccessToken.EhFalhaDeChaveOuDeMetadados(excecao).Should().Be(esperado);
+    }
+
+    [Fact]
+    public void PodeAvisar_UmaVezPorIntervalo()
+    {
+        AvisoDeChavesIndisponiveis aviso = new();
+        long intervalo = (long)ValidacaoDoAccessToken.IntervaloDeRefresh.TotalMilliseconds;
+
+        aviso.PodeAvisar(agoraEmMs: 1_000).Should().BeTrue("o primeiro avisa");
+        aviso.PodeAvisar(agoraEmMs: 1_001).Should().BeFalse("o segundo, logo em seguida, não");
+        aviso.PodeAvisar(agoraEmMs: 1_000 + intervalo - 1).Should().BeFalse("nem o último do intervalo");
+        aviso.PodeAvisar(agoraEmMs: 1_000 + intervalo).Should().BeTrue("passado o intervalo, avisa de novo");
+    }
+}
+```
+
+`tests/IdentityGateway.Api.FunctionalTests/AvisoDeChaveNoLogTests.cs`:
+
+```csharp
+using System.Net;
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using IdentityGateway.Api.FunctionalTests.Logs;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Serilog.Events;
+
+namespace IdentityGateway.Api.FunctionalTests;
+
+/// <summary>
+/// O aviso de "chave de assinatura não encontrada", visto no log de um host de verdade.
+/// </summary>
+/// <remarks>
+/// Um host derivado, com o próprio canal de log e o próprio limitador do aviso: a contagem não pode depender do que as
+/// outras classes — que rodam em paralelo, cada uma com o seu host — já registraram.
+/// </remarks>
+public sealed class AvisoDeChaveNoLogTests(IdentityGatewayApiFactory factory) : IClassFixture<IdentityGatewayApiFactory>
+{
+    private static readonly string[] PlatformAdmin = ["platform-admin"];
+
+    private static bool EhOAvisoDeChave(LogEvent evento) =>
+        evento.Level == LogEventLevel.Warning
+        && evento.MessageTemplate.Text.Contains("chave de assinatura não encontrada", StringComparison.Ordinal);
+
+    private static async Task<HttpStatusCode> RegistrarComAsync(HttpClient client, string token, CancellationToken ct)
+    {
+        using HttpRequestMessage pedido = new(HttpMethod.Post, "/api/v1/tenants");
+        pedido.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using HttpResponseMessage resposta = await client.SendAsync(pedido, ct);
+
+        return resposta.StatusCode;
+    }
+
+    [Fact]
+    public async Task TokenDeKidDesconhecido_Responde401EAvisaUmaVezSo_ERecusaComumNaoAvisa()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        string canal = Guid.NewGuid().ToString("N");
+        using WebApplicationFactory<Program> api = factory.WithWebHostBuilder(builder =>
+            builder.UseSetting("Serilog:WriteTo:9:Args:canal", canal));
+        using HttpClient client = api.CreateClient();
+        ColetorDeLogsDaApi logs = ColetorDeLogsDaApi.DoCanal(canal);
+        using var forasteira = RSA.Create(2048);
+
+        // Uma recusa comum — audiência errada, assinatura certa — não é falta de chave, e não avisa.
+        string comAudienciaErrada = factory.Emissor.Emitir(
+            roles: PlatformAdmin, ajustar: payload => payload["aud"] = "account");
+        (await RegistrarComAsync(client, comAudienciaErrada, ct)).Should().Be(HttpStatusCode.Unauthorized);
+        logs.Eventos.Should().NotContain(evento => EhOAvisoDeChave(evento));
+
+        // Três tokens de quem não tem a chave do realm, cada um com um kid inventado: qualquer pessoa consegue mandar
+        // isto, sem se autenticar. 401 nos três, e um aviso só.
+        for (int i = 0; i < 3; i++)
+        {
+            string forjado = factory.Emissor.Assinar(
+                factory.Emissor.Payload(roles: PlatformAdmin), forasteira, kid: $"kid-inventado-{i}");
+
+            (await RegistrarComAsync(client, forjado, ct)).Should().Be(HttpStatusCode.Unauthorized);
+        }
+
+        logs.Eventos.Count(EhOAvisoDeChave).Should().Be(1, "o aviso é limitado a um por intervalo");
+    }
+}
+```
+
+Um detalhe que o protótipo deste plano mostrou: um token assinado com a **chave certa** e um `kid` desconhecido é **aceito** — sem achar o `kid`, a biblioteca tenta todas as chaves do realm, e a assinatura confere. Não é brecha (quem assina com a chave do realm é o realm). O caso que importa é o de cima: `kid` desconhecido **e** chave de fora.
+
 `tests/IdentityGateway.Api.FunctionalTests/OpcoesDoJwtBearerTests.cs`:
 
 ```csharp
@@ -4706,6 +4844,17 @@ public sealed class OpcoesDoJwtBearerTests(IdentityGatewayApiFactory factory) : 
         IEnumerable<AuthenticationScheme> todos = await esquemas.GetAllSchemesAsync();
 
         todos.Select(esquema => esquema.Name).Should().Equal(JwtBearerDefaults.AuthenticationScheme);
+    }
+
+    [Fact]
+    public void NinguemTransformaClaimsDepoisDaValidacao()
+    {
+        // A regra de arquitetura só vê as classes da Api. Esta vê o que o contêiner resolve, venha de onde vier: a
+        // implementação que não faz nada, que é a que o AddAuthentication registra.
+        using IServiceScope escopo = factory.Services.CreateScope();
+
+        escopo.ServiceProvider.GetRequiredService<IClaimsTransformation>()
+            .Should().BeOfType<NoopClaimsTransformation>("os claims vêm só do token (ADR-004)");
     }
 }
 ```
@@ -4816,7 +4965,7 @@ com o campo `private static readonly string[] PlatformAdmin = ["platform-admin"]
 
         resposta.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         resposta.Headers.WwwAuthenticate.ToString().Should().Be("Bearer");
-        resposta.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        resposta.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
 
         JsonElement problema = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
         problema.GetProperty("status").GetInt32().Should().Be(401);
@@ -4835,7 +4984,7 @@ com o campo `private static readonly string[] PlatformAdmin = ["platform-admin"]
         HttpResponseMessage resposta = await client.PostAsync(RotaProtegida, content: null, ct);
 
         resposta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        resposta.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        resposta.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
 
         JsonElement problema = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
         problema.GetProperty("status").GetInt32().Should().Be(403);
@@ -5043,7 +5192,7 @@ public sealed class AutenticacaoNegativaTests(IdentityGatewayApiFactory factory)
 
             resposta.StatusCode.Should().Be(HttpStatusCode.Unauthorized, $"{metodo} {rota}");
             resposta.Headers.WwwAuthenticate.ToString().Should().Be("Bearer", "o motivo da recusa fica no log, não na resposta");
-            resposta.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+            resposta.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
         }
     }
 
@@ -5207,7 +5356,10 @@ internal static class ValidacaoDoAccessToken
             .GetRequiredService<ILoggerFactory>().CreateLogger(Categoria);
         string tipo = contexto.Exception.GetType().Name;
 
-        if (EhFalhaDeChaveOuDeMetadados(contexto.Exception))
+        // Warning uma vez por intervalo; no resto, Debug. Um token com kid inventado também cai aqui, sem autenticação
+        // e sem consumir cota: sem o limite, um laço de pedidos encheria o log de avisos.
+        if (EhFalhaDeChaveOuDeMetadados(contexto.Exception)
+            && contexto.HttpContext.RequestServices.GetRequiredService<AvisoDeChavesIndisponiveis>().PodeAvisar())
         {
             AutenticacaoLogs.ChavesIndisponiveis(logger, tipo);
         }
@@ -5219,13 +5371,12 @@ internal static class ValidacaoDoAccessToken
         return Task.CompletedTask;
     }
 
-    // Chave de assinatura não encontrada (kid desconhecido, ou nenhuma chave porque os metadados não vieram), e as
-    // formas em que a própria busca dos metadados pode aparecer.
-    internal static bool EhFalhaDeChaveOuDeMetadados(Exception excecao) => excecao
-        is SecurityTokenSignatureKeyNotFoundException
-        or InvalidOperationException
-        or HttpRequestException
-        or TaskCanceledException;
+    // Chave de assinatura não encontrada: kid desconhecido, ou nenhuma chave porque os metadados não vieram. A falha
+    // da busca em si nunca chega aqui — a biblioteca a engole e reprova o token por falta de chave. Por isso a lista
+    // tem um tipo só: incluir InvalidOperationException, por exemplo, rotularia qualquer defeito interno como
+    // "chaves indisponíveis".
+    internal static bool EhFalhaDeChaveOuDeMetadados(Exception excecao) =>
+        excecao is SecurityTokenSignatureKeyNotFoundException;
 }
 ```
 
@@ -5246,8 +5397,9 @@ internal static partial class AutenticacaoLogs
     [LoggerMessage(
         EventId = 2100,
         Level = LogLevel.Warning,
-        Message = "Autenticação: chaves de assinatura ou metadados do provedor de identidade indisponíveis ({Tipo}); "
-                  + "os tokens são recusados com 401 até a busca voltar a funcionar")]
+        Message = "Autenticação: token recusado por chave de assinatura não encontrada ({Tipo}). É o sintoma de chaves "
+                  + "ou metadados do provedor de identidade indisponíveis, ou de uma troca de chaves; um token com kid "
+                  + "desconhecido também o provoca. No máximo um aviso destes a cada 30 s; os demais saem em Debug")]
     public static partial void ChavesIndisponiveis(ILogger logger, string tipo);
 
     [LoggerMessage(
@@ -5267,6 +5419,45 @@ internal static partial class AutenticacaoLogs
         Level = LogLevel.Warning,
         Message = "Autenticação: Keycloak:Auth:AllowedClients está vazia; todo token de usuário será recusado com 401")]
     public static partial void NenhumClientPermitido(ILogger logger);
+}
+```
+
+`src/IdentityGateway.Api/Authentication/AvisoDeChavesIndisponiveis.cs`:
+
+```csharp
+namespace IdentityGateway.Api.Authentication;
+
+/// <summary>
+/// Limita o aviso de "chave de assinatura não encontrada" a um por intervalo.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Por que limitar.</b> A falta de chave é o sintoma do provedor de identidade fora do ar, e por isso vale um
+/// <c>Warning</c>. Mas qualquer pessoa a provoca sem se autenticar, com um token de <c>kid</c> inventado — e o
+/// <c>401</c> não consome cota do limitador de requisições. Sem limite, um laço de pedidos encheria o log de avisos e
+/// esconderia o alerta de verdade.
+/// </para>
+/// <para>
+/// <b>Um por instância da Api, e não por processo:</b> é um serviço, e não um campo estático. Nos testes há vários
+/// hosts no mesmo processo, e o aviso de um não pode calar o de outro.
+/// </para>
+/// </remarks>
+internal sealed class AvisoDeChavesIndisponiveis
+{
+    private long _proximoEmMs = long.MinValue;
+
+    /// <summary>Verdadeiro na primeira chamada de cada intervalo; falso nas demais.</summary>
+    public bool PodeAvisar() => PodeAvisar(Environment.TickCount64);
+
+    /// <summary>A mesma decisão, com o relógio dado por quem chama — para o teste.</summary>
+    internal bool PodeAvisar(long agoraEmMs)
+    {
+        long proximo = Interlocked.Read(ref _proximoEmMs);
+        long seguinte = agoraEmMs + (long)ValidacaoDoAccessToken.IntervaloDeRefresh.TotalMilliseconds;
+
+        // CompareExchange: de dois pedidos simultâneos, só um ganha o intervalo.
+        return agoraEmMs >= proximo && Interlocked.CompareExchange(ref _proximoEmMs, seguinte, proximo) == proximo;
+    }
 }
 ```
 
@@ -5461,6 +5652,9 @@ using OpenTelemetry.Trace;
     private static IServiceCollection AddAutenticacao(this IServiceCollection services)
     {
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
+
+        // Um por instância da Api: limita o aviso de "chave de assinatura não encontrada" a um por intervalo.
+        services.AddSingleton<AvisoDeChavesIndisponiveis>();
 
         // Configure sobre as opções nomeadas, e não a lambda do AddJwtBearer: a validação depende de uma option que
         // só o contêiner resolve (preenchida pelo adaptador do provedor), e este Configure roda antes do PostConfigure
@@ -5713,6 +5907,14 @@ Run (a cada mutação): `dotnet test tests/IdentityGateway.Api.FunctionalTests` 
 | 14 | Em `ValidacaoDoAccessToken.Configurar`, acrescentar `IssuerSigningKey = new SymmetricSecurityKey(new byte[32]),` ao `TokenValidationParameters` | Arquitetura (`NenhumaCamadaDeProducaoUsaChaveSimetrica`) e `AsChaves_VemSoDosMetadados`. A receita HS256 antiga continua `401` com ou sem a mutação (`ValidAlgorithms`, `iss` e `aud` antigos): quem pega a chave simétrica de volta é a regra de arquitetura |
 | 15 | Em `ChaveDaParticao`, trocar `"sub"` por `"nameid"` | `ChaveDaParticaoTests.ComOClaimCurto_ParticionaPeloUsuario` |
 | 16 | Em `Program.cs`, tirar o `preserveStaticLogger: true` do `UseSerilog` | `LogsPorHostTests.CadaHost_SoVeOsPropriosLogs` (o pedido de um host aparece no coletor do outro) |
+| 14a | Idem, uma de cada vez, com as outras três formas de fixar a chave: `IssuerSigningKeys = [new RsaSecurityKey(RSA.Create(2048))],`; `SignatureValidator = (token, _) => new JsonWebToken(token),`; `IssuerSigningKeyResolver = (_, _, _, _) => [],` | `AsChaves_VemSoDosMetadados`, nas três |
+| 17 | Em `AddApiServices`, acrescentar como primeira linha `Microsoft.IdentityModel.Logging.IdentityModelEventSource.ShowPII = true;` | `dotnet test tests/IdentityGateway.ArchitectureTests --filter-class "*RegrasDaApiTests"`: `NenhumaCamadaLigaPiiDaBibliotecaDeIdentidade` |
+| 18 | Criar `src/IdentityGateway.Api/Services/Mutacao.cs` com `internal sealed class Mutacao : IClaimsTransformation { public Task<ClaimsPrincipal> TransformAsync(ClaimsPrincipal principal) => Task.FromResult(principal); }` e registrá-la em `AddAutenticacao` (`services.AddTransient<IClaimsTransformation, Mutacao>();`); apagar o arquivo depois | Arquitetura: `Api_NaoTransformaClaims`. Funcional: `NinguemTransformaClaimsDepoisDaValidacao` |
+| 19 | Em `AddAutenticacao`, um segundo esquema: `.AddJwtBearer().AddJwtBearer("Outro", _ => { });` | `HaUmEsquemaDeAutenticacaoSo` ("contains 1 item(s) too many") |
+| 20 | Em `AoFalhar`, tirar o limite: apagar a linha `&& contexto.HttpContext.RequestServices.GetRequiredService<AvisoDeChavesIndisponiveis>().PodeAvisar())` e fechar o parêntese na linha de cima | `TokenDeKidDesconhecido_Responde401EAvisaUmaVezSo_ERecusaComumNaoAvisa` ("to be 1, but found 3") |
+| 21 | Em `EhFalhaDeChaveOuDeMetadados`, devolver `true` sempre | 8 dos 9 casos de `SoAFaltaDeChave_EFalhaDeChave`, e `TokenDeKidDesconhecido_…` (a audiência errada passa a avisar) |
+
+As mutações 17, 18 e 19 cobrem os testes que nascem verdes nesta tarefa (travam o que ainda não existe): sem elas, nenhum teria sido visto vermelho. Elas e as mutações 20 e 21 foram vistas vermelhas ao escrever este plano.
 
 Mutações equivalentes, **não** executadas (§5.3 da spec): `RoleClaimType`; `NameClaimType`, que nenhum código lê; `ValidAlgorithms`, que a biblioteca já cobre para o HS256 quando só há chaves RSA.
 
@@ -7118,7 +7320,6 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using IdentityGateway.Api.FunctionalTests.Logs;
-using IdentityGateway.Api.FunctionalTests.Oidc;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -7182,45 +7383,49 @@ public sealed class VazamentoDoEmailNoTokenTests : IClassFixture<IdentityGateway
 
     private static long Agora => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-    private static TheoryDataRow<Func<EmissorDeTeste, Dictionary<string, object?>, string>, HttpStatusCode> Caso(
-        string rotulo, HttpStatusCode esperado, Func<EmissorDeTeste, Dictionary<string, object?>, string> assinar) =>
+    private static TheoryDataRow<Func<IdentityGatewayApiFactory, Dictionary<string, object?>, string>, HttpStatusCode> Caso(
+        string rotulo, HttpStatusCode esperado, Func<IdentityGatewayApiFactory, Dictionary<string, object?>, string> assinar) =>
         new(assinar, esperado) { Label = rotulo };
 
     /// <summary>
     /// Cada caso recebe o payload já com o e-mail e decide como estragá-lo e assiná-lo.
     /// </summary>
-    public static TheoryData<Func<EmissorDeTeste, Dictionary<string, object?>, string>, HttpStatusCode> Casos => new()
+    /// <remarks>
+    /// O primeiro parâmetro é a factory, e não o emissor: o emissor de teste é <c>internal</c>, e um membro público de
+    /// uma classe de teste pública não pode expor tipo interno na assinatura.
+    /// </remarks>
+    public static TheoryData<Func<IdentityGatewayApiFactory, Dictionary<string, object?>, string>, HttpStatusCode> Casos => new()
     {
         // 404: autenticado e autorizado; o tenant da rota não existe.
-        Caso("sucesso", HttpStatusCode.NotFound, (emissor, payload) => emissor.Assinar(payload)),
-        Caso("sem o papel (403)", HttpStatusCode.Forbidden, (emissor, payload) =>
+        Caso("sucesso", HttpStatusCode.NotFound, (alvo, payload) => alvo.Emissor.Assinar(payload)),
+        Caso("sem o papel (403)", HttpStatusCode.Forbidden, (alvo, payload) =>
         {
             payload.Remove("roles");
-            return emissor.Assinar(payload);
+            return alvo.Emissor.Assinar(payload);
         }),
-        Caso("vencido", HttpStatusCode.Unauthorized, (emissor, payload) =>
+        Caso("vencido", HttpStatusCode.Unauthorized, (alvo, payload) =>
         {
             payload["exp"] = Agora - 120;
-            return emissor.Assinar(payload);
+            return alvo.Emissor.Assinar(payload);
         }),
-        Caso("audiência errada", HttpStatusCode.Unauthorized, (emissor, payload) =>
+        Caso("audiência errada", HttpStatusCode.Unauthorized, (alvo, payload) =>
         {
             payload["aud"] = "account";
-            return emissor.Assinar(payload);
+            return alvo.Emissor.Assinar(payload);
         }),
-        Caso("assinatura inválida", HttpStatusCode.Unauthorized, (emissor, payload) =>
-            emissor.Assinar(payload, ChaveForasteira)),
-        Caso("azp fora da lista", HttpStatusCode.Unauthorized, (emissor, payload) =>
+        Caso("assinatura inválida", HttpStatusCode.Unauthorized, (alvo, payload) =>
+            alvo.Emissor.Assinar(payload, ChaveForasteira)),
+        Caso("azp fora da lista", HttpStatusCode.Unauthorized, (alvo, payload) =>
         {
             payload["azp"] = "outro-client";
-            return emissor.Assinar(payload);
+            return alvo.Emissor.Assinar(payload);
         }),
     };
 
     [Theory]
     [MemberData(nameof(Casos))]
     public async Task TokenComEmail_NaoDeixaOEmailEmRespostaLogNemTrace(
-        Func<EmissorDeTeste, Dictionary<string, object?>, string> assinar, HttpStatusCode esperado)
+        Func<IdentityGatewayApiFactory, Dictionary<string, object?>, string> assinar, HttpStatusCode esperado)
     {
         ArgumentNullException.ThrowIfNull(assinar);
         CancellationToken ct = TestContext.Current.CancellationToken;
@@ -7231,7 +7436,7 @@ public sealed class VazamentoDoEmailNoTokenTests : IClassFixture<IdentityGateway
         payload["email"] = email;
         payload["preferred_username"] = email;
         payload["name"] = email;
-        string token = assinar(_factory.Emissor, payload);
+        string token = assinar(_factory, payload);
 
         using HttpClient client = _comCaptura.CreateClient();
         using HttpRequestMessage pedido = new(HttpMethod.Get, rota);
@@ -7384,27 +7589,66 @@ Em `tests/IdentityGateway.ArchitectureTests/RegrasDoAmbienteLocalTests.cs`:
         // URLs de chamadas pelos traces do Jaeger. Nada disso fica exposto à rede local.
         string compose = Compose();
 
-        compose.Should().Contain("\"127.0.0.1:5432:5432\"")
-            .And.Contain("\"127.0.0.1:6379:6379\"")
-            .And.Contain("\"127.0.0.1:5341:80\"")
-            .And.Contain("\"127.0.0.1:8025:8025\"")
-            .And.Contain("\"127.0.0.1:8080:8080\"")
-            .And.Contain("\"127.0.0.1:8081:8080\"")
-            .And.Contain("\"127.0.0.1:16686:16686\"")
-            .And.Contain("\"127.0.0.1:4317:4317\"");
-
-        // Toda porta publicada começa por 127.0.0.1: pega a forma entre aspas e a sem aspas.
-        PortasPublicadas().Matches(compose).Select(achado => achado.Groups["porta"].Value)
-            .Should().OnlyContain(porta => porta.StartsWith("127.0.0.1:", StringComparison.Ordinal));
+        // O conjunto EXATO das portas publicadas, lido de toda lista `ports:`. Uma porta nova reprova, e uma destas
+        // sem o 127.0.0.1 também — com aspas, sem aspas ou em qualquer outra forma. Publicar uma porta a mais passa a
+        // ser uma decisão que mexe neste teste.
+        PortasPublicadas(compose).Should().BeEquivalentTo(PortasEmLocalhost);
         compose.Should().NotContain(":1025\"", "o SMTP do mailpit só existe na rede do compose");
 ```
 
-e acrescentar a regex, junto das outras:
+e acrescentar, junto dos outros membros privados (o campo no topo da classe, o método e a regex no fim):
 
 ```csharp
-    // Um item de lista que é só uma porta: `- "8080:8080"`, `- 127.0.0.1:8080:8080`, com ou sem comentário no fim.
-    [GeneratedRegex(@"^\s*-\s*""?(?<porta>[0-9.]*:?[0-9]+:[0-9]+)""?\s*(#.*)?$", RegexOptions.Multiline)]
-    private static partial Regex PortasPublicadas();
+    private static readonly string[] PortasEmLocalhost =
+    [
+        "127.0.0.1:8080:8080", "127.0.0.1:8081:8080", "127.0.0.1:8025:8025", "127.0.0.1:5432:5432",
+        "127.0.0.1:6379:6379", "127.0.0.1:5341:80", "127.0.0.1:16686:16686", "127.0.0.1:4317:4317",
+    ];
+```
+
+```csharp
+    /// <summary>
+    /// Todo item de toda lista <c>ports:</c> do compose, sem as aspas e sem o comentário do fim da linha.
+    /// </summary>
+    /// <remarks>
+    /// Lê as listas, e não um padrão de porta: <c>- "8080"</c>, <c>- '8080:8080'</c>, <c>- "[::]:8080:8080"</c>, a forma
+    /// longa (<c>- target: 80</c>) e a lista numa linha só (<c>ports: [...]</c>) também são itens — e nenhum deles é
+    /// igual a uma das portas esperadas.
+    /// </remarks>
+    private static List<string> PortasPublicadas(string compose)
+    {
+        List<string> portas = [];
+        bool emPortas = false;
+
+        foreach (string linha in compose.Split('\n'))
+        {
+            string texto = linha.Trim();
+
+            if (texto.StartsWith("ports:", StringComparison.Ordinal))
+            {
+                emPortas = true;
+                string naMesmaLinha = texto["ports:".Length..].Trim();
+
+                if (naMesmaLinha.Length > 0 && !naMesmaLinha.StartsWith('#'))
+                {
+                    portas.Add(naMesmaLinha);
+                }
+            }
+            else if (emPortas && texto.StartsWith("- ", StringComparison.Ordinal))
+            {
+                portas.Add(ItemDeLista().Match(texto).Groups["valor"].Value);
+            }
+            else if (emPortas && texto.Length > 0 && !texto.StartsWith('#'))
+            {
+                emPortas = false;
+            }
+        }
+
+        return portas;
+    }
+
+    [GeneratedRegex(@"^-\s*[""']?(?<valor>[^""'#\s]*)")]
+    private static partial Regex ItemDeLista();
 ```
 
 2. Acrescentar os testes:
@@ -7460,15 +7704,22 @@ e acrescentar a regex, junto das outras:
         compose.Should().NotContain("KC_CLI_PASSWORD:").And.NotContain("KC_BOOTSTRAP_ADMIN_PASSWORD:");
         compose.Should().NotContain("add-roles").And.NotContain("role-mappings/realm\" -");
         compose.Should().Contain("lifespan=14400", "o link do platform-admin vale 4 h");
-        compose.Should().NotContain("--fields attributes", "com --fields, attributes vem vazio e as travas ficam vacuosas");
+        CamposComAttributes().IsMatch(compose).Should().BeFalse(
+            "com --fields (attributes sozinho ou numa lista, como id,attributes), o objeto vem vazio e as travas ficam vacuosas");
     }
 ```
 
 ```csharp
+    // Dentro do serviço api, e dentro do depends_on dele: os dois trechos "qualquer coisa" param na primeira linha
+    // que abre outro serviço (dois espaços) ou outra chave do serviço (quatro). Sem isso, a dependência declarada num
+    // serviço que viesse depois da api satisfaria a regra.
     [GeneratedRegex(
-        @"^  api:\s*$.*?^    depends_on:\s*$.*?^      platform-admin-invite:\s*\n\s+condition:\s*service_completed_successfully",
+        @"^  api:\s*$(?:(?!^  \S).)*?^    depends_on:\s*$(?:(?!^    \S).)*?^      platform-admin-invite:\s*\n\s+condition:\s*service_completed_successfully",
         RegexOptions.Multiline | RegexOptions.Singleline)]
     private static partial Regex DependenciaDaApiNoConvite();
+
+    [GeneratedRegex(@"--fields\s+\S*attributes")]
+    private static partial Regex CamposComAttributes();
 
     [GeneratedRegex(@"PLATFORM_ADMIN_EMAIL:\s*\$\{PLATFORM_ADMIN_EMAIL:-(?<email>[^}]+)\}")]
     private static partial Regex PadraoDoPlatformAdmin();
@@ -7621,24 +7872,32 @@ E o serviço novo, entre o `keycloak` e o `mailpit` (antes do comentário `# E-m
         kc config credentials --server http://keycloak:8080 --realm master --user admin > /dev/null \
           || falhar "credencial do master recusada: o admin do compose foi alterado? Rode: docker compose down -v"
 
+        # Cada leitura vai primeiro para uma variável, com o próprio "|| falhar": num pipe, o status é o do último
+        # comando, e uma leitura que falhasse viraria "não achei" — marcador vazio, e um segundo convite enviado.
+
         # 1. O realm é o desta versão?
-        kc get client-scopes -r "$$realm" --fields name | grep -q '"name" : "gateway-api"' \
+        scopes="$$(kc get client-scopes -r "$$realm" --fields name)" \
+          || falhar "não foi possível listar os client scopes do realm"
+        printf '%s\n' "$$scopes" | grep -q '"name" : "gateway-api"' \
           || falhar "realm anterior aos tokens do Keycloak (o import é IGNORE_EXISTING). Rode: docker compose down -v"
 
         # 2. O marcador (sem --fields: com ele, attributes viria vazio).
-        marcador="$$(kc get "realms/$$realm" | sed -n 's/^ *"platformAdminInviteSentAt" : "\([^"]*\)".*$$/\1/p' | head -n 1)"
+        dados_do_realm="$$(kc get "realms/$$realm")" || falhar "não foi possível ler o realm"
+        marcador="$$(printf '%s\n' "$$dados_do_realm" | sed -n 's/^ *"platformAdminInviteSentAt" : "\([^"]*\)".*$$/\1/p' | head -n 1)"
         if [ -n "$$marcador" ] && [ "$${REENVIAR:-0}" != "1" ]; then
           echo "platform-admin-invite: convite já enviado em $$marcador; nada a fazer"
           exit 0
         fi
 
         # 3. Exatamente um usuário com o e-mail, e com a forma do bootstrap.
-        ids="$$(kc get users -r "$$realm" -q "email=$$email" -q exact=true --fields id | sed -n 's/^ *"id" : "\([^"]*\)".*$$/\1/p')"
+        achados="$$(kc get users -r "$$realm" -q "email=$$email" -q exact=true --fields id)" \
+          || falhar "não foi possível procurar a conta do platform-admin"
+        ids="$$(printf '%s\n' "$$achados" | sed -n 's/^ *"id" : "\([^"]*\)".*$$/\1/p')"
         [ "$$(printf '%s\n' "$$ids" | grep -c .)" = "1" ] || falhar "esperado exatamente um usuário com o e-mail do platform-admin"
         id="$$ids"
-        usuario="$$(kc get "users/$$id" -r "$$realm")"
-        papeis="$$(kc get "users/$$id/role-mappings" -r "$$realm")"
-        grupos="$$(kc get "users/$$id/groups" -r "$$realm")"
+        usuario="$$(kc get "users/$$id" -r "$$realm")" || falhar "não foi possível ler a conta do platform-admin"
+        papeis="$$(kc get "users/$$id/role-mappings" -r "$$realm")" || falhar "não foi possível ler os papéis da conta"
+        grupos="$$(kc get "users/$$id/groups" -r "$$realm")" || falhar "não foi possível ler os grupos da conta"
         gravado="$$(printf '%s\n' "$$usuario" | sed -n 's/^ *"email" : "\([^"]*\)".*$$/\1/p' | head -n 1 | tr '[:upper:]' '[:lower:]')"
         nomes="$$(printf '%s\n' "$$papeis" | sed -n 's/^ *"name" : "\([^"]*\)".*$$/\1/p')"
         [ "$$gravado" = "$$email" ] || falhar "a conta do platform-admin não tem a forma do bootstrap"
@@ -7699,7 +7958,8 @@ Os comandos abaixo são para o Git Bash (o mesmo shell do README); `MSYS_NO_PATH
 ```bash
 export MSYS_NO_PATHCONV=1
 contar() { curl -fsS "http://127.0.0.1:8025/api/v1/search?query=to%3A%22platform-admin%40identity-gateway.local%22" | jq '.messages | length' | tr -d '\r'; }
-convite() { docker compose -p igverif run --rm -T --no-deps "$@" platform-admin-invite 2>/dev/null; echo "exit=$?"; }
+# --progress quiet cala o progresso do compose sem calar o stderr do serviço, que é onde saem as mensagens de falha.
+convite() { docker compose --progress quiet -p igverif run --rm -T --no-deps "$@" platform-admin-invite; echo "exit=$?"; }
 
 docker compose -p igverif up -d --build --wait --wait-timeout 300 api
 curl -fsS --max-time 10 http://127.0.0.1:8080/health/ready; echo
@@ -7723,42 +7983,92 @@ Expected: `platform-admin-invite: convite já enviado em <data>; nada a fazer`, 
 
 ```bash
 SENHA=$(docker run --rm -v igverif_gateway-keys:/k alpine cat /k/keycloak/admin-password)
-TOKEN=$(curl -fsS -d grant_type=password -d client_id=admin-cli -d username=admin --data-urlencode "password=$SENHA" http://127.0.0.1:8081/realms/master/protocol/openid-connect/token | jq -r .access_token | tr -d '\r')
 ADMIN=http://127.0.0.1:8081/admin/realms/identity-gateway
-H="Authorization: Bearer $TOKEN"; J="Content-Type: application/json"
+J="Content-Type: application/json"
+
+# O access token do master vale 60 segundos, e cada execução do one-shot leva uns 8: o token é obtido de novo antes
+# de cada preparo e de cada limpeza. Com um token só, as últimas chamadas falhariam em silêncio — a trava não seria
+# montada, e o one-shot ENVIARIA.
+entrar() {
+  TOKEN=$(curl -fsS -d grant_type=password -d client_id=admin-cli -d username=admin --data-urlencode "password=$SENHA" http://127.0.0.1:8081/realms/master/protocol/openid-connect/token | jq -r .access_token | tr -d '\r')
+  H="Authorization: Bearer $TOKEN"
+}
+feito() { echo "FALHOU: $1 — pare e confira antes de seguir"; }
+
+entrar
 ID=$(curl -fsS -H "$H" "$ADMIN/users?email=platform-admin@identity-gateway.local&exact=true" | jq -r '.[0].id' | tr -d '\r')
 
 # 1. um papel de realm a mais
+entrar
 curl -fsS -H "$H" "$ADMIN/roles/tenant-admin" | jq -c '[{id, name}]' > .papel.json
-curl -fsS -X POST -H "$H" -H "$J" --data-binary @.papel.json "$ADMIN/users/$ID/role-mappings/realm"
+curl -fsS -X POST -H "$H" -H "$J" --data-binary @.papel.json "$ADMIN/users/$ID/role-mappings/realm" || feito "preparo da trava 1"
 convite -e REENVIAR=1
-curl -fsS -X DELETE -H "$H" -H "$J" --data-binary @.papel.json "$ADMIN/users/$ID/role-mappings/realm"
+entrar
+curl -fsS -X DELETE -H "$H" -H "$J" --data-binary @.papel.json "$ADMIN/users/$ID/role-mappings/realm" || feito "limpeza da trava 1"
 
 # 2. o atributo tenant_id
+entrar
 curl -fsS -H "$H" "$ADMIN/users/$ID" | jq -c '.attributes = {"tenant_id": ["0199a000-0000-7000-8000-000000000001"]}' > .usuario.json
-curl -fsS -X PUT -H "$H" -H "$J" --data-binary @.usuario.json "$ADMIN/users/$ID"
+curl -fsS -X PUT -H "$H" -H "$J" --data-binary @.usuario.json "$ADMIN/users/$ID" || feito "preparo da trava 2"
 convite -e REENVIAR=1
+entrar
 curl -fsS -H "$H" "$ADMIN/users/$ID" | jq -c '.attributes = {}' > .usuario.json
-curl -fsS -X PUT -H "$H" -H "$J" --data-binary @.usuario.json "$ADMIN/users/$ID"
+curl -fsS -X PUT -H "$H" -H "$J" --data-binary @.usuario.json "$ADMIN/users/$ID" || feito "limpeza da trava 2"
 
 # 3. um grupo
+entrar
 GRUPO=$(curl -fsS -i -X POST -H "$H" -H "$J" -d '{"name":"g-verif"}' "$ADMIN/groups" | grep -i '^location:' | sed 's|.*/||' | tr -d '\r')
-curl -fsS -X PUT -H "$H" "$ADMIN/users/$ID/groups/$GRUPO"
+curl -fsS -X PUT -H "$H" "$ADMIN/users/$ID/groups/$GRUPO" || feito "preparo da trava 3"
 convite -e REENVIAR=1
-curl -fsS -X DELETE -H "$H" "$ADMIN/groups/$GRUPO"
+entrar
+curl -fsS -X DELETE -H "$H" "$ADMIN/groups/$GRUPO" || feito "limpeza da trava 3"
 
 # 4. um papel de client
+entrar
 CONTA=$(curl -fsS -H "$H" "$ADMIN/clients?clientId=account" | jq -r '.[0].id' | tr -d '\r')
 curl -fsS -H "$H" "$ADMIN/clients/$CONTA/roles/view-profile" | jq -c '[{id, name}]' > .papel.json
-curl -fsS -X POST -H "$H" -H "$J" --data-binary @.papel.json "$ADMIN/users/$ID/role-mappings/clients/$CONTA"
+curl -fsS -X POST -H "$H" -H "$J" --data-binary @.papel.json "$ADMIN/users/$ID/role-mappings/clients/$CONTA" || feito "preparo da trava 4"
 convite -e REENVIAR=1
-curl -fsS -X DELETE -H "$H" -H "$J" --data-binary @.papel.json "$ADMIN/users/$ID/role-mappings/clients/$CONTA"
+entrar
+curl -fsS -X DELETE -H "$H" -H "$J" --data-binary @.papel.json "$ADMIN/users/$ID/role-mappings/clients/$CONTA" || feito "limpeza da trava 4"
 
-rm -f .papel.json .usuario.json
 echo "e-mails: $(contar)"
 ```
 
-Expected: em cada um dos quatro `convite -e REENVIAR=1`, `platform-admin-invite: a conta do platform-admin não tem a forma do bootstrap` e `exit=1`. No fim, `e-mails: 1`: nenhuma das quatro tentativas enviou. (Cuidado ao limpar o `tenant_id`: um `PUT` sem a chave `attributes` **mantém** os atributos; é preciso mandar `"attributes": {}`.)
+Expected: nenhuma linha `FALHOU`; em cada um dos quatro `convite -e REENVIAR=1`, `platform-admin-invite: a conta do platform-admin não tem a forma do bootstrap` e `exit=1`. No fim, `e-mails: 1`: nenhuma das quatro tentativas enviou. (Cuidado ao limpar o `tenant_id`: um `PUT` sem a chave `attributes` **mantém** os atributos; é preciso mandar `"attributes": {}`.) A trava 4 sai pela comparação dos nomes dos papéis, que inclui os de client; a checagem de `clientMappings` do script é uma segunda defesa, e não é ela que dispara aqui.
+
+**Os três ramos que param o one-shot antes de qualquer envio** (executados ao escrever este plano, com estas mensagens):
+
+```bash
+# a. convite já concluído: o reenvio é recusado. Um link novo trocaria a senha de uma conta que já está em uso.
+entrar
+curl -fsS -H "$H" "$ADMIN/users/$ID" | jq -c '.requiredActions = []' > .usuario.json
+curl -fsS -X PUT -H "$H" -H "$J" --data-binary @.usuario.json "$ADMIN/users/$ID" || feito "preparo do ramo a"
+convite -e REENVIAR=1
+entrar
+curl -fsS -H "$H" "$ADMIN/users/$ID" | jq -c '.requiredActions = ["UPDATE_PASSWORD","VERIFY_EMAIL"]' > .usuario.json
+curl -fsS -X PUT -H "$H" -H "$J" --data-binary @.usuario.json "$ADMIN/users/$ID" || feito "limpeza do ramo a"
+
+# b. realm de antes desta fatia: simulado renomeando o scope gateway-api, que é o que o one-shot procura.
+entrar
+SCOPE=$(curl -fsS -H "$H" "$ADMIN/client-scopes" | jq -r '.[] | select(.name == "gateway-api") | .id' | tr -d '\r')
+curl -fsS -H "$H" "$ADMIN/client-scopes/$SCOPE" | jq -c '.name = "gateway-api-antigo"' > .scope.json
+curl -fsS -X PUT -H "$H" -H "$J" --data-binary @.scope.json "$ADMIN/client-scopes/$SCOPE" || feito "preparo do ramo b"
+convite
+entrar
+jq -c '.name = "gateway-api"' .scope.json > .scope-de-volta.json
+curl -fsS -X PUT -H "$H" -H "$J" --data-binary @.scope-de-volta.json "$ADMIN/client-scopes/$SCOPE" || feito "limpeza do ramo b"
+
+# c. senha do master recusada: um arquivo com outra senha montado por cima do que o one-shot lê.
+printf 'senha-errada' > .senha-errada
+docker compose --progress quiet -p igverif run --rm -T --no-deps -v "$PWD/.senha-errada:/keys/admin-password:ro" platform-admin-invite; echo "exit=$?"
+
+rm -f .papel.json .usuario.json .scope.json .scope-de-volta.json .senha-errada
+convite
+echo "e-mails: $(contar)"
+```
+
+Expected: nenhuma linha `FALHOU`; em (a), `o convite já foi concluído; não há o que reenviar` e `exit=1`; em (b), `realm anterior aos tokens do Keycloak (o import é IGNORE_EXISTING). Rode: docker compose down -v` e `exit=1`; em (c), `credencial do master recusada: o admin do compose foi alterado? Rode: docker compose down -v` e `exit=1`. O `convite` do fim confirma que tudo voltou ao lugar: `convite já enviado em <data>; nada a fazer`, `exit=0`, `e-mails: 1`.
 
 **O reenvio, com a conta de volta à forma do bootstrap:**
 
@@ -7834,13 +8144,20 @@ Run (a cada mutação): `dotnet test tests/IdentityGateway.ArchitectureTests --f
 | # | Mutação | Vermelho esperado |
 |---|---|---|
 | 1 | A porta da `api` de volta a `"8080:8080"` | `DependenciasComDadoPessoalPublicamSoEmLocalhost` |
-| 2 | A porta do Jaeger sem aspas e sem IP: `- 4317:4317` | `DependenciasComDadoPessoalPublicamSoEmLocalhost` (a regex pega a forma sem aspas) |
+| 2 | A porta do Jaeger sem aspas e sem IP: `- 4317:4317` | `DependenciasComDadoPessoalPublicamSoEmLocalhost` |
+| 2a | **Uma porta a mais**, com as oito no lugar: acrescentar `- "9999:9999"` às portas da `api` | `DependenciasComDadoPessoalPublicamSoEmLocalhost` — é esta que prova que a regra lê as listas `ports:`, e não só procura as oito esperadas |
+| 2b | Outras formas sem o IP: `- "8080"` na `api`; `- '8025:8025'` (aspas simples) no `mailpit` | `DependenciasComDadoPessoalPublicamSoEmLocalhost`, nas duas |
 | 3 | Tirar o `platform-admin-invite` do `depends_on` da `api` | `ApiSoSobeDepoisDoConviteDoPlatformAdmin` |
+| 3a | **A dependência no serviço errado:** tirar as duas linhas do `platform-admin-invite` do `depends_on` da `api` e pô-las no `depends_on` do `migrate` | `ApiSoSobeDepoisDoConviteDoPlatformAdmin` — a regra não aceita a dependência declarada num serviço que vem depois da `api` |
 | 4 | Tirar a linha `test -n "$$PLATFORM_ADMIN_EMAIL" &&` | `EntrypointDoKeycloakRecusaEmailVazioOuComMaiusculas` |
 | 5 | Padrão `Platform-Admin@identity-gateway.local` na âncora | `PadraoDoEmailDoPlatformAdminEMinusculo` |
 | 6 | Trocar a tag da imagem do `platform-admin-invite` para `26.7.3` | `ComposeEFixtureUsamAMesmaTagDoKeycloak` |
 | 7 | Acrescentar `Jwt__SigningKey: "x"` ao ambiente da `api` | `ComposeNaoTemMaisAChaveJwt` |
 | 8 | Trocar `lifespan=14400` por `lifespan=86400` | `ConviteDoPlatformAdminNaoRecebeSenhaPorVariavelNemAtribuiPapel` |
+| 9 | No script, ler o marcador com `kc get "realms/$$realm" --fields id,attributes` | `ConviteDoPlatformAdminNaoRecebeSenhaPorVariavelNemAtribuiPapel` — a regra pega `attributes` em qualquer posição da lista de `--fields` |
+| 10 | Acrescentar `KC_CLI_PASSWORD: "x"` ao `environment` do `platform-admin-invite` | `ConviteDoPlatformAdminNaoRecebeSenhaPorVariavelNemAtribuiPapel` |
+
+Todas foram aplicadas ao compose final e vistas vermelhas ao escrever este plano.
 
 - [ ] **Passo 8: Commit**
 
@@ -8022,7 +8339,17 @@ bool noGitHub = Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true";
 List<(string Etapa, double Segundos)> etapas = [];
 string etapaAtual = "início";
 var relogio = Stopwatch.StartNew();
-using CancellationTokenSource prazo = new(TimeSpan.FromMinutes(6));
+string fase = args.Length > 0 ? args[0] : string.Empty;
+
+// O prazo de cada fase fica ABAIXO do timeout-minutes do passo que a roda no job. Se estourar, quem encerra é o app,
+// dizendo a etapa e gravando a tabela do resumo — e não o runner, que mataria o processo sem dizer onde parou.
+using CancellationTokenSource prazo = new(fase switch
+{
+    "convites" => TimeSpan.FromSeconds(50),
+    "jornada" => TimeSpan.FromMinutes(4),
+    "depois-de-voltar" => TimeSpan.FromMinutes(3),
+    _ => TimeSpan.FromMinutes(1),
+});
 CancellationToken ct = prazo.Token;
 
 using HttpClient http = new() { BaseAddress = api, Timeout = TimeSpan.FromSeconds(10) };
@@ -8030,8 +8357,6 @@ using ClienteDoMailpit mailpit = new(mailpitUrl);
 
 try
 {
-    string fase = args.Length > 0 ? args[0] : string.Empty;
-
     switch (fase)
     {
         case "convites":
@@ -8062,9 +8387,14 @@ catch (FalhaDoHarnessException falha)
 {
     return Falhar(falha.Message, (int)falha.Familia);
 }
-catch (OperationCanceledException)
+catch (OperationCanceledException) when (prazo.IsCancellationRequested)
 {
     return Falhar($"{etapaAtual}: o prazo da fase esgotou.", (int)FamiliaDeFalha.Prazo);
+}
+catch (OperationCanceledException)
+{
+    // Não foi o prazo da fase: foi uma chamada HTTP que não respondeu em 10 s — o HttpClient cancela a própria chamada.
+    return Falhar($"{etapaAtual}: uma chamada HTTP ficou sem resposta por 10 s.", (int)FamiliaDeFalha.Prazo);
 }
 catch (HttpRequestException falha)
 {
@@ -8202,8 +8532,11 @@ async Task ComKeycloakParadoAsync()
     string sufixo = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
     Uri localizacao = await RegistrarTenantAsync(token, $"acme-parado-{sufixo}", $"admin+parado{sufixo}@acme.test");
 
-    Etapa("o tenant fica Pending enquanto o Keycloak não volta");
-    await EsperarStatusAsync(localizacao, token, "Pending", TimeSpan.FromSeconds(10));
+    // Logo depois do 202 todo tenant está Pending, com o Keycloak de pé ou parado: uma leitura só não provaria nada.
+    // Quinze segundos cobrem a varredura do Outbox (5 s) e uma tentativa inteira de provisionar; com o Keycloak de pé,
+    // o tenant já teria virado Active.
+    Etapa("o tenant continua Pending por 15 s, enquanto o Keycloak não volta");
+    await ExigirStatusEstavelAsync(localizacao, token, "Pending", TimeSpan.FromSeconds(15));
 
     GravarEstado(estado with { LocalizacaoPendente = localizacao.ToString() });
 }
@@ -8284,6 +8617,31 @@ async Task EsperarStatusAsync(Uri localizacao, string token, string esperado, Ti
 
     throw new FalhaDoHarnessException(
         FamiliaDeFalha.Prazo, etapaAtual, $"o tenant não chegou a {esperado} em {limite.TotalSeconds:0} s; ficou em {ultimo}.");
+}
+
+// Ao contrário de EsperarStatusAsync, que sai na primeira leitura igual à esperada: aqui TODA leitura do período
+// precisa ser a esperada.
+async Task ExigirStatusEstavelAsync(Uri localizacao, string token, string esperado, TimeSpan periodo)
+{
+    DateTimeOffset fim = DateTimeOffset.UtcNow + periodo;
+
+    do
+    {
+        using HttpResponseMessage resposta = await ExigirAsync(
+            HttpStatusCode.OK, HttpMethod.Get, localizacao.ToString(), token, corpo: null);
+        JsonElement corpo = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
+        string status = corpo.GetProperty("status").GetString() ?? "(nulo)";
+
+        if (status != esperado)
+        {
+            throw new FalhaDoHarnessException(
+                FamiliaDeFalha.Api, etapaAtual,
+                $"o tenant passou a {status}; esperado {esperado} durante {periodo.TotalSeconds:0} s.");
+        }
+
+        await Task.Delay(TimeSpan.FromSeconds(3), ct);
+    }
+    while (DateTimeOffset.UtcNow < fim);
 }
 
 // Toda asserção de status é EXATA. "Diferente de 200" deixaria um 401 por token vencido passar por um 403 esperado.
@@ -8478,7 +8836,9 @@ Expected: PASS em `FerramentasNaoDeclaramPacotes` e `AppDaJornadaUsaABibliotecaD
 Agora a mesma sequência do job, no projeto isolado `igverif` (as mesmas pré-condições do Passo 5 da Tarefa 10: nada do projeto padrão de pé, portas livres). Numa sessão só do Git Bash, na raiz do repositório:
 
 ```bash
-export IG_ESTADO="$(mktemp -d)/ig-jornada-estado.json"
+# Sem IG_ESTADO: o app grava o estado no diretório temporário do usuário, que no Git Bash é o /tmp. Um caminho do
+# Git Bash numa variável (como o de mktemp) pode chegar ao .NET sem tradução no Windows.
+unset IG_ESTADO
 jornada() { dotnet run -c Release tools/jornada-compose.cs -- "$@"; echo "exit=$?"; }
 
 docker compose -p igverif up -d --build --wait --wait-timeout 300 api
@@ -8574,11 +8934,15 @@ defaults:
     env:
       # Lido pelo compose (o e-mail gravado no realm) e pelo app (o destinatário que ele procura no mailpit).
       PLATFORM_ADMIN_EMAIL: platform-admin@identity-gateway.local
-      # O que uma fase do app deixa para a seguinte: credenciais de um Keycloak descartável. Apagado no fim.
-      IG_ESTADO: ${{ runner.temp }}/ig-jornada-estado.json
 
     steps:
       - uses: actions/checkout@v4
+
+      # O que uma fase do app deixa para a seguinte: credenciais de um Keycloak descartável, apagadas no fim. Definido
+      # num passo, e não no env do job: o contexto `runner` não existe no env do job, e usá-lo ali invalida o workflow
+      # inteiro — nenhum job rodaria.
+      - name: Definir o arquivo de estado da jornada
+        run: echo "IG_ESTADO=$RUNNER_TEMP/ig-jornada-estado.json" >> "$GITHUB_ENV"
 
       - name: Configurar .NET
         uses: actions/setup-dotnet@v4
@@ -8612,7 +8976,7 @@ defaults:
           docker compose run --rm -T --no-deps platform-admin-invite
           dotnet run --configuration Release tools/jornada-compose.cs -- convites --esperado 1
 
-      # O convite do platform-admin concluído pelo link, o token pelo device flow, a receita HS256 antiga recusada, o
+      # O convite do platform-admin concluído pelo link, o token pelo device flow, a receita simétrica antiga recusada, o
       # tenant registrado e provisionado, e o convite do admin do tenant no mailpit com um link que abre.
       - name: A jornada com token do Keycloak
         timeout-minutes: 5
@@ -8622,7 +8986,7 @@ defaults:
       # já estão em memória) e o provisiona quando ele volta. stop/start, e não pause: o stop recusa a conexão na
       # hora, e é a sequência que o README manda fazer. O refresh token precisa sobreviver ao reinício.
       - name: Registrar com o Keycloak parado e provisionar quando ele volta
-        timeout-minutes: 8
+        timeout-minutes: 10
         run: |
           dotnet run --configuration Release tools/jornada-compose.cs -- antes-de-parar
           docker compose stop keycloak
@@ -8781,7 +9145,11 @@ curl -s http://localhost:8080/api/v1/tenants/{id}/provisioning -H "Authorization
 ```bash
 docker compose start keycloak
 
-# quando o Keycloak responder de novo (uns 30 s), renove — e guarde o refresh token novo:
+# espere o Keycloak responder de novo (uns 30 s). Renovar antes disso devolveria uma resposta vazia, e as linhas de
+# baixo apagariam o refresh token que você tem:
+until curl -sf http://localhost:8081/realms/identity-gateway/.well-known/openid-configuration > /dev/null; do sleep 2; done
+
+# renove — e guarde o refresh token novo:
 tokens=$(curl -s -X POST "$KC/token" -d grant_type=refresh_token \
   -d client_id=identity-gateway-demo -d refresh_token="$REFRESH")
 TOKEN=$(echo "$tokens" | jq -r .access_token | tr -d '\r')
@@ -8837,7 +9205,7 @@ Reverter cada uma (`git restore <arquivo>` depois de `git add` do que a tarefa e
 Run: `docker compose -p igverif down -v`
 Expected: remove os contêineres e os volumes `igverif_*`. Os volumes `identitygateway_*` não aparecem na saída.
 
-Run: `rm -f "$IG_ESTADO"`
+Run: `rm -f /tmp/ig-jornada-estado.json`
 
 - [ ] **Passo 8: Commit**
 
@@ -9529,7 +9897,8 @@ internal sealed class MemberRequirementHandler(IMemberQueries members) : Authori
         if (context.HasFailed
             || context.Resource is not HttpContext http
             || !Guid.TryParse(http.GetRouteValue("tenantId")?.ToString(), out Guid tenantId)
-            || context.User.FindFirst("sub")?.Value is not { Length: > 0 } sub)
+            // Exatamente um claim sub, como no tenant_id: "o primeiro" poderia ser um que a autenticação não validou.
+            || context.User.FindAll("sub").Take(2).ToArray() is not [Claim { Value: { Length: > 0 } sub }])
         {
             context.Fail(new AuthorizationFailureReason(this, "Pertença não verificável."));
             return;
@@ -9716,15 +10085,17 @@ internal static class ValidacaoDoAccessToken
         return Task.CompletedTask;
     }
 
-    // Warning quando a falha é de chave ou de metadados — o Keycloak fora do ar chega assim. Nos demais casos, só
-    // o tipo da exceção, em Debug. Nunca o token nem a mensagem da exceção.
+    // Warning quando falta a chave de assinatura — o Keycloak fora do ar chega assim —, no máximo um por intervalo:
+    // um token de kid inventado provoca a mesma falha sem autenticação. Nos demais casos, só o tipo da exceção, em
+    // Debug. Nunca o token nem a mensagem da exceção.
     private static Task AoFalhar(AuthenticationFailedContext contexto)
     {
         ILogger logger = contexto.HttpContext.RequestServices
             .GetRequiredService<ILoggerFactory>().CreateLogger(Categoria);
         string tipo = contexto.Exception.GetType().Name;
 
-        if (EhFalhaDeChaveOuDeMetadados(contexto.Exception))
+        if (EhFalhaDeChaveOuDeMetadados(contexto.Exception)
+            && contexto.HttpContext.RequestServices.GetRequiredService<AvisoDeChavesIndisponiveis>().PodeAvisar())
             AutenticacaoLogs.ChavesIndisponiveis(logger, tipo);           // EventId 2100
         else
             AutenticacaoLogs.TokenRecusado(logger, tipo);                 // EventId 2101
@@ -9741,8 +10112,8 @@ internal static class ValidacaoDoAccessToken
                 InvalidIssuer = issuer,
             };
 
-    // EhFalhaDeChaveOuDeMetadados(Exception): com os metadados frios, a biblioteca engole a falha de busca, e
-    // ela chega como falta de chave. A lista dos tipos de exceção fica no código, com teste.
+    // EhFalhaDeChaveOuDeMetadados(Exception): só SecurityTokenSignatureKeyNotFoundException. Com os metadados
+    // frios, a biblioteca engole a falha de busca, e ela chega como falta de chave. Há teste.
 }
 ```
 
@@ -9790,7 +10161,7 @@ internal static class FormaDoAccessToken
 }
 ```
 
-Os quatro logs da autenticação são `LoggerMessage`, como o resto do projeto (`AutenticacaoLogs`): `ChavesIndisponiveis` (2100, `Warning`), quando a exceção é de chave ou de metadados — com os metadados frios, a falha de busca chega como falta de chave —; `TokenRecusado` (2101, `Debug`), com só o tipo da exceção, nos demais casos; `FormaRecusada` (2102, `Debug`), quando o `azp`, o `typ` ou o `sub` reprovam; e `NenhumClientPermitido` (2103, `Warning`), na subida, quando a lista de `azp` está vazia — registrado por um `IHostedService`, o `AvisoDeClientsPermitidos`. Nenhum deles leva o token. Sem o primeiro, o Keycloak fora do ar viraria `401` em silêncio, porque a biblioteca avisa só pelo `EventSource` dela (§14).
+Os quatro logs da autenticação são `LoggerMessage`, como o resto do projeto (`AutenticacaoLogs`): `ChavesIndisponiveis` (2100, `Warning`), quando falta a chave de assinatura — com os metadados frios, a falha de busca chega assim —, **no máximo uma vez a cada 30 s por instância**, porque um token de `kid` inventado provoca a mesma falha sem autenticação e sem consumir cota do limitador; `TokenRecusado` (2101, `Debug`), com só o tipo da exceção, nos demais casos; `FormaRecusada` (2102, `Debug`), quando o `azp`, o `typ` ou o `sub` reprovam; e `NenhumClientPermitido` (2103, `Warning`), na subida, quando a lista de `azp` está vazia — registrado por um `IHostedService`, o `AvisoDeClientsPermitidos`. Nenhum deles leva o token. Sem o primeiro, o Keycloak fora do ar viraria `401` em silêncio, porque a biblioteca avisa só pelo `EventSource` dela (§14).
 
 **O registro da autorização (v2.7).** Desde a D1, a Api registra a `FallbackPolicy` autenticada, a policy `PlatformAdmin` pela constante `Policies.PlatformAdmin` e o `IAuthorizationMiddlewareResultHandler` do Problem Details (§10.1). Com a primeira rota de tenant, um método só passa a registrar tudo, na ordem que a pertença exige (D2, planejado):
 
@@ -10172,7 +10543,7 @@ Na v2.7, §14 (v2.6:2071), localizar o último item da lista, a linha que começ
 manter, e inserir logo depois dela, como mais um item da lista:
 
 ```markdown
-- **Keycloak fora do ar e a autenticação (v2.7).** Com os metadados ainda não carregados e o Keycloak inalcançável, a API sobe, e um pedido com token responde **`401`** — nunca `500`. A biblioteca engole a falha de busca e reprova o token por falta de chave, avisando só pelo `EventSource` dela; sem um log próprio, o Keycloak fora viraria `401` em silêncio. Por isso `OnAuthenticationFailed` registra um `Warning` quando a exceção é de chave ou de configuração (`AutenticacaoLogs`, EventIds 2100 a 2103), e nunca o token. Com os metadados já carregados, a API continua validando tokens de `kid` conhecido com o Keycloak parado. **Alternativa registrada:** `503` com `Retry-After` na falha de configuração, coerente com o argumento da §9.6; não entrou porque exige distinguir, no evento de falha, configuração indisponível de token inválido. O `/health/ready` cobre o Keycloak inteiro fora do ar, mas não um `jwks_uri` inalcançável (§19).
+- **Keycloak fora do ar e a autenticação (v2.7).** Com os metadados ainda não carregados e o Keycloak inalcançável, a API sobe, e um pedido com token responde **`401`** — nunca `500`. A biblioteca engole a falha de busca e reprova o token por falta de chave, avisando só pelo `EventSource` dela; sem um log próprio, o Keycloak fora viraria `401` em silêncio. Por isso `OnAuthenticationFailed` registra um `Warning` quando falta a chave de assinatura (`AutenticacaoLogs`, EventIds 2100 a 2103), limitado a um por intervalo de 30 s, e nunca o token. O mesmo aviso sai para um token de `kid` desconhecido assinado por outra chave: o texto dele diz as duas causas. Com os metadados já carregados, a API continua validando tokens de `kid` conhecido com o Keycloak parado. **Alternativa registrada:** `503` com `Retry-After` na falha de configuração, coerente com o argumento da §9.6; não entrou porque exige distinguir, no evento de falha, configuração indisponível de token inválido. O `/health/ready` cobre o Keycloak inteiro fora do ar, mas não um `jwks_uri` inalcançável (§19).
 ```
 
 - [ ] **Passo 16: §15 — a tabela de serviços e o que a fatia D acrescentou ao bootstrap (E7)**
@@ -11737,7 +12108,7 @@ uma única vez, e a demonstração, os testes e a CI obtêm o token pelo device 
 | Projeto de suporte de testes | `tests/IdentityGateway.Testing.Keycloak`, biblioteca (`IsTestProject=false`, sem referência a `src/`): `KeycloakFixture`, `ChavesDeTeste` e `RaizDoRepositorio` (movidos do projeto de integração), `FamiliaDeFalha`, `FalhaDoHarnessException`, `ClienteDoMailpit`, `HarnessDeLogin`, `TokensDeUsuario`, `UsuarioDeTeste`, `SenhasDeTeste`; `xunit.v3.extensibility.core` no `Directory.Packages.props`; o ROPC do fixture removido |
 | Realm | Catálogo `platform-admin`, `tenant-admin`, `financial-manager` e `reader`, nunca compostos, mais `offline_access` e `uma_authorization` fora do papel padrão; scopes `gateway-roles`, `gateway-tenant` e `gateway-api`, nenhum default do realm; `CreateDefaultClientScopes`; `identity-gateway` com `basic` e `roles`; `identity-gateway-demo` público, só device flow; `accessTokenLifespan` 300; `registrationAllowed` falso; `bruteForceProtected`; rotação do refresh token; o usuário do platform-admin com `${PLATFORM_ADMIN_EMAIL}`, sem credencial; `RegrasDoRealmTests` com as regras novas |
 | Infrastructure | `AccessTokenValidationOptions` (seção `Keycloak:Auth`: `Audience`, `AllowedClients`; `Issuer`, `MetadataAddress` e `RequireHttpsMetadata` derivados pelo adaptador); `KeycloakAdminOptions.Issuer` e `MetadataAddress`, com `AssertionAudience => Issuer`; a recusa do client de demonstração fora de Development; `JwtOptions` removido |
-| Api | `Authentication/ValidacaoDoAccessToken` (JwtBearer por metadados internos, `IssuerValidator` estrito, RS256, `ClockSkew` 30 s, `BackchannelTimeout` 5 s, `RefreshInterval` 30 s, `IncludeErrorDetails` falso), `FormaDoAccessToken` (`azp`, `typ`, `sub`), `AutenticacaoLogs` (EventIds 2100–2103), `AvisoDeClientsPermitidos`; `Authorization/Policies`, `RespostasDeAutorizacao` e `ProblemDetailsDeAutorizacao` (Problem Details em `401` e `403`); `FallbackPolicy` autenticada e `AllowAnonymous` explícito nas rotas anônimas; `HttpCurrentUser` com `"sub"`; `Security/JwtTokenService` e a seção `Jwt` dos appsettings removidos; `AllowedClients` só no `appsettings.Development.json` |
+| Api | `Authentication/ValidacaoDoAccessToken` e `AvisoDeChavesIndisponiveis` (JwtBearer por metadados internos, `IssuerValidator` estrito, RS256, `ClockSkew` 30 s, `BackchannelTimeout` 5 s, `RefreshInterval` 30 s, `IncludeErrorDetails` falso), `FormaDoAccessToken` (`azp`, `typ`, `sub`), `AutenticacaoLogs` (EventIds 2100–2103), `AvisoDeClientsPermitidos`; `Authorization/Policies`, `RespostasDeAutorizacao` e `ProblemDetailsDeAutorizacao` (Problem Details em `401` e `403`); `FallbackPolicy` autenticada e `AllowAnonymous` explícito nas rotas anônimas; `HttpCurrentUser` com `"sub"`; `Security/JwtTokenService` e a seção `Jwt` dos appsettings removidos; `AllowedClients` só no `appsettings.Development.json` |
 | Compose | One-shot `platform-admin-invite` (`kcadm`, marcador `platformAdminInviteSentAt` no realm antes do envio, link de 4 h, saída `0` ou `1`, reenvio por `REENVIAR=1`); a `api` depende dele; `PLATFORM_ADMIN_EMAIL` com padrão e recusa de vazio ou maiúsculas; `api` e Jaeger só em `127.0.0.1`; sem `Jwt__SigningKey` |
 | CI e ferramentas | `tools/jornada-compose.cs` (app de arquivo único, `#:project`, sem AOT) com as fases `convites`, `jornada`, `antes-de-parar`, `com-keycloak-parado` e `depois-de-voltar`; job `Compose` com `pipefail`, prazo por passo, o convite contado exato, a receita HS256 antiga com `401`, o convite do admin do tenant e o Keycloak parado com `stop`/`start` |
 | Testes | OIDC falso com emissor divergente na `IdentityGatewayApiFactory`; suíte negativa de autenticação; opções do JwtBearer conferidas em execução; `ApiEmProducaoFactory` com pedidos; coleção com Keycloak real atravessando a API e a ponte de contrato; vazamento do e-mail no token, com log e trace; regras de arquitetura novas (`RegrasDaApiTests`, `RegrasDoAmbienteLocalTests`, `RegrasDeFerramentasTests`) |
@@ -11998,7 +12369,7 @@ Expected: build sem avisos e suíte verde, com os totais do handoff da D1. Anote
 
 **A D2 não toca `keycloak/`, `docker-compose.yml` nem o one-shot.** Tudo o que ela consome do realm (o scope `gateway-tenant`, o catálogo, o client de demonstração) entrou na D1. Se uma tarefa daqui parecer pedir mudança no realm, pare: é erro de leitura, e custaria outro `docker compose down -v`.
 
-**Verificado ao escrever este plano (2026-10-01).** O código de produção e os testes das Tarefas 13 a 15 foram compilados com os analisadores do repositório e executados num clone descartável, sobre a `main` de hoje com a autorização da Tarefa 7 aplicada por cima (as policies e o Problem Details), e os tokens assinados pelo JWT simétrico do template no lugar do OIDC falso: 40 testes unitários da policy, 31 por HTTP (26 da rota e 5 da ordem dos handlers), as consultas contra o PostgreSQL e as regras de arquitetura, todos verdes; e cada mutação das tabelas 🧪 foi aplicada e vista vermelha, com as contagens que as tabelas trazem. O que **não** foi executado: a extensão da suíte negativa de autenticação à rota nova (Tarefa 15, Passo 7), que depende do OIDC falso, e a Tarefa 16 inteira (Keycloak real, app e CI).
+**Verificado ao escrever este plano (2026-10-01).** O código de produção e os testes das Tarefas 13 a 15 foram compilados com os analisadores do repositório e executados num clone descartável, sobre a `main` de hoje com a autorização da Tarefa 7 aplicada por cima (as policies e o Problem Details), e os tokens assinados pelo JWT simétrico do template no lugar do OIDC falso: 43 testes unitários da policy, 31 por HTTP (26 da rota e 5 da ordem dos handlers), as consultas contra o PostgreSQL e as regras de arquitetura, todos verdes; e cada mutação das tabelas 🧪 foi aplicada e vista vermelha, com as contagens que as tabelas trazem. O que **não** foi executado: a extensão da suíte negativa de autenticação à rota nova (Tarefa 15, Passo 7), que depende do OIDC falso, e a Tarefa 16 inteira (Keycloak real, app e CI).
 
 Docker Desktop ligado nas Tarefas 14 a 16.
 
@@ -12167,10 +12538,16 @@ public sealed class TenantAdminPolicyTests
             .AuthorizeAsync(usuario, recurso, Policies.TenantAdmin);
     }
 
-    private static void DeveTerVetado(AuthorizationResult resultado, string caso)
+    private static void DeveTerVetado<TQuemVeta>(AuthorizationResult resultado, string caso)
     {
         resultado.Succeeded.Should().BeFalse($"{caso}: a policy não pode passar, nem com um handler que aprova tudo");
         resultado.Failure!.FailCalled.Should().BeTrue($"{caso}: a negação precisa ser um Fail(), e não a falta de Succeed");
+
+        // Quem vetou. Depois do primeiro Fail() nenhum outro handler roda, e por isso há um motivo só — o do
+        // requirement do caso. Se ele deixasse de vetar, outro vetaria no lugar dele mais adiante, e é esta asserção
+        // que diria qual.
+        resultado.Failure.FailureReasons.Select(motivo => motivo.Handler.GetType())
+            .Should().Equal([typeof(TQuemVeta)], $"{caso}: quem veta é o requirement do caso");
     }
 
     [Theory]
@@ -12201,7 +12578,7 @@ public sealed class TenantAdminPolicyTests
         AuthorizationResult resultado = await AutorizarAsync(
             usuario, MontagemDaAutorizacao.Pedido(Tenant), comHandlerQueAprovaTudo: true);
 
-        DeveTerVetado(resultado, caso);
+        DeveTerVetado<RoleRequirement>(resultado, caso);
     }
 
     [Fact]
@@ -12214,7 +12591,7 @@ public sealed class TenantAdminPolicyTests
         AuthorizationResult resultado = await AutorizarAsync(
             usuario, MontagemDaAutorizacao.Pedido(Tenant), comHandlerQueAprovaTudo: true);
 
-        DeveTerVetado(resultado, "platform-admin + tenant-admin");
+        DeveTerVetado<NotPlatformAdminRequirement>(resultado, "platform-admin + tenant-admin");
     }
 
     [Theory]
@@ -12236,7 +12613,7 @@ public sealed class TenantAdminPolicyTests
         AuthorizationResult resultado = await AutorizarAsync(
             usuario, MontagemDaAutorizacao.Pedido(Tenant), comHandlerQueAprovaTudo: true);
 
-        DeveTerVetado(resultado, caso);
+        DeveTerVetado<SameTenantRequirement>(resultado, caso);
     }
 
     [Theory]
@@ -12252,7 +12629,7 @@ public sealed class TenantAdminPolicyTests
         AuthorizationResult resultado = await AutorizarAsync(
             usuario, MontagemDaAutorizacao.Pedido(rota), comHandlerQueAprovaTudo: true);
 
-        DeveTerVetado(resultado, caso);
+        DeveTerVetado<SameTenantRequirement>(resultado, caso);
     }
 
     [Fact]
@@ -12264,13 +12641,14 @@ public sealed class TenantAdminPolicyTests
         AuthorizationResult semRecurso = await AutorizarAsync(usuario, recurso: null, comHandlerQueAprovaTudo: true);
         AuthorizationResult outroRecurso = await AutorizarAsync(usuario, new object(), comHandlerQueAprovaTudo: true);
 
-        DeveTerVetado(semRecurso, "sem recurso");
-        DeveTerVetado(outroRecurso, "recurso que não é HttpContext");
+        DeveTerVetado<SameTenantRequirement>(semRecurso, "sem recurso");
+        DeveTerVetado<SameTenantRequirement>(outroRecurso, "recurso que não é HttpContext");
     }
 }
 ```
 
-Três coisas sobre os casos:
+Quatro coisas sobre os casos:
+- **Cada veto diz quem vetou** (`DeveTerVetado<TQuemVeta>`). Com `InvokeHandlersAfterFailure` desligado há um motivo só, o do primeiro `Fail()`. Sem essa asserção, quando a Tarefa 14 puser a pertença na policy, um `SameTenantRequirement` que deixasse de vetar passaria despercebido nos casos de rota e de recurso: o handler da pertença vetaria no lugar dele, pelos mesmos motivos.
 - **`tenant_id` com espaço** está na lista porque `Guid.TryParseExact(…, "D")` aceita espaço nas pontas. É o mesmo achado do `sub`, na Tarefa 8.
 - **Um array de um elemento** (`"tenant_id": ["…"]`) não está: o `ClaimsPrincipal` o entrega como um claim só, indistinguível do texto, e é o mesmo tenant — não há ambiguidade a recusar.
 - **O claim em maiúsculas passa**: é o formato `D`, e a comparação é por `Guid`.
@@ -12550,12 +12928,13 @@ Run (a cada mutação): `dotnet test tests/IdentityGateway.Api.FunctionalTests -
 | 3 | Em `SameTenantRequirement`, apagar o `else { context.Fail(…); }` | 15: os onze de `TenantDoTokenQueNaoEODaRota_Veta`, os três de `RotaSemUmTenantIdUtilizavel_Veta` e `RecursoQueNaoEHttpContext_Veta` |
 | 4 | Usar o **primeiro** claim: `if (context.User.FindFirst("tenant_id") is not Claim claim)` | 2: "o próprio e outro" e "iguais ao próprio" |
 | 5 | Usar o **último**: `if (context.User.FindAll("tenant_id").LastOrDefault() is not Claim claim)` | 2: "outro e o próprio" e "iguais ao próprio" |
+| 5a | Aceitar **algum** claim: tirar o `if` do claim único e devolver `context.User.FindAll("tenant_id").Any(claim => claim.Value is { Length: 36 } && Guid.TryParseExact(claim.Value, "D", out Guid doToken) && doToken == daRota)` | 3: "o próprio e outro", "outro e o próprio" e "iguais ao próprio" |
 | 6 | Comparar como texto: trocar `&& doToken == daRota` por `&& string.Equals(claim.Value, http.GetRouteValue(ParametroDaRota)?.ToString(), StringComparison.Ordinal)` | 3: os controles "rota em maiúsculas", "rota no formato N" e "claim em maiúsculas" |
 | 7 | Tirar o `claim.Value is { Length: 36 } &&` | 2: "espaço antes" e "espaço depois" |
 | 8 | Trocar o retorno inteiro por `return Guid.TryParse(claim.Value, out Guid doToken) && doToken == daRota;` | 4: os dois de espaço, "entre chaves" e "formato N" |
 | 9 | Em `AutorizacaoDaGateway`, tirar a linha `new NotPlatformAdminRequirement(),` da policy | 1: `PlatformAdminQueTambemETenantAdminDoProprioTenant_Veta` |
 
-As mutações 1 a 3 são as da §5.3 da spec ("`return` no lugar de `Fail()`"), e **só estes testes as pegam**: por HTTP, sem outro handler, a rota continuaria respondendo `403`.
+As mutações 1 a 3 são as da §5.3 da spec ("`return` no lugar de `Fail()`"), e **só estes testes as pegam**: por HTTP, sem outro handler, a rota continuaria respondendo `403`. As contagens valem também no fim da D2, com a pertença já na policy (a mutação 3 continua em 15 nesta classe, por causa da asserção de quem vetou) — conferido ao escrever este plano.
 
 - [ ] **Passo 8: Commit**
 
@@ -13000,6 +13379,26 @@ public sealed class PertencaNaPolicyTenantAdminTests
         resultado.Failure!.FailCalled.Should().BeTrue(caso);
         pertenca.Consultas.Should().Be(0, caso);
     }
+
+    [Theory]
+    [InlineData("SUB", "sub")]
+    [InlineData("sub", "SUB")]
+    [InlineData("sub", "sub")]
+    public async Task TokenComDoisClaimsDeSub_EVetadoSemConsultar(string primeiro, string segundo)
+    {
+        // O ClaimsPrincipal acha claims sem olhar a caixa do nome, e a autenticação só validou o "sub" do JSON. Com um
+        // "SUB" ao lado, ler "o primeiro" conferiria a pertença de um sub que ninguém validou — e o membro seria outro.
+        ClaimsPrincipal usuario = MontagemDaAutorizacao.Usuario(SoTenantAdmin, SoOTenant, sub: null);
+        ((ClaimsIdentity)usuario.Identity!).AddClaims(
+            [new Claim(primeiro, Sub), new Claim(segundo, "0199a000-0000-7000-8000-0000000000aa")]);
+        PertencaFalsa pertenca = new(MemberStatus.Active);
+
+        AuthorizationResult resultado = await AutorizarAsync(usuario, Tenant, pertenca, comHandlerQueAprovaTudo: true);
+
+        resultado.Succeeded.Should().BeFalse();
+        resultado.Failure!.FailCalled.Should().BeTrue();
+        pertenca.Consultas.Should().Be(0);
+    }
 }
 ```
 
@@ -13021,7 +13420,7 @@ e, em `AutorizarAsync`, como primeiras linhas do lambda do `Montar` (antes do `i
 Aqui o vermelho é de execução, e não de compilação: tudo o que os testes usam já existe, e o que falta é a policy consultar a pertença.
 
 Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-class "*PertencaNaPolicyTenantAdminTests"`
-Expected: FAIL em 11 dos 17 — os quatro estados que deviam ser vetados (`Deactivated`, `Expired`, `Revoked`, `Erased`), `QuemNaoEMembroDoTenant_EVetado`, os três de `TokenSemSubUtilizavel_EVetadoSemConsultar` e os três de `APertenca_EConsultadaUmaVez…` (`Consultas` é `0`): a policy ainda não consulta a pertença.
+Expected: FAIL em 14 dos 20 — os quatro estados que deviam ser vetados (`Deactivated`, `Expired`, `Revoked`, `Erased`), `QuemNaoEMembroDoTenant_EVetado`, os três de `TokenSemSubUtilizavel_EVetadoSemConsultar`, os três de `TokenComDoisClaimsDeSub_EVetadoSemConsultar` e os três de `APertenca_EConsultadaUmaVez…` (`Consultas` é `0`): a policy ainda não consulta a pertença.
 
 - [ ] **Passo 5: O requirement, o handler e a ordem de registro**
 
@@ -13047,6 +13446,7 @@ internal sealed class MemberRequirement : IAuthorizationRequirement;
 `src/IdentityGateway.Api/Authorization/MemberRequirementHandler.cs`:
 
 ```csharp
+using System.Security.Claims;
 using IdentityGateway.Application.Common.Abstractions;
 using IdentityGateway.Domain.Members;
 using IdentityGateway.Domain.Tenants;
@@ -13081,10 +13481,12 @@ internal sealed class MemberRequirementHandler(IMemberQueries members) : Authori
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(requirement);
 
+        // Exatamente UM claim sub, como no tenant_id. O ClaimsPrincipal acha claims sem olhar a caixa do nome, e a
+        // autenticação validou o "sub" do JSON: com um "SUB" ao lado, "o primeiro" poderia ser o que ninguém validou.
         if (context.HasFailed
             || context.Resource is not HttpContext http
             || !Guid.TryParse(http.GetRouteValue(SameTenantRequirement.ParametroDaRota)?.ToString(), out Guid tenantId)
-            || context.User.FindFirst("sub")?.Value is not { } sub
+            || context.User.FindAll("sub").Take(2).ToArray() is not [Claim { Value: var sub }]
             || string.IsNullOrWhiteSpace(sub))
         {
             context.Fail(new AuthorizationFailureReason(this, "A pertença não pôde ser verificada."));
@@ -13172,6 +13574,8 @@ Em `src/IdentityGateway.Api/Authorization/Policies.cs`, o comentário de `Tenant
     public const string TenantAdmin = "TenantAdmin";
 ```
 
+**Exatamente um claim `sub`.** A autenticação (Tarefa 8) valida a propriedade `sub` do JSON do token. O `ClaimsPrincipal`, porém, acha claims **sem olhar a caixa do nome**: num token com `"SUB"` e `"sub"`, `FindFirst("sub")` devolve o que vier primeiro — que pode ser o que ninguém validou (conferido pelo revisor de autorização, em memória, com o IdentityModel 8.19.2). O Keycloak não emite isso sem um mapper novo, que o `manage-users` não cria; mas a pertença é a única defesa contra o `tenant_id` forjado, e fica com a mesma regra do `tenant_id`: um claim só, ou veto.
+
 **Por que a ordem de registro importa.** O `AddAuthorization` registra o `PassThroughAuthorizationHandler`, que roda os requirements que são o próprio handler — os três da Tarefa 13 —, na ordem da policy, e para no primeiro `Fail()` (com `InvokeHandlersAfterFailure` desligado). O `MemberRequirementHandler` vem do contêiner, e os handlers do contêiner rodam na ordem em que foram registrados. Registrado **depois** do `AddAuthorization`, ele roda depois do `PassThrough` — ou nem roda, se alguém já falhou. Registrado antes, rodaria primeiro, com o contexto ainda sem falha, e consultaria o banco para qualquer token autenticado.
 
 Duas defesas, e cada uma esconde a falta da outra: o `InvokeHandlersAfterFailure = false` impede o handler de rodar depois de uma falha, e o `context.HasFailed` do handler o faz sair sem consultar se rodar. Ficam as duas, de propósito.
@@ -13240,13 +13644,13 @@ Run: `dotnet build IdentityGateway.slnx`
 Expected: `0 Aviso(s)`, `0 Erro(s)`.
 
 Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests --filter-namespace "*Autorizacao"`
-Expected: `total: 40`, `falhou: 0` — os 23 da Tarefa 13 e os 17 desta.
+Expected: `total: 43`, `falhou: 0` — os 23 da Tarefa 13 e os 20 desta.
 
 Run: `dotnet test tests/IdentityGateway.ArchitectureTests`
 Expected: verde, com 2 testes a mais.
 
 Run: `dotnet test tests/IdentityGateway.Api.FunctionalTests`
-Expected: verde, com 17 testes a mais que no fim da Tarefa 13.
+Expected: verde, com 20 testes a mais que no fim da Tarefa 13.
 
 - [ ] **Passo 8: 🧪 Provas por mutação**
 
@@ -13259,11 +13663,12 @@ Run (mutações 1 a 9): `dotnet test tests/IdentityGateway.Api.FunctionalTests -
 | 1 | Em `AutorizacaoDaGateway`, mover a linha `services.AddScoped<IAuthorizationHandler, MemberRequirementHandler>();` para **antes** do `services.AddAuthorization(` | 4: os quatro casos de `QuemNaoPassaNasCamadasDoToken_NaoProvocaConsultaAoBanco` (`Consultas` é `1`) |
 | 2 | No handler, aceitar qualquer status: `if (status is not null)` | 4: `CadaEstadoDoMembro_…` para `Deactivated`, `Expired`, `Revoked` e `Erased` |
 | 3 | No handler, só `Active`: `if (status is MemberStatus.Active)` | 1: `CadaEstadoDoMembro_…(Invited)` |
-| 4 | Tirar `new MemberRequirement()` da policy (o `SameTenantRequirement` volta a fechar a lista) | 11: os mesmos do "ver falhar" do Passo 4 |
-| 5 | No handler, apagar o `context.Fail(…)` da guarda (fica só o `return;`) | 3: `TokenSemSubUtilizavel_EVetadoSemConsultar` |
+| 4 | Tirar `new MemberRequirement()` da policy (o `SameTenantRequirement` volta a fechar a lista) | 14: os mesmos do "ver falhar" do Passo 4 |
+| 5 | No handler, apagar o `context.Fail(…)` da guarda (fica só o `return;`) | 6: os três de `TokenSemSubUtilizavel_EVetadoSemConsultar` e os três de `TokenComDoisClaimsDeSub_EVetadoSemConsultar` |
+| 5a | No handler, ler **o primeiro** `sub`: trocar a linha do `FindAll("sub")` por `\|\| context.User.FindFirst("sub")?.Value is not { } sub` | 3: `TokenComDoisClaimsDeSub_EVetadoSemConsultar` — a pertença seria conferida contra um `sub` que a autenticação não validou |
 | 6 | No handler, apagar o `else { context.Fail(…); }` do fim | 5: os quatro estados vetados e `QuemNaoEMembroDoTenant_EVetado` |
 | 7 | `options.InvokeHandlersAfterFailure = true;`, **sozinha** | **nenhum** — equivalente: o `HasFailed` do handler cobre |
-| 8 | Tirar o `context.HasFailed ||` da guarda do handler, **sozinha** | **nenhum** — equivalente: o `InvokeHandlersAfterFailure` cobre |
+| 8 | Tirar o `context.HasFailed \|\|` da guarda do handler, **sozinha** | **nenhum** — equivalente: o `InvokeHandlersAfterFailure` cobre |
 | 9 | As mutações 7 e 8 **juntas** | 4: os mesmos da mutação 1 |
 | 10 | Em `MemberRequirementHandler`, acrescentar `private static readonly Type Vazamento = typeof(IdentityGateway.Infrastructure.Configuration.DatabaseOptions);` e `internal static string Nome => Vazamento.Name;` | `dotnet test tests/IdentityGateway.ArchitectureTests`: `AutorizacaoDaApi_NaoDependeDaInfrastructure` |
 | 11 | Em `src/IdentityGateway.Domain/Members/MemberStatus.cs`, acrescentar um valor `Paused` | `dotnet test tests/IdentityGateway.ArchitectureTests`: `NomesDosEstadosDeTenantEDeMembro_SaoContrato`; e, no projeto funcional, `CadaEstadoDoMembro_…(Paused)` ("estado novo no enum: decida se ele passa na pertença…") |
@@ -13874,7 +14279,7 @@ public sealed class LeituraDeTenantTests(IdentityGatewayApiFactory factory) : IC
     private static async Task DeveSerOProibidoPadraoAsync(HttpResponseMessage resposta, string caso, CancellationToken ct)
     {
         resposta.StatusCode.Should().Be(HttpStatusCode.Forbidden, caso);
-        resposta.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json", caso);
+        resposta.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json", caso);
 
         JsonElement corpo = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
         corpo.GetProperty("status").GetInt32().Should().Be(403, caso);
@@ -14049,25 +14454,30 @@ public sealed class LeituraDeTenantTests(IdentityGatewayApiFactory factory) : IC
     }
 
     [Fact]
-    public async Task Todo403DaRota_TemOMesmoCorpo()
+    public async Task Todo403DaRota_TemOMesmoCorpoEOsMesmosCabecalhos()
     {
-        // Três motivos diferentes, comparados campo a campo: fora o correlationId e o traceId, que são do pedido, os
-        // corpos são idênticos.
+        // Cinco motivos diferentes — três num tenant que existe, dois num que não existe —, comparados campo a campo:
+        // fora o correlationId e o traceId, que são do pedido, as respostas são idênticas. Quem chama não aprende por
+        // que foi negado, nem se o tenant existe.
         CancellationToken ct = TestContext.Current.CancellationToken;
         (Guid tenant, Guid admin, _) = await TenantComAdminAsync(ct);
+        var inexistente = Guid.NewGuid();
 
-        string[] tokens =
+        (string Rota, string Token)[] pedidos =
         [
-            factory.Emissor.Emitir(admin, SoReader, tenant.ToString()),
-            factory.Emissor.Emitir(admin, SoTenantAdmin, OutroTenant),
-            factory.Emissor.Emitir(Guid.NewGuid(), SoTenantAdmin, tenant.ToString()),
+            (Rota(tenant), factory.Emissor.Emitir(admin, SoReader, tenant.ToString())),
+            (Rota(tenant), factory.Emissor.Emitir(admin, SoTenantAdmin, OutroTenant)),
+            (Rota(tenant), factory.Emissor.Emitir(Guid.NewGuid(), SoTenantAdmin, tenant.ToString())),
+            (Rota(inexistente), factory.Emissor.Emitir(admin, SoTenantAdmin, tenant.ToString())),
+            (Rota(inexistente), factory.Emissor.Emitir(admin, SoTenantAdmin, inexistente.ToString())),
         ];
 
         List<string> corpos = [];
+        List<string> cabecalhos = [];
 
-        foreach (string token in tokens)
+        foreach ((string rota, string token) in pedidos)
         {
-            using HttpResponseMessage resposta = await LerAsync(Rota(tenant), token, ct);
+            using HttpResponseMessage resposta = await LerAsync(rota, token, ct);
             JsonElement corpo = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
 
             corpos.Add(string.Join(
@@ -14075,10 +14485,16 @@ public sealed class LeituraDeTenantTests(IdentityGatewayApiFactory factory) : IC
                 corpo.EnumerateObject()
                     .Where(campo => campo.Name is not ("correlationId" or "traceId"))
                     .Select(campo => $"{campo.Name}={campo.Value.GetRawText()}")));
+            cabecalhos.Add(string.Join(
+                ", ",
+                resposta.Headers.Concat(resposta.Content.Headers)
+                    .Select(cabecalho => cabecalho.Key)
+                    .Order(StringComparer.OrdinalIgnoreCase)));
         }
 
         corpos.Distinct().Should().ContainSingle("o 403 não pode dizer por que negou");
         corpos[0].Should().Contain("status=403");
+        cabecalhos.Distinct().Should().ContainSingle("nem pelos cabeçalhos");
     }
 
     [Fact]
@@ -14375,11 +14791,20 @@ Run (a cada mutação): `dotnet test tests/IdentityGateway.Api.FunctionalTests` 
 | 2 | **A falha vira `404`:** em `ParaRespostaDoTenant`, `onFailure: _ => Results.NotFound()` | `TenantNaoEncontrado_ViraOMesmo403DaAutorizacao` e `QuemPassaNasCamadasDoToken_ProvocaUmaConsulta` |
 | 3 | **Sem o `NotPlatformAdminRequirement`** na policy | 4, entre eles o caso "platform-admin que também é tenant-admin do próprio tenant" de `MembroDoTenantComUmDefeitoNoToken_Responde403` (responde `200`) e o de `QuemNaoPassaNasCamadasDoToken_Recebe403SemConsultaAPertenca` |
 | 4 | **Sem o `MemberRequirement`** na policy | 15, entre eles `TokenCertoDeQuemNaoEMembro_Responde403` e `MembroDesativado_PerdeOAcessoNoPedidoSeguinte` (os dois respondem `200`) |
+| 4a | **As mutações 2 e 4 juntas** — é a "consultar o tenant antes de autorizar" da §5.3 da spec: sem a pertença, a query roda para quem só tem o token; sem a tradução para `403`, o que ela não acha responde outra coisa | `TenantQueNaoExiste_Responde403ENao404`: `404` no caso "token com o `tenant_id` dele". Sozinha, nenhuma das duas o deixa vermelho |
 | 5 | **E-mail na resposta:** em `TenantDetailsResponse`, transformar a declaração num record com corpo e acrescentar `public string? InitialAdminEmail { get; init; }` | `AdminDoTenant_LeOProprioTenantComExatamenteAsChavesDoContrato` (uma chave a mais, mesmo nula) e, na arquitetura, `LeituraDeTenant_NaoCarregaEmail` |
+| 5a | **E-mail no read model, pelo tipo e não pelo nome:** em `TenantDetailsView`, record com corpo e `public IdentityGateway.Domain.ValueObjects.Email? AdminInicial { get; init; }` | Na arquitetura, `LeituraDeTenant_NaoCarregaEmail` — o nome não tem "Email"; quem pega é o tipo da propriedade |
 | 6 | **Handler da pertença antes do `AddAuthorization`** (a mutação 1 da Tarefa 14) | 8: os quatro de `QuemNaoPassaNasCamadasDoToken_Recebe403SemConsultaAPertenca`, aqui na composição real, e os quatro unitários |
 | 7 | **Tenant comparado como texto** (a mutação 6 da Tarefa 13) | 7, entre eles os dois de `ProprioTenantComOGuidDaRotaEscritoDeOutroJeito_Responde200` |
+| 7a | **O primeiro claim** e **o último claim** (as mutações 4 e 5 da Tarefa 13), agora por HTTP | 2 cada: os casos "`tenant_id` em array" de `MembroDoTenantComUmDefeitoNoToken_Responde403` — "o próprio e outro" e "o próprio, duas vezes" com o primeiro; "outro e o próprio" e "o próprio, duas vezes" com o último |
+| 8 | **O handler troca dois campos:** em `GetTenantHandler`, `new TenantPlanResponse(tenant.Plan.Tier.ToString(), tenant.Plan.MaxClients, tenant.Plan.MaxUsers)` | `dotnet test tests/IdentityGateway.Application.UnitTests --filter-class "*GetTenantHandlerTests"`: `TenantExistente_DevolveOsCamposComStatusETierEmTexto` |
+| 9 | **A projeção perde um campo:** em `TenantQueries.GetDetailsAsync`, `0` no lugar de `tenant.OccupiedSeats` | `dotnet test tests/IdentityGateway.Infrastructure.IntegrationTests --filter-class "*TenantDetailsTests"`: `TenantAtivado_VoltaActiveComAVagaDoAdmin` |
 
-Sobre a mutação "consultar o tenant antes de autorizar", da §5.3 da spec: neste desenho ela se decompõe na 2 e na 4. Sem a 4, a query do tenant só roda para quem a policy inteira aprovou; e sem a 2, o que ela não achar responde o mesmo `403`. `TenantQueNaoExiste_Responde403ENao404` só fica vermelho com as duas juntas — rode-as juntas uma vez e confirme (`404` no caso "token com o `tenant_id` dele").
+As mutações 8 e 9 existem porque os testes do Passo 1 só tinham sido vistos vermelhos por erro de compilação, que não conta.
+
+Todas as linhas da tabela foram aplicadas e vistas vermelhas no clone ao escrever este plano, com os testes e as contagens que a tabela traz.
+
+**Um limite que esta rota traz, para o handoff:** o limitador de requisições roda **depois** da autorização (`Program.cs`). Um token que passa nas três camadas do token e não é de um membro ativo — o do ataque do grupo, ou o de um membro desativado — recebe `403` depois de uma consulta ao banco, e esse `403` não consome cota. Não é leitura indevida; é consulta sem limite por token. Mover o limitador para antes da autorização faria os `401` consumirem cota por IP, e é decisão do autor.
 
 - [ ] **Passo 9: Commit**
 
@@ -14451,6 +14876,12 @@ por:
 ```
 
 Efeito nos testes da D1 que já estão na coleção: o tenant que `PlatformAdminDoKeycloak_RegistraUmTenant` registra passa a ser provisionado em segundo plano — cria uma Organization e manda um convite ao mailpit do fixture. Nenhum deles afirma nada sobre isso. Um detalhe a saber: depois da primeira Organization, o login do Keycloak passa a ter dois passos; o harness lida com os dois casos.
+
+**O host derivado do teste do `PublicBaseUrl` errado não pode herdar o Outbox.** Em `tests/IdentityGateway.Api.FunctionalTests/TokensDoKeycloakNaApiTests.cs`, o teste que sobe uma segunda Api com o `PublicBaseUrl` trocado (`WithWebHostBuilder`) herdaria o Outbox ligado: seria um segundo despachante sobre o mesmo banco, com uma credencial que o Keycloak recusa (o `aud` do assertion sai do `PublicBaseUrl`), reservando mensagens que só voltam à fila uns dez segundos depois. No lambda do `WithWebHostBuilder` desse teste, acrescentar:
+
+```csharp
+            builder.UseSetting("Outbox:Enabled", "false");
+```
 
 - [ ] **Passo 2: Os testes**
 
@@ -14739,8 +15170,12 @@ string[] chavesDoPlano = ["tier", "maxUsers", "maxClients"];
         HttpStatusCode.Forbidden, HttpMethod.Get, $"/api/v1/tenants/{Guid.NewGuid()}", tokensDoAdmin.AccessToken, corpo: null);
 
     // O platform-admin registra e acompanha o provisionamento, mas não lê o tenant: sem auditoria, seria o único acesso
-    // entre tenants sem trilha.
-    Etapa("o platform-admin recebe 403 ao ler o tenant");
+    // entre tenants sem trilha. O token dele é do começo da jornada, e de lá para cá houve a espera do Active e o
+    // convite do admin: é renovado antes deste uso tardio. O refresh token novo é o que a fase grava no fim.
+    Etapa("o platform-admin renova o token e recebe 403 ao ler o tenant");
+    tokens = await harness.RenovarAsync(tokens.RefreshToken, ct);
+    Mascarar(tokens.AccessToken);
+    Mascarar(tokens.RefreshToken);
     await ExigirAsync(HttpStatusCode.Forbidden, HttpMethod.Get, rotaDoTenant, tokens.AccessToken, corpo: null);
 
 ```
@@ -14775,12 +15210,14 @@ Expected: PASS nos três.
 As mesmas pré-condições da Tarefa 11: nada do projeto padrão de pé, portas livres, Git Bash na raiz do repositório.
 
 ```bash
-export IG_ESTADO="$(mktemp -d)/ig-jornada-estado.json"
+# Sem IG_ESTADO: o app grava o estado no diretório temporário do usuário, que no Git Bash é o /tmp. Um caminho do
+# Git Bash numa variável (como o de mktemp) pode chegar ao .NET sem tradução no Windows.
+unset IG_ESTADO
 docker compose -p igverif up -d --build --wait --wait-timeout 300 api
 dotnet run -c Release tools/jornada-compose.cs -- jornada; echo "exit=$?"
 ```
 
-Expected: `exit=0`, com as quatro etapas novas na saída — `ok … o admin do tenant conclui o convite pelo link e obtém o token pelo device flow`, `ok … o admin lê o próprio tenant: 200, Active, com exatamente as chaves do contrato`, `ok … o admin recebe 403 ao ler outro tenant` e `ok … o platform-admin recebe 403 ao ler o tenant`. O login do admin do tenant leva dois passos (já existe uma Organization); o harness não afirma o número de passos dele.
+Expected: `exit=0`, com as quatro etapas novas na saída — `ok … o admin do tenant conclui o convite pelo link e obtém o token pelo device flow`, `ok … o admin lê o próprio tenant: 200, Active, com exatamente as chaves do contrato`, `ok … o admin recebe 403 ao ler outro tenant` e `ok … o platform-admin renova o token e recebe 403 ao ler o tenant`. O login do admin do tenant leva dois passos (já existe uma Organization); o harness não afirma o número de passos dele.
 
 Reveja a saída: nenhum `eyJ`, nenhum `action-token?key=`, nenhum `user_code`.
 
@@ -14791,8 +15228,8 @@ Anote os tempos das etapas para o handoff. **Não derrube o `igverif`**: o Passo
 Em `.github/workflows/ci.yml`, no job `compose`, o comentário do passo `A jornada com token do Keycloak` passa a ser:
 
 ```yaml
-      # O convite do platform-admin concluído pelo link, o token pelo device flow, a receita HS256 antiga recusada e o
-      # tenant registrado e provisionado. Depois, o admin do tenant: conclui o convite pelo link, entra por outro
+      # O convite do platform-admin concluído pelo link, o token pelo device flow, a receita simétrica antiga recusada e
+      # o tenant registrado e provisionado. Depois, o admin do tenant: conclui o convite pelo link, entra por outro
       # device flow e lê o próprio tenant (200, com exatamente as chaves do contrato); outro tenant e o
       # platform-admin levam 403.
 ```
@@ -14863,7 +15300,7 @@ Depois da mutação 3, reverter o arquivo e reconstruir a imagem não é necess�
 Run: `docker compose -p igverif down -v`
 Expected: remove os contêineres e os volumes `igverif_*`. Os volumes `identitygateway_*` não aparecem na saída.
 
-Run: `rm -f "$IG_ESTADO"`
+Run: `rm -f /tmp/ig-jornada-estado.json`
 
 - [ ] **Passo 9: Commit**
 
@@ -15108,7 +15545,7 @@ Run: `dotnet build -c Release tools/jornada-compose.cs`
 Expected: compila, sem avisos.
 
 Run: `dotnet test`
-Expected: 0 falhas, 0 skips nos cinco projetos. Em relação ao handoff da D1, a D2 acrescenta: `Application.UnitTests` +2, `ArchitectureTests` +3, `Infrastructure.IntegrationTests` +7, `Api.FunctionalTests` +76 (23 da Tarefa 13, 17 da 14, 34 da 15 e 2 da 16). Um total diferente não é erro por si — mas explique a diferença no handoff.
+Expected: 0 falhas, 0 skips nos cinco projetos. Em relação ao handoff da D1, a D2 acrescenta: `Application.UnitTests` +2, `ArchitectureTests` +3, `Infrastructure.IntegrationTests` +7, `Api.FunctionalTests` +79 (23 da Tarefa 13, 20 da 14, 34 da 15 e 2 da 16). Um total diferente não é erro por si — mas explique a diferença no handoff.
 
 Atualizar a linha `# Toda a suíte —` do README com os números observados, no mesmo formato, e rodar de novo `dotnet test tests/IdentityGateway.ArchitectureTests` (há regras que leem o README).
 
@@ -15181,6 +15618,10 @@ do job `Compose`.>
 auditoria; `Invited` passa na pertença até o aceite do convite ser sincronizado; o Data Plane continua exposto ao
 `tenant_id` por grupo; a pertença não contém quem tem a chave da Gateway; e-mail digitado errado dá a leitura do
 tenant ao destinatário errado.
+
+**Um limite novo, da D2, para o autor decidir:** o limitador de requisições roda depois da autorização. O `403` de um
+token que passa nas três camadas do token e não é de um membro ativo custa uma consulta ao banco e não consome cota.
+Mover o limitador para antes da autorização faria os `401` consumirem cota por IP.
 
 **Segue pendente do M0:** a tabela de auditoria, o armazenamento de eventos do realm e o RabbitMQ.
 
