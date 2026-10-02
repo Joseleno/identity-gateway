@@ -81,6 +81,23 @@ public sealed partial class RegrasDoAmbienteLocalTests
         compose.Should().NotContain(":1025\"", "o SMTP do mailpit só existe na rede do compose");
     }
 
+    [Fact]
+    public void ListaDeClientsPermitidosSoNoAppsettingsDeDevelopment()
+    {
+        // DT4: o IConfiguration mescla arrays POR ÍNDICE. Uma lista no appsettings.json base sobreviveria, do segundo
+        // item em diante, à configuração de produção. A lista de azp vive só no arquivo de Development.
+        using var baseDaApi = JsonDocument.Parse(File.ReadAllText(
+            RaizDoRepositorio.Caminho("src", "IdentityGateway.Api", "appsettings.json")));
+        using var desenvolvimento = JsonDocument.Parse(File.ReadAllText(
+            RaizDoRepositorio.Caminho("src", "IdentityGateway.Api", "appsettings.Development.json")));
+
+        baseDaApi.RootElement.GetProperty("Keycloak").TryGetProperty("Auth", out _).Should().BeFalse(
+            "nem a lista, nem a seção: fora de Development a lista vem do ambiente");
+        desenvolvimento.RootElement.GetProperty("Keycloak").GetProperty("Auth").GetProperty("AllowedClients")
+            .EnumerateArray().Select(client => client.GetString())
+            .Should().Equal("identity-gateway-demo");
+    }
+
     private static string Compose() => File.ReadAllText(RaizDoRepositorio.Caminho("docker-compose.yml"));
 
     private static string Fixture() => File.ReadAllText(

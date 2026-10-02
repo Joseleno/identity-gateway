@@ -35,12 +35,18 @@ internal sealed class KeycloakAdminOptions
     [Required(ErrorMessage = "Keycloak:Admin:BaseUrl é obrigatório.")]
     public string BaseUrl { get; init; } = string.Empty;
 
-    /// <summary>Endereço público do Keycloak — o <c>KC_HOSTNAME</c>. Só alimenta o <c>aud</c>; nunca é discado.</summary>
+    /// <summary>Endereço público do Keycloak — o <c>KC_HOSTNAME</c>. Alimenta o emissor; nunca é discado.</summary>
     /// <remarks>
+    /// <para>
     /// Com <c>KC_HOSTNAME</c>, o Keycloak calcula o emissor pelo endereço público, mesmo com a requisição chegando pelo
     /// interno, e compara o <c>aud</c> por igualdade de texto: <c>127.0.0.1</c> no lugar de <c>localhost</c> é recusado
     /// com "Invalid token audience". Omitido, vale o <see cref="BaseUrl"/>, e nada muda para quem roda a API pela IDE
     /// com <c>BaseUrl=http://localhost:8081</c>. Absoluto, sem query nem fragmento; <c>http</c> só em Development.
+    /// </para>
+    /// <para>
+    /// O emissor (<see cref="Issuer"/>) serve a duas coisas: é o <c>aud</c> do client assertion e é o <c>iss</c> que a
+    /// Api aceita nos tokens de quem a chama. As duas saem daqui para nunca divergirem.
+    /// </para>
     /// </remarks>
     public string? PublicBaseUrl { get; init; }
 
@@ -66,9 +72,16 @@ internal sealed class KeycloakAdminOptions
     /// </remarks>
     public bool AllowInsecureHttp { get; init; }
 
-    /// <summary>O <c>aud</c> do client assertion: o emissor público do realm, sem barra final.</summary>
-    public string AssertionAudience =>
+    /// <summary>O emissor público do realm, sem barra final: <c>{PublicBaseUrl ?? BaseUrl}/realms/{Realm}</c>.</summary>
+    public string Issuer =>
         $"{(string.IsNullOrWhiteSpace(PublicBaseUrl) ? BaseUrl : PublicBaseUrl).TrimEnd('/')}/realms/{Realm}";
+
+    /// <summary>O <c>aud</c> do client assertion: o emissor público do realm.</summary>
+    public string AssertionAudience => Issuer;
+
+    /// <summary>Os metadados OIDC do realm, pelo endereço de transporte — o público pode não resolver daqui.</summary>
+    public string MetadataAddress =>
+        $"{BaseUrl.TrimEnd('/')}/realms/{Realm}/.well-known/openid-configuration";
 
     /// <summary>URL do token endpoint, derivada só do <see cref="BaseUrl"/>.</summary>
     public string TokenEndpoint => $"{BaseUrl.TrimEnd('/')}/realms/{Realm}/protocol/openid-connect/token";
