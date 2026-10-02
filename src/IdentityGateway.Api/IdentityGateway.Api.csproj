@@ -49,6 +49,13 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
 
+    <!--
+      JsonWebToken e Base64UrlEncoder, usados na conferência da forma do access token. Já vinha transitivo pelo
+      JwtBearer; declarado porque é usado no código. A versão é a do Directory.Packages.props, a mesma que o
+      JwtBearer resolve.
+    -->
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.Console" />
     <PackageReference Include="Serilog.Sinks.Seq" />

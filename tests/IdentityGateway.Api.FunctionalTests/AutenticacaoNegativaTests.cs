@@ -34,6 +34,12 @@ public sealed class AutenticacaoNegativaTests(IdentityGatewayApiFactory factory)
 
     private static readonly string[] AudienciaDaGatewayEOutra = ["identity-gateway-api", "account"];
 
+    private static readonly string[] AzpEmArrayDeUm = ["identity-gateway-demo"];
+
+    private static readonly string[] AzpEmArrayDeDois = ["identity-gateway-demo", "outro-client"];
+
+    private static readonly string[] TypEmArray = ["Bearer"];
+
     // Outra chave RSA, que a Api não conhece. Estática: gerar 2048 bits por caso custaria mais que o teste.
     private static readonly RSA ChaveForasteira = RSA.Create(2048);
 
@@ -96,6 +102,30 @@ public sealed class AutenticacaoNegativaTests(IdentityGatewayApiFactory factory)
         Caso("a receita HS256 antiga", _ => ReceitaHs256Antiga()),
     };
 
+    public static TheoryData<Func<IdentityGatewayApiFactory, string>> RecusadosPelaForma => new()
+    {
+        // O cabeçalho de um ID token também diz JWT; quem distingue é o claim typ.
+        Com("typ = ID com a audiência certa", payload => payload["typ"] = "ID"),
+        Com("typ em array", payload => payload["typ"] = TypEmArray),
+        Com("sem typ", payload => payload.Remove("typ")),
+
+        Com("azp fora da lista", payload => payload["azp"] = "outro-client"),
+        Com("azp ausente", payload => payload.Remove("azp")),
+        Com("azp vazio", payload => payload["azp"] = string.Empty),
+        Com("azp em array de um", payload => payload["azp"] = AzpEmArrayDeUm),
+        Com("azp em array de dois", payload => payload["azp"] = AzpEmArrayDeDois),
+        Com("azp numérico", payload => payload["azp"] = 42),
+
+        Com("sem sub", payload => payload.Remove("sub")),
+        Com("sub que não é GUID", payload => payload["sub"] = "joao"),
+        Com("sub no formato N", payload => payload["sub"] = Guid.NewGuid().ToString("N")),
+        Com("sub em array", payload => payload["sub"] = new[] { Guid.NewGuid().ToString() }),
+
+        // Foco de revisão 4: com o detalhe do erro ligado, o iss iria para o WWW-Authenticate, o Kestrel recusaria o
+        // cabeçalho e o 401 viraria 500.
+        Com("iss com caractere de controle", payload => payload["iss"] = Emissor + "\r\nX-Injetado: 1"),
+    };
+
     public static TheoryData<Func<IdentityGatewayApiFactory, string>> Aceitos => new()
     {
         Com("token padrão do platform-admin", _ => { }),
@@ -137,6 +167,15 @@ public sealed class AutenticacaoNegativaTests(IdentityGatewayApiFactory factory)
     [Theory]
     [MemberData(nameof(RecusadosPelaValidacao))]
     public async Task TokenQueAValidacaoRecusa_Responde401SemDetalheNasDuasRotas(Func<IdentityGatewayApiFactory, string> token)
+    {
+        ArgumentNullException.ThrowIfNull(token);
+
+        await ConferirRecusaAsync(token, TestContext.Current.CancellationToken);
+    }
+
+    [Theory]
+    [MemberData(nameof(RecusadosPelaForma))]
+    public async Task TokenComAFormaErrada_Responde401SemDetalheNasDuasRotas(Func<IdentityGatewayApiFactory, string> token)
     {
         ArgumentNullException.ThrowIfNull(token);
 

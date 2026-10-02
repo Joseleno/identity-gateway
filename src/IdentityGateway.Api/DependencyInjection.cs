@@ -88,6 +88,9 @@ public static class DependencyInjection
             .Configure<IOptions<AccessTokenValidationOptions>>((jwt, validacao) =>
                 ValidacaoDoAccessToken.Configurar(jwt, validacao.Value));
 
+        // Lista de clients vazia é configuração válida e fechada; o aviso sai na subida, não no primeiro 401.
+        services.AddHostedService<AvisoDeClientsPermitidos>();
+
         // Corpo para o 401 e o 403: sem isto, o primeiro sai só com o WWW-Authenticate e o segundo, vazio.
         services.AddProblemDetails();
         services.AddSingleton<IAuthorizationMiddlewareResultHandler, ProblemDetailsDeAutorizacao>();

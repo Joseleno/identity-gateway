@@ -1,5 +1,6 @@
 using IdentityGateway.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
 namespace IdentityGateway.Api.Authentication;
@@ -77,8 +78,34 @@ internal static class ValidacaoDoAccessToken
 
         jwt.Events = new JwtBearerEvents
         {
+            OnTokenValidated = contexto => AoValidar(contexto, validacao.AllowedClients),
             OnAuthenticationFailed = AoFalhar,
         };
+    }
+
+    /// <summary>
+    /// Confere a forma do token depois de a biblioteca validar assinatura, emissor, audiência e prazo.
+    /// </summary>
+    /// <remarks>
+    /// <c>Fail</c>, e não exceção: o resultado é o mesmo <c>401</c> de qualquer token recusado, e o motivo — texto fixo,
+    /// sem valor do token — vai para o log em <c>Debug</c>.
+    /// </remarks>
+    private static Task AoValidar(TokenValidatedContext contexto, IReadOnlyList<string> clientsPermitidos)
+    {
+        string? motivo = contexto.SecurityToken is JsonWebToken token
+            ? FormaDoAccessToken.Recusar(token, clientsPermitidos)
+            : "token que não é um JWT";
+
+        if (motivo is not null)
+        {
+            ILogger logger = contexto.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>().CreateLogger(Categoria);
+
+            AutenticacaoLogs.FormaRecusada(logger, motivo);
+            contexto.Fail(motivo);
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>Aceita só o emissor configurado, por igualdade ordinal.</summary>
