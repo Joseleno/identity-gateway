@@ -1,4 +1,3 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using IdentityGateway.Application.Common.Abstractions;
 
@@ -14,9 +13,8 @@ namespace IdentityGateway.Api.Services;
 /// Infrastructure.
 /// </para>
 /// <para>
-/// <b>Autenticação ainda não está configurada</b> (não está em nenhuma task da Fase 4), então na prática o claim
-/// não vem e o Id é nulo. A classe existe desde já para que o interceptor de auditoria não precise mudar quando
-/// a auth entrar: o contrato é o mesmo, só passa a ter valor.
+/// <b>O identificador é o <c>sub</c> do access token</b>: o id do usuário no provedor de identidade, um GUID. A
+/// autenticação já recusou o token sem <c>sub</c> ou com <c>sub</c> fora desse formato; aqui ele só é lido.
 /// </para>
 /// </remarks>
 internal sealed class HttpCurrentUser(IHttpContextAccessor accessor) : ICurrentUser
@@ -28,16 +26,15 @@ internal sealed class HttpCurrentUser(IHttpContextAccessor accessor) : ICurrentU
         {
             ClaimsPrincipal? usuario = accessor.HttpContext?.User;
 
-            // Lê as DUAS formas do mesmo claim, e isso não é redundância defensiva: a validação do JWT roda com
+            // Lê as DUAS formas do mesmo claim, e isso não é redundância defensiva: a validação do token roda com
             // `MapInboundClaims = false`, porque o remapeamento automático quebrava a policy `PlatformAdmin`
             // (o handler traduzia `roles` para a URI longa antes de a policy comparar). Com o remapeamento
             // desligado, o `sub` também deixa de virar `ClaimTypes.NameIdentifier` — e ler só a forma longa
             // devolveria nulo para todo usuário autenticado.
             //
-            // A forma longa continua sendo consultada porque um IdP externo pode emitir o claim já nela, e
-            // porque é o que valeria se o remapeamento voltasse a ser ligado.
+            // A forma longa continua sendo consultada porque é o que valeria se o remapeamento voltasse a ser ligado.
             string? valor =
-                usuario?.FindFirstValue(JwtRegisteredClaimNames.Sub)
+                usuario?.FindFirstValue("sub")
                 ?? usuario?.FindFirstValue(ClaimTypes.NameIdentifier);
 
             // Guid.TryParse e não Parse: um claim malformado é dado externo, e derrubar a requisição por causa

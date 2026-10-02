@@ -3,8 +3,8 @@
   <PropertyGroup>
     <!--
       Identificador do cofre de User Secrets. Não é segredo — é só o nome da pasta onde o dotnet guarda os
-      segredos desta máquina, fora do repositório. A connection string e a chave JWT de desenvolvimento vivem
-      lá, nunca em appsettings versionado.
+      segredos desta máquina, fora do repositório. A connection string e a chave privada do service account da
+      Gateway (Keycloak:Admin:PrivateKeyPem) vivem lá, nunca em appsettings versionado.
     -->
     <UserSecretsId>33dd6ef1-53b5-4c63-8a7e-e208bc191ea3</UserSecretsId>
 
@@ -48,6 +48,13 @@
     <PackageReference Include="Scalar.AspNetCore" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+
+    <!--
+      JsonWebToken e Base64UrlEncoder, usados na conferência da forma do access token. Já vinha transitivo pelo
+      JwtBearer; declarado porque é usado no código. A versão é a do Directory.Packages.props, a mesma que o
+      JwtBearer resolve.
+    -->
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
 
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.Console" />

@@ -14,9 +14,15 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 // Serilog substitui o logging padrão antes de qualquer outro registro: o que falhar no startup a partir daqui já
 // sai no formato estruturado. Lido da configuração para que o ambiente decida sink e nível sem recompilar.
-builder.Host.UseSerilog((context, configuration) => configuration
-    .ReadFrom.Configuration(context.Configuration)
-    .Enrich.FromLogContext());
+//
+// preserveStaticLogger: o logger é deste host, e não o Log.Logger estático do processo. Sem isto, o host registraria
+// pelo logger estático — que é o do ÚLTIMO host construído no processo. Em produção há um host só e não faria
+// diferença; nos testes funcionais há vários em paralelo, e os logs de um iriam para o coletor do outro.
+builder.Host.UseSerilog(
+    (context, configuration) => configuration
+        .ReadFrom.Configuration(context.Configuration)
+        .Enrich.FromLogContext(),
+    preserveStaticLogger: true);
 
 // As três camadas, de dentro para fora. AddApiServices vem por último porque sobrescreve ICurrentUser e
 // ICorrelationIdProvider pelas implementações que leem o HttpContext — no contêiner da Microsoft, o último
@@ -79,33 +85,39 @@ if (app.Environment.IsDevelopment())
 {
     // OpenAPI só em desenvolvimento: o documento descreve a superfície inteira da API, e publicá-lo em produção
     // entrega o mapa a quem estiver procurando. Quem precisa dele em produção o expõe atrás de autenticação.
-    app.MapOpenApi();
-    app.MapScalarApiReference();
+    //
+    // AllowAnonymous explícito: a policy de fallback exige usuário autenticado em tudo o que não declarar outra
+    // coisa. Em desenvolvimento, a documentação é aberta de propósito.
+    app.MapOpenApi().AllowAnonymous();
+    app.MapScalarApiReference().AllowAnonymous();
 
     // A raiz leva à documentação. Sem isto, abrir https://localhost:7206 no navegador — que é o que a IDE faz
-    // ao rodar — devolve 404, porque nenhuma rota responde em "/". O 404 está certo, mas quem acabou de clonar
-    // o repositório lê aquilo como "não subiu", e não como "subiu, e a porta de entrada é outra".
+    // ao rodar — não mostra nada útil, e quem acabou de clonar o repositório lê aquilo como "não subiu".
     //
-    // Só em Development, junto com o próprio Scalar: em produção "/" continua 404, que é o correto para uma API.
+    // Só em Development, junto com o próprio Scalar: em produção "/" não é rota, e responde 401 a quem não se
+    // identificou e 404 a quem se identificou.
     app.MapGet("/", () => Results.Redirect("/scalar/v1"))
+       .AllowAnonymous()
        .ExcludeFromDescription();
 }
 
 // live: o processo responde. Sem dependência externa — banco fora do ar não deve fazer o orquestrador reiniciar
 // o pod, porque reiniciar não conserta banco e só remove capacidade.
+//
+// Anônimo, com todas as letras: o orquestrador não se autentica.
 app.MapHealthChecks("/health/live", new HealthCheckOptions
 {
     Predicate = _ => false,
-});
+}).AllowAnonymous();
 
 // ready: posso receber tráfego. Checa Postgres, Redis e o Keycloak (obtendo o token do service account) — sem eles,
 // a instância sai do balanceador.
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready"),
-});
+}).AllowAnonymous();
 
-// Carter mapeia os módulos descobertos por varredura. Os módulos do IdentityGateway entram no M0.
+// Carter mapeia os módulos descobertos por varredura. Cada rota deles declara a própria policy.
 app.MapCarter();
 
 await app.RunAsync();

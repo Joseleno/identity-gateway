@@ -18,6 +18,9 @@ namespace IdentityGateway.Infrastructure.Identity.Keycloak;
 /// </remarks>
 internal static class KeycloakServiceCollectionExtensions
 {
+    /// <summary>O client público de demonstração do realm local. Aceito só em Development.</summary>
+    private const string ClientDeDemonstracao = "identity-gateway-demo";
+
     internal static IServiceCollection AddKeycloakIdentity(
         this IServiceCollection services,
         IConfiguration configuration)
@@ -46,6 +49,31 @@ internal static class KeycloakServiceCollectionExtensions
                 GatewaySigningKey.EhLegivel,
                 "Keycloak:Admin: a chave privada não pôde ser lida como RSA em PEM (arquivo ausente, sem permissão "
                 + "ou conteúdo inválido).")
+            .ValidateOnStart();
+
+        // O que a Api lê para validar o access token. Preenchida aqui, e não pela Api, porque o formato do emissor e
+        // o endereço dos metadados são conhecimento do Keycloak (ADR-008). O Configure roda depois do Bind: o que a
+        // configuração tentasse pôr nos três campos derivados seria sobrescrito — e o setter interno já não é
+        // alcançado pelo binder.
+        services.AddOptions<AccessTokenValidationOptions>()
+            .Bind(configuration.GetSection(AccessTokenValidationOptions.SectionName))
+            .Configure<IOptions<KeycloakAdminOptions>>((validacao, admin) =>
+            {
+                validacao.Issuer = admin.Value.Issuer;
+                validacao.MetadataAddress = admin.Value.MetadataAddress;
+
+                // A mesma regra que já é validada na subida: http só com AllowInsecureHttp, e ele só em Development.
+                validacao.RequireHttpsMetadata = !admin.Value.AllowInsecureHttp;
+            })
+            .Validate(
+                validacao => !string.IsNullOrWhiteSpace(validacao.Audience),
+                "Keycloak:Auth:Audience é obrigatório.")
+            .Validate(
+                validacao => validacao.AllowedClients.All(client => !string.IsNullOrWhiteSpace(client)),
+                "Keycloak:Auth:AllowedClients não aceita item vazio.")
+            .Validate<IHostEnvironment>(
+                ClientDeDemonstracaoSoEmDesenvolvimento,
+                "Keycloak:Auth:AllowedClients traz um client aceito só no ambiente Development.")
             .ValidateOnStart();
 
         services.AddSingleton<GatewaySigningKey>();
@@ -153,4 +181,11 @@ internal static class KeycloakServiceCollectionExtensions
 
         return !opcoes.AllowInsecureHttp && !publicoEmHttp;
     }
+
+    // O client de device flow é público e existe só no realm local: fora de Development, aceitá-lo abriria a API ao
+    // phishing de código de dispositivo. A mensagem não lista os clients configurados.
+    private static bool ClientDeDemonstracaoSoEmDesenvolvimento(
+        AccessTokenValidationOptions validacao, IHostEnvironment ambiente) =>
+        ambiente.IsDevelopment()
+        || !validacao.AllowedClients.Contains(ClientDeDemonstracao, StringComparer.Ordinal);
 }

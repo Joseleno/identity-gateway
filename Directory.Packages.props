@@ -81,8 +81,9 @@
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
 
     <!--
-      Validação de JWT (T6.2). O rate limiting não aparece aqui de propósito: Microsoft.AspNetCore.RateLimiting
-      faz parte do SDK Web desde o .NET 7 e não precisa de pacote.
+      Validação do access token do provedor de identidade, por metadados (JWKS). A Gateway não emite token. O rate
+      limiting não aparece aqui de propósito: Microsoft.AspNetCore.RateLimiting faz parte do SDK Web desde o .NET 7
+      e não precisa de pacote.
     -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
 
@@ -146,6 +147,11 @@
   -->
   <ItemGroup Label="Testes">
     <PackageVersion Include="xunit.v3" Version="4.0.1" />
+    <!--
+      Só o núcleo do xUnit v3 (IAsyncLifetime e os atributos), sem o executável de teste: é o que uma biblioteca de
+      suporte de testes referencia. Mesma versão do xunit.v3 — com o pinning transitivo, versões diferentes brigariam.
+    -->
+    <PackageVersion Include="xunit.v3.extensibility.core" Version="4.0.1" />
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.11.2" />
 
     <!-- Apache-2.0, API idêntica à da FluentAssertions, que virou licença comercial na v8 (ADR 0008). -->

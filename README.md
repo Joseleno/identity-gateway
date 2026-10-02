@@ -14,8 +14,8 @@ nenhum login e de nenhuma requisição de negócio.**
 
 ## Estado do projeto
 
-**M0/M1 em andamento — vertical de registro, fundação Keycloak, consumidor do provisionamento e convite do
-admin inicial entregues.**
+**M0/M1 em andamento — vertical de registro, fundação Keycloak, consumidor do provisionamento, convite do
+admin inicial e tokens do Keycloak (D1) entregues.**
 
 O repositório parte do template [CleanStart](https://github.com/Joseleno/CleanStart) e já traz a fundação
 funcionando — Clean Architecture em quatro camadas, Outbox transacional, cache de dois níveis, middlewares
@@ -23,13 +23,16 @@ de correlação e segurança, testes de arquitetura e CI. **O domínio do Identi
 agregado `Tenant` e `POST /api/v1/tenants` (PR #1) gravam o tenant e publicam `TenantRegistered` no
 Outbox; a fundação Keycloak (PR #2) acrescentou o realm `identity-gateway` com Organizations e a autenticação
 `private_key_jwt` do service account; o consumidor do provisionamento (PR #3) consome o evento pelo próprio
-Outbox e decide entre repetir e desistir pela janela de provisionamento; e esta branch fecha o provisionamento
-da §9.1: o tenant só fica `Active` depois que o admin inicial é convidado no Keycloak — o e-mail de convite
-chega ao mailpit, com um link que abre no navegador —, e a ativação reserva a vaga do admin e registra o
-membro num commit só. **Próximo passo:** o resto do M1 (suspensão, encerramento, reconciliação, retry manual).
-O roadmap está em [`docs/especificacao-arquitetural-v2.6.md`](docs/especificacao-arquitetural-v2.6.md) §16
+Outbox e decide entre repetir e desistir pela janela de provisionamento; o convite do admin inicial (PR #5)
+fechou o provisionamento da §9.1 — o tenant só fica `Active` depois que o admin é convidado no Keycloak —; e
+a primeira parte da fatia D trocou a autenticação: **a API aceita só access tokens do Keycloak** (RS256, com emissor, audiência,
+client de origem e forma conferidos), o JWT simétrico do template deixou de existir, o primeiro platform-admin
+nasce sem senha e é convidado por e-mail, e a demonstração obtém o token pelo device flow. Fecha o critério do
+M0 "primeiro `curl` com token do Keycloak". **Próximo passo:** a D2, a primeira rota de tenant
+(`GET /api/v1/tenants/{tenantId}`), em que o admin convidado lê o próprio tenant.
+O roadmap está em [`docs/especificacao-arquitetural-v2.7.md`](docs/especificacao-arquitetural-v2.7.md) §16
 (referência normativa atual — as anteriores ficam como registro histórico), e o estado detalhado no
-[handoff do convite do admin inicial](docs/superpowers/specs/2026-09-30-convite-admin-inicial-handoff.md).
+[handoff da D1](docs/superpowers/specs/2026-10-02-tokens-keycloak-d1-handoff.md).
 
 | Marco | Entrega | Estado |
 |---|---|---|
@@ -50,7 +53,7 @@ Precisa de .NET 10 e Docker. O Docker não é opcional: os testes de integraçã
 26.7.4 (um contêiner por assembly) por Testcontainers.
 
 ```bash
-# Toda a suíte — 491 testes, 0 skips (160 domínio, 70 application, 41 arquitetura, 189 integração, 31 funcional)
+# Toda a suíte — 680 testes, 0 skips (161 domínio, 70 application, 67 arquitetura, 237 integração, 145 funcional)
 dotnet test
 
 # As dependências, as migrations e a API junto (--build: a imagem da API acompanha o código)
@@ -76,6 +79,7 @@ O compose sobe o Keycloak 26.7.4 com o realm `identity-gateway` importado de `ke
 | Usuário | `admin` |
 | Senha | gerada na primeira subida: `docker compose logs gateway-keys` |
 | E-mails (mailpit) | http://localhost:8025 (só no localhost): os e-mails de convite do Keycloak |
+| Primeiro platform-admin | `platform-admin@identity-gateway.local` — nasce **sem senha**; o convite está no mailpit |
 
 Nenhuma credencial fica no repositório: a chave da Gateway e a senha do admin são geradas pelo serviço
 `gateway-keys` num volume, na primeira subida. O log só mostra a senha nessa primeira subida; depois,
@@ -90,18 +94,32 @@ docker run --rm -v identitygateway_gateway-keys:/k alpine cat /k/keycloak/admin-
 a chave nova não bate com o certificado registrado, e o `/health/ready` da API responde 503 com `invalid_client` no
 log. Para recomeçar do zero: `docker compose down -v`.
 
-**Já tinha subido o compose antes do convite do admin inicial? Rode `docker compose down -v` uma vez.** O realm só
-é importado na primeira subida, e num volume antigo faltam o papel `tenant-admin`, a permissão `manage-users` do
-service account, o User Profile e o SMTP. O `/health/ready` da API detecta isso e responde 503 com uma descrição
-do que falta (o token sem `manage-users`). Depois do `down -v`, `docker compose up -d --build`, para a imagem da API não ficar
-para trás do código.
+**Já tinha subido o compose antes dos tokens do Keycloak? Rode `docker compose down -v` uma vez.** O realm só é
+importado na primeira subida, e num volume antigo faltam os scopes da Gateway, o client de demonstração, o catálogo
+de papéis e o platform-admin. O serviço `platform-admin-invite` detecta isso e sai com erro — a API nem sobe, e o
+motivo está em `docker compose logs platform-admin-invite`. Depois do `down -v`, `docker compose up -d --build`,
+para a imagem da API não ficar para trás do código.
+
+**O primeiro platform-admin.** A conta nasce no import do realm, sem senha, com o e-mail de `PLATFORM_ADMIN_EMAIL`
+(padrão `platform-admin@identity-gateway.local`, sempre em minúsculas). Na primeira subida, o serviço
+`platform-admin-invite` manda **um** e-mail de convite para o mailpit; o link vale **4 horas**. Algumas coisas que
+convém saber:
+
+- **Perdeu o e-mail, ou o link expirou?** `docker compose run --rm -e REENVIAR=1 platform-admin-invite`. O reenvio é
+  só por esse comando — subir o compose de novo não reenvia. Se o envio da primeira subida falhou, também é por ele.
+- **O mailpit local não tem autenticação.** Quem abre `http://localhost:8025` enquanto um link de convite não expirou
+  consegue definir a senha daquela conta. Um link já emitido continua valendo até expirar, mesmo depois de outro ter
+  sido usado. Por isso o do platform-admin é curto, e por isso o mailpit só escuta em `127.0.0.1`.
+- **Não troque nem apague o admin do master do Keycloak** (o console sugere trocá-lo). O `platform-admin-invite` faz
+  login com ele a cada subida; se mudou, `docker compose down -v`.
+- **`PLATFORM_ADMIN_EMAIL` fica fixado no primeiro import.** Mudar depois exige `docker compose down -v`.
 
 ### Rodar a API pela IDE
 
 A API exige a configuração do Keycloak para subir. Com o compose rodando só as dependências:
 
 ```powershell
-docker compose up -d postgres redis mailpit keycloak
+docker compose up -d postgres redis mailpit keycloak platform-admin-invite
 $pem = docker run --rm -v identitygateway_gateway-keys:/k alpine cat /k/api/private.pem | Out-String
 dotnet user-secrets set "Keycloak:Admin:PrivateKeyPem" $pem --project src/IdentityGateway.Api
 ```
@@ -117,21 +135,54 @@ Rodando pela IDE ou com `dotnet run --project src/IdentityGateway.Api`, a API so
 **Zero skips.** Os 6 que a fundação herdava do esqueleto (guardas de arquitetura sem tipo para inspecionar,
 e testes de `401` sem endpoint protegido) fecharam com a vertical de registro (PR #1) e com a fatia C, o convite do admin inicial.
 
-### Demonstração: o tenant é provisionado quando o Keycloak volta, e o admin recebe o convite
+### Demonstração: token do Keycloak, e o tenant provisionado quando o Keycloak volta
 
-A API aceita o tenant com o Keycloak fora do ar e o provisiona sozinha quando ele volta (spec §16). Provisionar
-inclui convidar o administrador inicial: o Keycloak manda o e-mail de convite, que cai no mailpit. Pressupõe o
-compose de pé (`docker compose up -d --build`, acima). O token é de platform-admin, assinado com a chave de
-desenvolvimento do compose — o mesmo formato que a API valida hoje:
+A API só aceita access tokens emitidos pelo Keycloak. A senha é digitada **só no Keycloak**: o terminal pede um
+código de dispositivo, você entra pelo navegador, e o terminal troca o código pelo token (Device Authorization
+Grant, num client público que existe só no ambiente local). Pressupõe o compose de pé (`docker compose up -d --build`,
+acima) e `jq`.
+
+**1. Defina a senha do platform-admin.** Abra http://localhost:8025, o e-mail para
+`platform-admin@identity-gateway.local`, e clique no link: ele abre o Keycloak em `http://localhost:8081`. Siga,
+defina a senha e informe nome e sobrenome.
+
+**2. Peça o token pelo device flow.**
 
 ```bash
-b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
-agora=$(date +%s)
-cabecalho=$(printf '{"alg":"HS256","typ":"JWT"}' | b64url)
-corpo=$(printf '{"sub":"0199a000-0000-7000-8000-000000000001","roles":"platform-admin","iss":"identitygateway","aud":"identitygateway-api","nbf":%d,"exp":%d}' "$agora" "$((agora + 3600))" | b64url)
-assinatura=$(printf '%s.%s' "$cabecalho" "$corpo" | openssl dgst -sha256 -hmac "chave-de-desenvolvimento-nao-use-em-producao" -binary | b64url)
-TOKEN="$cabecalho.$corpo.$assinatura"
+KC=http://localhost:8081/realms/identity-gateway/protocol/openid-connect
 
+pedido=$(curl -s -X POST "$KC/auth/device" -d client_id=identity-gateway-demo -d scope=openid)
+DEVICE_CODE=$(echo "$pedido" | jq -r .device_code | tr -d '\r')
+echo "$pedido" | jq -r .verification_uri_complete
+# Abra o endereço impresso no navegador, entre com o e-mail do platform-admin e a senha, e aceite o consentimento.
+```
+
+Depois de aceitar, espere uns 5 segundos (antes disso a resposta é `slow_down`) e troque o código pelo token:
+
+```bash
+tokens=$(curl -s -X POST "$KC/token" \
+  -d grant_type=urn:ietf:params:oauth:grant-type:device_code \
+  -d client_id=identity-gateway-demo -d device_code="$DEVICE_CODE")
+TOKEN=$(echo "$tokens" | jq -r .access_token | tr -d '\r')
+REFRESH=$(echo "$tokens" | jq -r .refresh_token | tr -d '\r')
+```
+
+O access token vale **5 minutos**. O refresh token vale 30 minutos de inatividade, e **cada renovação devolve um
+refresh token novo**: o usado deixa de valer. Não repita uma renovação com o mesmo refresh token — o Keycloak trata o
+reuso como roubo e encerra a sessão; se acontecer, refaça o device flow.
+
+**3. Faça um pedido autenticado antes de parar o Keycloak.** A API busca as chaves públicas do Keycloak na primeira
+vez que valida um token e as guarda em memória. É esse pedido que faz a demonstração funcionar com o Keycloak parado:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8080/api/v1/tenants/00000000-0000-0000-0000-000000000000/provisioning
+# 404: autenticado e autorizado — esse tenant é que não existe. Um 401 aqui quer dizer token vencido ou errado.
+```
+
+**4. Pare o Keycloak e registre um tenant.**
+
+```bash
 # E-mail e slug únicos a cada execução: um e-mail já usado por outra conta do Keycloak faz o provisionamento
 # falhar de propósito (a mesma pessoa não administra dois tenants), e o slug é único e imutável.
 EMAIL="admin+$(date +%s)@acme.test"
@@ -146,29 +197,63 @@ curl -si -X POST http://localhost:8080/api/v1/tenants \
 
 curl -s http://localhost:8080/api/v1/tenants/{id}/provisioning -H "Authorization: Bearer $TOKEN"
 # {"tenantId":"…","status":"Pending",…}
+```
 
+**5. Suba o Keycloak, renove o token e veja o tenant ativo.**
+
+```bash
 docker compose start keycloak
+
+# espere o Keycloak responder de novo (uns 30 s). Renovar antes disso devolveria uma resposta vazia, e as linhas de
+# baixo apagariam o refresh token que você tem:
+until curl -sf http://localhost:8081/realms/identity-gateway/.well-known/openid-configuration > /dev/null; do sleep 2; done
+
+# renove — e guarde o refresh token novo:
+tokens=$(curl -s -X POST "$KC/token" -d grant_type=refresh_token \
+  -d client_id=identity-gateway-demo -d refresh_token="$REFRESH")
+TOKEN=$(echo "$tokens" | jq -r .access_token | tr -d '\r')
+REFRESH=$(echo "$tokens" | jq -r .refresh_token | tr -d '\r')
+
 # em cerca de um minuto — o teto do backoff do Outbox:
 curl -s http://localhost:8080/api/v1/tenants/{id}/provisioning -H "Authorization: Bearer $TOKEN"
 # {"tenantId":"…","status":"Active",…}
 ```
 
-Agora abra http://localhost:8025. O mailpit mostra o e-mail de convite para o endereço de `$EMAIL`. Clique no
-link: ele abre o Keycloak em `http://localhost:8081`, numa página de confirmação; siga, defina a senha e informe
-nome e sobrenome. O link vale 7 dias (`Invitations:LinkLifetime`).
+Agora volte ao mailpit: há um e-mail de convite para o endereço de `$EMAIL`, o administrador do tenant. O link dele
+vale 7 dias (`Invitations:LinkLifetime`). O e-mail do admin fica guardado no tenant só até a ativação: com o tenant
+`Active`, a coluna `tenants.initial_admin_email` volta a ser nula, e o endereço passa a existir só no Keycloak.
 
-O mesmo, sem sair do terminal — o que o job `Compose` da CI confere a cada PR (o `tr -d '\r'` é para o `jq` do
-Windows, que emite CRLF; no Linux não muda nada):
+**Por que nessa ordem.** O passo 3 vem antes do `stop` porque, sem nenhum token validado, a API ainda não tem as
+chaves — e com o Keycloak parado ela não tem de onde buscá-las: todo token levaria `401`. E tudo entre o passo 2 e o
+`POST` do passo 4 precisa caber nos 5 minutos do access token.
+
+**O token no histórico do shell.** As variáveis acima ficam na sessão, e os comandos, no histórico — mas não o valor
+do token, que só aparece se você o colar numa linha de comando. Se precisar colar um token, use `read -rs TOKEN`.
+
+**A mesma jornada, sem navegador.** É o que o job `Compose` da CI roda a cada PR, com um ambiente recém-criado
+(o convite do platform-admin ainda por concluir):
 
 ```bash
-id=$(curl -sG http://localhost:8025/api/v1/search --data-urlencode "query=to:\"$EMAIL\"" | jq -r '.messages[0].ID' | tr -d '\r')
-curl -s "http://localhost:8025/api/v1/message/$id" | jq -r '.Text' | tr -d '\r' \
-  | grep -o 'http://localhost:8081/realms/identity-gateway/login-actions/action-token?key=[^[:space:]]*'
-# http://localhost:8081/realms/identity-gateway/login-actions/action-token?key=eyJ…
+dotnet run tools/jornada-compose.cs -- jornada
 ```
 
-O e-mail do admin fica guardado no tenant só até a ativação: com o tenant `Active`, a coluna
-`tenants.initial_admin_email` volta a ser nula, e o endereço passa a existir só no Keycloak.
+O app conclui o convite pelo link do mailpit, faz o device flow submetendo as páginas do Keycloak, registra um tenant,
+espera ele ficar `Active` e confere o convite do admin do tenant no mailpit, com uma senha gerada em memória. Ele
+nunca imprime token, link, código nem senha.
+
+**Essa fase não para o Keycloak.** Os passos 3 a 5 acima são outras três fases do mesmo app — `antes-de-parar`,
+`com-keycloak-parado` e `depois-de-voltar` —, que o job intercala com `docker compose stop keycloak` e
+`docker compose start keycloak`; a sequência está no passo "Registrar com o Keycloak parado e provisionar quando ele
+volta" de `.github/workflows/ci.yml`.
+
+**O app deixa um arquivo com credencial.** A fase `jornada` grava `ig-jornada-estado.json` no diretório temporário
+do sistema (ou no caminho da variável `IG_ESTADO`), com o refresh token do platform-admin local: é por ele que as
+outras fases continuam a sessão. A CI apaga o arquivo no fim do job; na sua máquina, apague você:
+
+```bash
+rm -f "${TMPDIR:-/tmp}/ig-jornada-estado.json"
+# no PowerShell: Remove-Item "$env:TEMP\ig-jornada-estado.json"
+```
 
 ---
 
@@ -177,7 +262,7 @@ O e-mail do admin fica guardado no tenant só até a ativação: com o tenant `A
 | Documento | O que responde |
 |---|---|
 | [**Documentação de negócio**](docs/documentacao-negocio.md) | **Comece aqui.** O que a solução faz, para quem e como funciona — com 16 diagramas |
-| [**Especificação arquitetural v2.6**](docs/especificacao-arquitetural-v2.6.md) | A referência de implementação: domínio, endpoints, ADRs, código de referência |
+| [**Especificação arquitetural v2.7**](docs/especificacao-arquitetural-v2.7.md) | A referência de implementação: domínio, endpoints, ADRs, código de referência |
 | [**Revisão crítica**](docs/revisao-critica.md) | Os 33 achados que produziram as correções |
 
 ---
@@ -205,7 +290,7 @@ resiliente à queda do Keycloak. Registrar isso faz parte do projeto.
 
 ## Decisões arquiteturais
 
-Dez ADRs, com o texto completo na [especificação §4](docs/especificacao-arquitetural-v2.6.md#4-decisões-arquiteturais-adrs).
+Onze ADRs, com o texto completo na [especificação §4](docs/especificacao-arquitetural-v2.7.md#4-decisões-arquiteturais-adrs).
 
 | ADR | Decisão |
 |---|---|
@@ -219,6 +304,7 @@ Dez ADRs, com o texto completo na [especificação §4](docs/especificacao-arqui
 | 008 | Integração com o Keycloak isolada atrás de uma porta |
 | 009 | Na v1, um usuário pertence a um único tenant |
 | 010 | Um só executor por job de fundo, via advisory lock |
+| 011 | Nas rotas de governança, autorização é token mais pertença no banco (decidido; a rota que o usa chega com a D2) |
 
 ---
 
@@ -229,7 +315,7 @@ competem** — cada versão fecha pontos que a anterior deixou em aberto, e **ne
 em nenhum dos saltos**.
 
 ```
-ideia → v2.0 → [revisão crítica: 33 achados] → v2.1 → [documentação de negócio] → v2.2 → v2.3 → v2.4 → v2.5 → v2.6
+ideia → v2.0 → [revisão crítica: 33 achados] → v2.1 → [documentação de negócio] → v2.2 → v2.3 → v2.4 → v2.5 → v2.6 → v2.7
 ```
 
 - **v2.1** incorporou a revisão crítica — três frentes independentes, 33 achados e 8 contradições.
@@ -246,6 +332,9 @@ ideia → v2.0 → [revisão crítica: 33 achados] → v2.1 → [documentação 
 - **v2.6** registrou a fatia C, o convite do admin inicial, e duas erratas verificadas no código do Keycloak: o
   convidado nasce habilitado (o Keycloak recusa e-mail e clique de usuário desabilitado), e o destinatário do
   client assertion é o endereço público do Keycloak, não o de transporte.
+- **v2.7** registrou a fatia D, os tokens do Keycloak: a API valida só tokens RS256 do realm, o primeiro
+  platform-admin é convidado por e-mail, e entram o ADR-011 e oito erratas — entre elas a do override do
+  platform-admin, que, como estava descrito, nunca funcionaria.
 
 Vale registrar o que a revisão **não** conseguiu derrubar: dos oito alvos examinados, sete
 resistiram inteiros. E das cinco afirmações verificadas contra documentação oficial, duas
@@ -259,7 +348,9 @@ resistiram inteiros. E das cinco afirmações verificadas contra documentação 
 **No compose hoje:** .NET 10 · PostgreSQL · Redis · Keycloak 26.7.4 · Mailpit · EF Core 10 · Carter ·
 Serilog · OpenTelemetry · Seq · Jaeger · xUnit v3 · Testcontainers
 
-**Entra no M0:** RabbitMQ
+**Pendente do M0:** RabbitMQ — a especificação o mantém entre as pendências do M0. O design da fatia D propõe, sem
+decidir, levá-lo para antes do M5, quando existir o primeiro consumidor fora do processo
+([§7 do design](docs/superpowers/specs/2026-09-30-tokens-keycloak-design.md)).
 
 Parte do template [CleanStart](https://github.com/Joseleno/CleanStart).
 

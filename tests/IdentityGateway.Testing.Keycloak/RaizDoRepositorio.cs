@@ -1,11 +1,11 @@
-namespace IdentityGateway.Infrastructure.IntegrationTests;
+namespace IdentityGateway.Testing.Keycloak;
 
 /// <summary>Localiza a raiz do repositório subindo a partir da pasta do binário de teste.</summary>
 /// <remarks>
 /// Para os testes que usam um arquivo versionado de verdade — o realm que o compose importa, o
 /// <c>appsettings.Development.json</c> que a IDE e o compose carregam — e não uma cópia de teste.
 /// </remarks>
-internal static class RaizDoRepositorio
+public static class RaizDoRepositorio
 {
     public static string Caminho(params string[] partes)
     {

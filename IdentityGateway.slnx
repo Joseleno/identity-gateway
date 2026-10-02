@@ -11,6 +11,7 @@
     <Project Path="tests/IdentityGateway.ArchitectureTests/IdentityGateway.ArchitectureTests.csproj" />
     <Project Path="tests/IdentityGateway.Domain.UnitTests/IdentityGateway.Domain.UnitTests.csproj" />
     <Project Path="tests/IdentityGateway.Infrastructure.IntegrationTests/IdentityGateway.Infrastructure.IntegrationTests.csproj" />
+    <Project Path="tests/IdentityGateway.Testing.Keycloak/IdentityGateway.Testing.Keycloak.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/SampleResourceApi/SampleResourceApi.csproj" />

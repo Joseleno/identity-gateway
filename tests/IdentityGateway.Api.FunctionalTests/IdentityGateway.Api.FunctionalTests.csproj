@@ -15,6 +15,9 @@
     <ProjectReference Include="..\..\src\IdentityGateway.Api\IdentityGateway.Api.csproj" />
     <ProjectReference Include="..\..\src\IdentityGateway.Infrastructure\IdentityGateway.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\IdentityGateway.Domain\IdentityGateway.Domain.csproj" />
+
+    <!-- O fixture do Keycloak e o harness de login: a mesma biblioteca que os testes de integração usam. -->
+    <ProjectReference Include="..\IdentityGateway.Testing.Keycloak\IdentityGateway.Testing.Keycloak.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -29,6 +32,19 @@
     -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+
+    <!--
+      Usados direto no código dos testes: as opções do JwtBearer (conferidas em execução) e o sink em memória do
+      Serilog. Vêm transitivos pela Api, mas dependência usada no código é dependência declarada.
+    -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Serilog.AspNetCore" />
+
+    <!--
+      BaseExporter e SimpleActivityExportProcessor, para o teste de vazamento ver os spans que a Api exportaria.
+      Vem transitivo pela Api; declarado porque é usado no código.
+    -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
   </ItemGroup>
 
 </Project>

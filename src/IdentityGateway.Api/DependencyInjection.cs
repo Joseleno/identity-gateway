@@ -1,16 +1,16 @@
 using System.Globalization;
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
 using System.Threading.RateLimiting;
 using Carter;
-using IdentityGateway.Api.Security;
+using IdentityGateway.Api.Authentication;
+using IdentityGateway.Api.Authorization;
 using IdentityGateway.Api.Services;
 using IdentityGateway.Application.Common.Abstractions;
 using IdentityGateway.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Options;
 using Npgsql;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -48,78 +48,59 @@ public static class DependencyInjection
 
         return services
             .AddServicosDeRequisicao()
-            .AddAutenticacao(configuration)
+            .AddAutenticacao()
             .AddLimiteDeRequisicoes()
             .AddHealthChecksDaApi(configuration)
             .AddTelemetria();
     }
 
     /// <summary>
-    /// Validação de token JWT e autorização por policy.
+    /// Validação do access token do provedor de identidade, e autorização por policy.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Os quatro parâmetros de validação estão ligados de propósito, e cada um cobre um ataque diferente:</b>
-    /// sem <c>ValidateIssuer</c>, um token emitido por outro sistema com a mesma chave é aceito; sem
-    /// <c>ValidateAudience</c>, um token legítimo emitido para outro serviço vale aqui; sem
-    /// <c>ValidateLifetime</c>, token nenhum expira; sem <c>ValidateIssuerSigningKey</c>, qualquer um assina.
-    /// Todos são <c>true</c> por padrão — estão escritos assim mesmo, porque num kit de referência o leitor
-    /// precisa ver que a decisão foi tomada, e não herdada.
+    /// <b>A Gateway não emite token.</b> Quem emite é o Keycloak, direto para a aplicação cliente (ADR-002); aqui só se
+    /// valida. As regras da validação — metadados pelo endereço de transporte, emissor estrito, só RS256 — estão em
+    /// <see cref="ValidacaoDoAccessToken"/>, com o porquê de cada número.
     /// </para>
     /// <para>
-    /// <b><c>ClockSkew</c> reduzido para 30 segundos.</b> O padrão da biblioteca é de <b>cinco minutos</b>, o que
-    /// significa que um token expirado continua sendo aceito por todo esse tempo. A tolerância existe para
-    /// relógios dessincronizados entre emissor e validador; cinco minutos é generoso demais para infraestrutura
-    /// com NTP.
+    /// <b>Autenticado por padrão.</b> A policy de fallback exige usuário autenticado em todo endpoint que não declare
+    /// outra coisa, e os poucos abertos (health checks, a documentação em Development) dizem <c>AllowAnonymous</c> com
+    /// todas as letras. Esquecer o <c>RequireAuthorization</c> num endpoint novo deixa de abri-lo ao mundo — e um
+    /// teste reprova o endpoint que não declarar nem policy nem anonimato.
     /// </para>
     /// <para>
-    /// <b>Para trocar por um provedor de identidade real</b>, substitua <c>IssuerSigningKey</c> por
-    /// <c>options.Authority</c> — o handler passa a buscar as chaves públicas pelo JWKS do provedor e a rotação
-    /// de chave deixa de ser problema seu. É a única mudança necessária aqui, e o <c>JwtTokenService</c> some
-    /// junto com o endpoint que o expõe.
+    /// <b>Claim plano, não <c>RequireRole</c>:</b> o papel chega no claim <c>roles</c>, que o realm emite plano e só com
+    /// o catálogo. Com <c>MapInboundClaims</c> desligado, ele chega com esse nome, e <c>RequireClaim</c> o compara.
     /// </para>
     /// </remarks>
-    private static IServiceCollection AddAutenticacao(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    private static IServiceCollection AddAutenticacao(this IServiceCollection services)
     {
-        JwtOptions jwt = configuration
-            .GetSection(JwtOptions.SectionName)
-            .Get<JwtOptions>() ?? new JwtOptions();
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
 
-        services
-            .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddJwtBearer(options =>
-            {
-                // Sem isto, o JwtSecurityTokenHandler remapeia claims curtas para URI antes de a policy ver o
-                // token: "roles" vira "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", e
-                // RequireClaim("roles", ...) nunca casa — falha silenciosa, sempre 403, mesmo com o token certo.
-                // Desligar o mapeamento é o que faz o claim chegar como o emissor o escreveu.
-                options.MapInboundClaims = false;
+        // Um por instância da Api: limita o aviso de "chave de assinatura não encontrada" a um por intervalo.
+        services.AddSingleton<AvisoDeChavesIndisponiveis>();
 
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidateIssuer = true,
-                    ValidIssuer = jwt.Issuer,
-                    ValidateAudience = true,
-                    ValidAudience = jwt.Audience,
-                    ValidateLifetime = true,
-                    ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SigningKey)),
-                    ClockSkew = TimeSpan.FromSeconds(30),
-                };
-            });
+        // Configure sobre as opções nomeadas, e não a lambda do AddJwtBearer: a validação depende de uma option que
+        // só o contêiner resolve (preenchida pelo adaptador do provedor), e este Configure roda antes do PostConfigure
+        // do JwtBearer — que é quem monta a busca dos metadados a partir do MetadataAddress que encontrar.
+        services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+            .Configure<IOptions<AccessTokenValidationOptions>>((jwt, validacao) =>
+                ValidacaoDoAccessToken.Configurar(jwt, validacao.Value));
 
-        // Claim plano, não RequireRole: a §12.1 documenta que RequireRole falha com o Keycloak, porque o papel
-        // chega aninhado em realm_access.roles. RequireRole passaria hoje, com o JwtTokenService dos testes, e
-        // quebraria quando o Keycloak entrasse — o pior momento para descobrir.
+        // Lista de clients vazia é configuração válida e fechada; o aviso sai na subida, não no primeiro 401.
+        services.AddHostedService<AvisoDeClientsPermitidos>();
+
+        // Corpo para o 401 e o 403: sem isto, o primeiro sai só com o WWW-Authenticate e o segundo, vazio.
+        services.AddProblemDetails();
+        services.AddSingleton<IAuthorizationMiddlewareResultHandler, ProblemDetailsDeAutorizacao>();
+
         services.AddAuthorization(options =>
-            options.AddPolicy("PlatformAdmin", policy =>
-                policy.RequireClaim("roles", "platform-admin")));
+        {
+            options.AddPolicy(Policies.PlatformAdmin, policy => policy.RequireClaim("roles", "platform-admin"));
 
-        // Mecânica de emissão/validação de JWT. No IdentityGateway o emissor é o Keycloak: este serviço fica
-        // para os testes e para cabear a validação contra o realm no M0.
-        services.AddScoped<JwtTokenService>();
+            options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+        });
 
         return services;
     }
@@ -206,7 +187,7 @@ public static class DependencyInjection
     {
         ArgumentNullException.ThrowIfNull(contexto);
 
-        return contexto.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+        return contexto.User.FindFirstValue("sub")
             ?? contexto.User.FindFirstValue(ClaimTypes.NameIdentifier)
             ?? contexto.Connection.RemoteIpAddress?.ToString()
             ?? "desconhecido";
