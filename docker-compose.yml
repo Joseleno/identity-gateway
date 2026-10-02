@@ -2,18 +2,24 @@
 # de desenvolvimento) e as ferramentas para enxergar o que ela faz. `docker compose up` e a aplicação está no ar
 # com logs e traces navegáveis.
 #
-# NÃO É PRODUÇÃO. As senhas estão em texto aberto porque são de um banco descartável em máquina local; a chave
-# JWT é fixa pelo mesmo motivo. Em produção, tudo isto vem do cofre do provedor.
+# NÃO É PRODUÇÃO. As senhas estão em texto aberto porque são de um banco descartável em máquina local. Em produção,
+# tudo isto vem do cofre do provedor.
 #
 # O Keycloak também não: `start-dev`, http e chave gerada em volume são de desenvolvimento. Em produção, o KC_HOSTNAME
 # é o endereço público do Keycloak, e a Gateway o recebe em Keycloak:Admin:PublicBaseUrl — é o aud do client assertion;
 # o BaseUrl, por onde ela chama o token endpoint e a Admin API, pode ser o endereço interno. A chave vem do cofre como
 # arquivo montado, e a Api recusa http e AllowInsecureHttp fora de Development.
 #
-# QUEM JÁ TINHA VOLUMES DE ANTES DO CONVITE DO ADMIN INICIAL PRECISA DE `docker compose down -v`, e depois
-# `docker compose up -d --build`: o realm só é importado na primeira subida, e num volume antigo faltam o papel
-# tenant-admin, o manage-users, o User Profile e o SMTP. O /health/ready da Api acusa isso pelo nome (manage-users) em
-# vez de deixar o convite falhar por 24 h.
+# QUEM JÁ TINHA VOLUMES DE ANTES DOS TOKENS DO KEYCLOAK PRECISA DE `docker compose down -v`, e depois
+# `docker compose up -d --build`: o realm só é importado na primeira subida, e num volume antigo faltam os scopes da
+# Gateway, o client de demonstração, o catálogo de papéis e o platform-admin. O serviço platform-admin-invite acusa
+# isso e sai com 1, e a api não sobe — em vez de subir e responder 401 a todo token. (Volume de antes do convite do
+# admin inicial: o /health/ready da Api acusa a falta do manage-users.)
+#
+# O PRIMEIRO PLATFORM-ADMIN nasce sem senha, no import do realm, com o e-mail de PLATFORM_ADMIN_EMAIL. O serviço
+# platform-admin-invite manda o convite UMA vez, para o mailpit (http://localhost:8025); o link vale 4 h. Para mandar
+# outro: docker compose run --rm -e REENVIAR=1 platform-admin-invite. Não troque nem apague o admin do master do
+# Keycloak: o platform-admin-invite faz login com ele a cada subida. Se mudou, docker compose down -v.
 #
 # Chave e realm andam juntos: o realm é importado só na primeira subida. Apagar SÓ o volume gateway-keys gera uma
 # chave que o realm não conhece, e o /health/ready da Api acusa invalid_client. Para recomeçar: docker compose down -v.
@@ -31,20 +37,22 @@ x-api-build: &api-build
 x-database: &database
   Database__ConnectionString: "Host=postgres;Port=5432;Database=identitygateway;Username=postgres;Password=postgres"
 
+# O e-mail do primeiro platform-admin, compartilhado pelo keycloak (que o grava no import do realm) e pelo
+# platform-admin-invite (que o procura). Em minúsculas: o Keycloak grava o e-mail assim, e o entrypoint do keycloak
+# recusa outra coisa. Fixado no primeiro import: mudar depois exige docker compose down -v.
+x-platform-admin: &platform-admin
+  PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:-platform-admin@identity-gateway.local}
+
 services:
   api:
     build: *api-build
     ports:
-      - "8080:8080"
+      # Só em 127.0.0.1: agora circulam tokens de verdade por aqui.
+      - "127.0.0.1:8080:8080"
     environment:
       <<: *database
       ASPNETCORE_ENVIRONMENT: Development
       Redis__ConnectionString: "redis:6379"
-
-      # Chave de desenvolvimento. A aplicação recusa subir com menos de 32 caracteres (ValidateOnStart), e é
-      # deliberado: chave curta é aceita por umas bibliotecas e preenchida por outras — nos dois casos, a
-      # segurança que se acredita ter não existe.
-      Jwt__SigningKey: "chave-de-desenvolvimento-nao-use-em-producao"
 
       # Traces e métricas vão para o Jaeger via OTLP.
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4317"
@@ -54,10 +62,13 @@ services:
       # serviço é alcançado pelo nome, e "localhost" apontaria para o próprio contêiner da API.
       Serilog__WriteTo__1__Args__serverUrl: "http://seq:80"
 
-      # Transporte: a api chama o token endpoint e a Admin API pelo nome do serviço, dentro da rede do compose.
+      # Transporte: a api chama o token endpoint e a Admin API, e busca os metadados e as chaves que validam os
+      # tokens, pelo nome do serviço, dentro da rede do compose.
       Keycloak__Admin__BaseUrl: "http://keycloak:8080"
-      # Endereço público: só o aud do client assertion, nunca discado. Igual ao KC_HOSTNAME do keycloak (um teste de
-      # arquitetura confere); sem ele o aud seria keycloak:8080, e o Keycloak responderia "Invalid token audience".
+      # Endereço público, nunca discado: é o aud do client assertion E o emissor que a api aceita nos tokens. Igual
+      # ao KC_HOSTNAME do keycloak (um teste de arquitetura confere); sem ele o emissor seria keycloak:8080, o
+      # Keycloak responderia "Invalid token audience" e todo token de usuário levaria 401. A lista de clients aceitos
+      # (azp) vem do appsettings.Development.json: só o identity-gateway-demo.
       Keycloak__Admin__PublicBaseUrl: "http://localhost:8081"
       Keycloak__Admin__PrivateKeyPath: "/keys/private.pem"
     volumes:
@@ -81,6 +92,11 @@ services:
       keycloak:
         condition: service_healthy
       gateway-keys:
+        condition: service_completed_successfully
+      # O convite do primeiro platform-admin. Além de mandar o e-mail na primeira subida, ele confere que o realm é o
+      # desta versão: com um volume antigo, sai com 1 e a api não sobe — o erro aparece no `up`, com a causa no log
+      # dele, em vez de a api subir e todo token levar 401.
+      platform-admin-invite:
         condition: service_completed_successfully
     healthcheck:
       # O /health/ready de verdade: Postgres, Redis e o token do service account no Keycloak. A imagem
@@ -169,9 +185,14 @@ services:
       - >-
         test -s /keys/cert.b64 && test -s /keys/admin-password &&
         test -n "$$SMTP_HOST" && test -n "$$SMTP_PORT" && test -n "$$SMTP_FROM" &&
+        test -n "$$PLATFORM_ADMIN_EMAIL" &&
+        test "$$PLATFORM_ADMIN_EMAIL" = "$$(printf '%s' "$$PLATFORM_ADMIN_EMAIL" | tr '[:upper:]' '[:lower:]')" &&
         export GATEWAY_CLIENT_CERT="$$(cat /keys/cert.b64)" KC_BOOTSTRAP_ADMIN_PASSWORD="$$(cat /keys/admin-password)" &&
         exec /opt/keycloak/bin/kc.sh start-dev --import-realm
     environment:
+      # O ${PLATFORM_ADMIN_EMAIL} do realm. Conferido no entrypoint: vazio, o import gravaria o placeholder literal;
+      # com maiúsculas, o Keycloak gravaria em minúsculas um e-mail diferente do configurado.
+      <<: *platform-admin
       KC_DB: postgres
       KC_DB_URL_HOST: postgres
       KC_DB_URL_DATABASE: keycloak
@@ -214,6 +235,108 @@ services:
         condition: service_completed_successfully
       # O SMTP do convite precisa responder quando o primeiro tenant for provisionado.
       mailpit:
+        condition: service_healthy
+
+  # One-shot: manda, UMA vez, o e-mail de convite do primeiro platform-admin — a conta nasce sem senha no import do
+  # realm, e é pelo link deste e-mail (4 h) que ela define a senha. Sobe depois do keycloak saudável, e a api depende
+  # dele.
+  #
+  # Reenvio, só por comando explícito: docker compose run --rm -e REENVIAR=1 platform-admin-invite
+  # (recusa se o convite já foi concluído; os links anteriores ainda não usados continuam válidos até expirar).
+  #
+  # A imagem é a do Keycloak, pelo kcadm.sh oficial — ela não tem jq, awk nem python: as respostas são lidas com sed e
+  # grep, do JSON indentado (uma chave por linha). Toda leitura de attributes é SEM --fields: com ele, o objeto vem
+  # vazio, e as travas do marcador e do tenant_id ficariam vacuosas.
+  #
+  # A credencial é a do admin do MASTER, lida do arquivo dentro do sh — nunca uma variável declarada aqui, que ficaria
+  # no docker inspect. Nunca a chave da Gateway: com o manage-users dela, a criação do platform-admin apareceria nos
+  # eventos de administração como obra da Gateway. Sem -x, e nenhuma resposta do kcadm é ecoada.
+  #
+  # O que ele NUNCA faz: atribuir papel. A conta que não tiver exatamente a forma do bootstrap (só platform-admin, sem
+  # papel de client, sem tenant_id, sem grupo) faz o serviço sair com 1.
+  #
+  # O marcador do envio é um atributo do realm (platformAdminInviteSentAt), gravado ANTES do envio: no máximo um link
+  # automático, mesmo que o envio falhe — nesse caso, o convite só sai pelo reenvio.
+  platform-admin-invite:
+    image: quay.io/keycloak/keycloak:26.7.4
+    entrypoint: ["/bin/sh", "-euc"]
+    command:
+      - |
+        kcadm=/opt/keycloak/bin/kcadm.sh
+        config=/tmp/kcadm.config
+        realm=identity-gateway
+        email="$$(printf '%s' "$$PLATFORM_ADMIN_EMAIL" | tr '[:upper:]' '[:lower:]')"
+        falhar() { echo "platform-admin-invite: $$1" >&2; exit 1; }
+        trap 'rm -f /tmp/kcadm.config' EXIT
+        KC_CLI_PASSWORD="$$(cat /keys/admin-password)"; export KC_CLI_PASSWORD
+        kc() { "$$kcadm" "$$@" --config "$$config" 2>/dev/null; }
+
+        # 0. Login no master, antes de tudo.
+        kc config credentials --server http://keycloak:8080 --realm master --user admin > /dev/null \
+          || falhar "credencial do master recusada: o admin do compose foi alterado? Rode: docker compose down -v"
+
+        # Cada leitura vai primeiro para uma variável, com o próprio "|| falhar": num pipe, o status é o do último
+        # comando, e uma leitura que falhasse viraria "não achei" — marcador vazio, e um segundo convite enviado.
+
+        # 1. O realm é o desta versão?
+        scopes="$$(kc get client-scopes -r "$$realm" --fields name)" \
+          || falhar "não foi possível listar os client scopes do realm"
+        printf '%s\n' "$$scopes" | grep -q '"name" : "gateway-api"' \
+          || falhar "realm anterior aos tokens do Keycloak (o import é IGNORE_EXISTING). Rode: docker compose down -v"
+
+        # 2. O marcador (sem --fields: com ele, attributes viria vazio).
+        dados_do_realm="$$(kc get "realms/$$realm")" || falhar "não foi possível ler o realm"
+        marcador="$$(printf '%s\n' "$$dados_do_realm" | sed -n 's/^ *"platformAdminInviteSentAt" : "\([^"]*\)".*$$/\1/p' | head -n 1)"
+        if [ -n "$$marcador" ] && [ "$${REENVIAR:-0}" != "1" ]; then
+          echo "platform-admin-invite: convite já enviado em $$marcador; nada a fazer"
+          exit 0
+        fi
+
+        # 3. Exatamente um usuário com o e-mail, e com a forma do bootstrap.
+        achados="$$(kc get users -r "$$realm" -q "email=$$email" -q exact=true --fields id)" \
+          || falhar "não foi possível procurar a conta do platform-admin"
+        ids="$$(printf '%s\n' "$$achados" | sed -n 's/^ *"id" : "\([^"]*\)".*$$/\1/p')"
+        [ "$$(printf '%s\n' "$$ids" | grep -c .)" = "1" ] || falhar "esperado exatamente um usuário com o e-mail do platform-admin"
+        id="$$ids"
+        usuario="$$(kc get "users/$$id" -r "$$realm")" || falhar "não foi possível ler a conta do platform-admin"
+        papeis="$$(kc get "users/$$id/role-mappings" -r "$$realm")" || falhar "não foi possível ler os papéis da conta"
+        grupos="$$(kc get "users/$$id/groups" -r "$$realm")" || falhar "não foi possível ler os grupos da conta"
+        gravado="$$(printf '%s\n' "$$usuario" | sed -n 's/^ *"email" : "\([^"]*\)".*$$/\1/p' | head -n 1 | tr '[:upper:]' '[:lower:]')"
+        nomes="$$(printf '%s\n' "$$papeis" | sed -n 's/^ *"name" : "\([^"]*\)".*$$/\1/p')"
+        [ "$$gravado" = "$$email" ] || falhar "a conta do platform-admin não tem a forma do bootstrap"
+        [ "$$nomes" = "platform-admin" ] || falhar "a conta do platform-admin não tem a forma do bootstrap"
+        if printf '%s\n' "$$papeis" | grep -q '"clientMappings"'; then falhar "a conta do platform-admin não tem a forma do bootstrap"; fi
+        if printf '%s\n' "$$usuario" | grep -q '"tenant_id"'; then falhar "a conta do platform-admin não tem a forma do bootstrap"; fi
+        if printf '%s\n' "$$grupos" | grep -q '"id"'; then falhar "a conta do platform-admin não tem a forma do bootstrap"; fi
+
+        # 4. Convite já concluído?
+        if ! printf '%s\n' "$$usuario" | grep '"requiredActions"' | grep -q '"UPDATE_PASSWORD"'; then
+          if [ "$${REENVIAR:-0}" = "1" ]; then falhar "o convite já foi concluído; não há o que reenviar"; fi
+          echo "platform-admin-invite: convite já concluído; nada a enviar"
+          exit 0
+        fi
+
+        # 5. Marcador ANTES do envio; depois, o e-mail (4 h).
+        agora="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        kc update "realms/$$realm" -s "attributes.platformAdminInviteSentAt=$$agora" > /dev/null \
+          || falhar "não foi possível gravar o marcador do convite no realm"
+        if [ "$${REENVIAR:-0}" = "1" ]; then
+          echo "platform-admin-invite: os links anteriores ainda não usados continuam válidos até expirar"
+        fi
+        kc update "users/$$id/execute-actions-email" -r "$$realm" -q lifespan=14400 -n -b '["UPDATE_PASSWORD","VERIFY_EMAIL"]' > /dev/null \
+          || falhar "o envio do convite falhou. Reenvie com: docker compose run --rm -e REENVIAR=1 platform-admin-invite"
+        echo "platform-admin-invite: convite enviado (o link vale 4 h)"
+    environment:
+      <<: *platform-admin
+    volumes:
+      - type: volume
+        source: gateway-keys
+        target: /keys
+        read_only: true
+        volume:
+          subpath: keycloak
+    depends_on:
+      keycloak:
         condition: service_healthy
 
   # E-mail de desenvolvimento, em http://localhost:8025: o Keycloak envia para cá o convite do admin inicial. O SMTP
@@ -288,8 +411,9 @@ services:
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
-      - "16686:16686"  # interface
-      - "4317:4317"    # OTLP gRPC, que é o que a API usa
+      # Só em 127.0.0.1: os traces carregam as URLs das chamadas que a API faz e recebe.
+      - "127.0.0.1:16686:16686"  # interface
+      - "127.0.0.1:4317:4317"    # OTLP gRPC, que é o que a API usa
 
 volumes:
   # Nomeados, e não montagem de pasta da máquina: o Postgres exige dono e permissões específicas do diretório de
