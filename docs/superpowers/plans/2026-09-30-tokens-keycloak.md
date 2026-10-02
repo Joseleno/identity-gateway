@@ -4965,7 +4965,7 @@ com o campo `private static readonly string[] PlatformAdmin = ["platform-admin"]
 
         resposta.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         resposta.Headers.WwwAuthenticate.ToString().Should().Be("Bearer");
-        resposta.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+        (resposta.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
 
         JsonElement problema = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
         problema.GetProperty("status").GetInt32().Should().Be(401);
@@ -4984,7 +4984,7 @@ com o campo `private static readonly string[] PlatformAdmin = ["platform-admin"]
         HttpResponseMessage resposta = await client.PostAsync(RotaProtegida, content: null, ct);
 
         resposta.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        resposta.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+        (resposta.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
 
         JsonElement problema = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
         problema.GetProperty("status").GetInt32().Should().Be(403);
@@ -5192,7 +5192,7 @@ public sealed class AutenticacaoNegativaTests(IdentityGatewayApiFactory factory)
 
             resposta.StatusCode.Should().Be(HttpStatusCode.Unauthorized, $"{metodo} {rota}");
             resposta.Headers.WwwAuthenticate.ToString().Should().Be("Bearer", "o motivo da recusa fica no log, não na resposta");
-            resposta.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+            (resposta.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
         }
     }
 
@@ -14279,7 +14279,7 @@ public sealed class LeituraDeTenantTests(IdentityGatewayApiFactory factory) : IC
     private static async Task DeveSerOProibidoPadraoAsync(HttpResponseMessage resposta, string caso, CancellationToken ct)
     {
         resposta.StatusCode.Should().Be(HttpStatusCode.Forbidden, caso);
-        resposta.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json", caso);
+        (resposta.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json", caso);
 
         JsonElement corpo = await resposta.Content.ReadFromJsonAsync<JsonElement>(ct);
         corpo.GetProperty("status").GetInt32().Should().Be(403, caso);
