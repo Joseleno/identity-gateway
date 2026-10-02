@@ -14,6 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\IdentityGateway.Api\IdentityGateway.Api.csproj" />
     <ProjectReference Include="..\..\src\IdentityGateway.Infrastructure\IdentityGateway.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\IdentityGateway.Application\IdentityGateway.Application.csproj" />
     <ProjectReference Include="..\..\src\IdentityGateway.Domain\IdentityGateway.Domain.csproj" />
 
     <!-- O fixture do Keycloak e o harness de login: a mesma biblioteca que os testes de integração usam. -->

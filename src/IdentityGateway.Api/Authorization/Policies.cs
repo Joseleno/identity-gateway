@@ -11,7 +11,7 @@ internal static class Policies
 
     /// <summary>
     /// Quem administra o tenant da rota: <c>tenant-admin</c>, sem <c>platform-admin</c>, com o <c>tenant_id</c> do token
-    /// igual ao da rota.
+    /// igual ao da rota e <c>Member</c> desse tenant no banco, em <c>Invited</c> ou <c>Active</c> (ADR-011).
     /// </summary>
     public const string TenantAdmin = "TenantAdmin";
 

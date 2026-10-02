@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using IdentityGateway.Api.Authorization;
+using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Domain.Members;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -35,6 +37,9 @@ public sealed class TenantAdminPolicyTests
     {
         await using ServiceProvider provider = MontagemDaAutorizacao.Montar(services =>
         {
+            // Nesta classe o ator é sempre membro ativo: o que se prova aqui são as três camadas do token.
+            services.AddSingleton<IMemberQueries>(new PertencaFalsa(MemberStatus.Active));
+
             if (comHandlerQueAprovaTudo)
             {
                 services.AddSingleton<IAuthorizationHandler, HandlerQueAprovaTudo>();

@@ -80,6 +80,34 @@ public sealed class RegrasDaApiTests
     }
 
     /// <summary>
+    /// A autorização da Api decide pelo token e pelas portas da Application — nunca pela Infrastructure.
+    /// </summary>
+    /// <remarks>
+    /// O requirement da pertença precisa do banco, e o atalho é injetar o <c>DbContext</c> ou a classe de consulta
+    /// direto no handler. A regra do EF Core acima pega o primeiro; esta pega o segundo. O caminho é a porta
+    /// <c>IMemberQueries</c>, que tem o tenant na assinatura.
+    /// </remarks>
+    [Fact]
+    public void AutorizacaoDaApi_NaoDependeDaInfrastructure()
+    {
+        const string autorizacao = "IdentityGateway.Api.Authorization";
+
+        Types.InAssembly(Api).That().ResideInNamespace(autorizacao).GetTypes()
+            .Should().NotBeEmpty("sem tipos no namespace, a regra passaria vazia");
+
+        ArchTestResult resultado = Types.InAssembly(Api)
+            .That()
+            .ResideInNamespace(autorizacao)
+            .Should()
+            .NotHaveDependencyOn("IdentityGateway.Infrastructure")
+            .GetResult();
+
+        resultado.Should().NaoTerViolacao(
+            "policy que alcança a Infrastructure lê o banco sem o tenant na assinatura; a pertença vem da porta "
+            + "IMemberQueries, da Application");
+    }
+
+    /// <summary>
     /// A Api não alcança repositório direto.
     /// </summary>
     /// <remarks>

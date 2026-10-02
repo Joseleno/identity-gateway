@@ -161,6 +161,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantRepository, TenantRepository>();
         services.AddScoped<IMemberRepository, MemberRepository>();
         services.AddScoped<ITenantQueries, TenantQueries>();
+        services.AddScoped<IMemberQueries, MemberQueries>();
 
         return services;
     }

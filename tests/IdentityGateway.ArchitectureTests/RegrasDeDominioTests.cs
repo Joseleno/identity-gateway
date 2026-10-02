@@ -1,6 +1,7 @@
 using System.Reflection;
 using IdentityGateway.Domain.Common;
 using IdentityGateway.Domain.Members;
+using IdentityGateway.Domain.Tenants;
 
 namespace IdentityGateway.ArchitectureTests;
 
@@ -108,6 +109,24 @@ public sealed class RegrasDeDominioTests
             .Where(metodo => metodo.ReturnType == member)
             .Select(metodo => metodo.Name)
             .Should().BeEmpty("quem cria o Member é Tenant.CompleteProvisioning, que reserva a vaga antes");
+    }
+
+    /// <summary>
+    /// Os nomes dos estados de tenant e de membro são contrato: vão para o banco e para a API como texto.
+    /// </summary>
+    /// <remarks>
+    /// Renomear um estado quebra as linhas já gravadas e quem lê o <c>status</c> da API. Acrescentar um exige decidir
+    /// o que a pertença faz com ele (a policy <c>TenantAdmin</c> só aceita <c>Invited</c> e <c>Active</c>) — e este
+    /// teste fica vermelho até a lista daqui ser atualizada, de propósito.
+    /// </remarks>
+    [Fact]
+    public void NomesDosEstadosDeTenantEDeMembro_SaoContrato()
+    {
+        Enum.GetNames<TenantStatus>().Should().BeEquivalentTo(
+            "Pending", "Active", "Suspending", "Suspended", "Terminating", "Terminated", "ProvisioningFailed");
+
+        Enum.GetNames<MemberStatus>().Should().BeEquivalentTo(
+            "Invited", "Active", "Deactivated", "Expired", "Revoked", "Erased");
     }
 
     private static bool EhEntidade(Type tipo) =>

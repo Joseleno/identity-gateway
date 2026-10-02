@@ -28,12 +28,20 @@ internal static class AutorizacaoDaGateway
             // Claim plano, não RequireRole: o papel chega no claim "roles", com esse nome (MapInboundClaims desligado).
             options.AddPolicy(Policies.PlatformAdmin, policy => policy.RequireClaim("roles", "platform-admin"));
 
-            // A ordem dos requirements é a ordem em que rodam: os que só leem o token primeiro.
+            // Os três primeiros só leem o token e rodam nesta ordem. O da pertença lê o banco e roda por último — o que
+            // não vem desta lista, e sim da ordem de registro dos handlers, logo abaixo.
             options.AddPolicy(Policies.TenantAdmin, policy => policy.AddRequirements(
                 new RoleRequirement("tenant-admin"),
                 new NotPlatformAdminRequirement(),
-                new SameTenantRequirement()));
+                new SameTenantRequirement(),
+                new MemberRequirement()));
         });
+
+        // A ORDEM IMPORTA. Os três primeiros requirements são o próprio handler, e rodam dentro do
+        // PassThroughAuthorizationHandler, que o AddAuthorization acabou de registrar. O handler da pertença entra
+        // DEPOIS dele: se entrasse antes, rodaria primeiro, com o contexto ainda sem falha, e consultaria o banco
+        // para qualquer tenantId da URL — com qualquer token autenticado.
+        services.AddScoped<IAuthorizationHandler, MemberRequirementHandler>();
 
         return services;
     }
