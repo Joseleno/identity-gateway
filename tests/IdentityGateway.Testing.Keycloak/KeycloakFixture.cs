@@ -376,6 +376,40 @@ public sealed class KeycloakFixture : IAsyncLifetime
         resposta.EnsureSuccessStatusCode();
     }
 
+    /// <summary>Cria um grupo de realm com atributos, como o master, e devolve o id.</summary>
+    /// <remarks>
+    /// O realm não tem grupos, e nenhum código da Gateway os cria. Só os testes que caracterizam o recuo do mapper de
+    /// atributo para o grupo usam isto — e apagam o grupo no fim.
+    /// </remarks>
+    public async Task<string> CriarGrupoComoMasterAsync(
+        string nome, IReadOnlyDictionary<string, string[]> atributos, CancellationToken cancellationToken)
+    {
+        using HttpClient master = await CriarClienteMasterAsync(cancellationToken);
+        using HttpResponseMessage resposta = await master.PostAsJsonAsync(
+            $"admin/realms/{Realm}/groups", new { name = nome, attributes = atributos }, cancellationToken);
+        resposta.EnsureSuccessStatusCode();
+
+        return resposta.Headers.Location!.Segments[^1];
+    }
+
+    public async Task PorNoGrupoComoMasterAsync(string usuarioId, string grupoId, CancellationToken cancellationToken)
+    {
+        using HttpClient master = await CriarClienteMasterAsync(cancellationToken);
+        using HttpResponseMessage resposta = await master.PutAsync(
+            new Uri($"admin/realms/{Realm}/users/{usuarioId}/groups/{grupoId}", UriKind.Relative),
+            content: null,
+            cancellationToken);
+        resposta.EnsureSuccessStatusCode();
+    }
+
+    public async Task ApagarGrupoComoMasterAsync(string grupoId, CancellationToken cancellationToken)
+    {
+        using HttpClient master = await CriarClienteMasterAsync(cancellationToken);
+        using HttpResponseMessage resposta = await master.DeleteAsync(
+            new Uri($"admin/realms/{Realm}/groups/{grupoId}", UriKind.Relative), cancellationToken);
+        resposta.EnsureSuccessStatusCode();
+    }
+
     /// <summary>Dispara o e-mail de ações do usuário, como o master, com um link de 10 minutos.</summary>
     public async Task EnviarEmailDeAcoesComoMasterAsync(string usuarioId, CancellationToken cancellationToken)
     {
