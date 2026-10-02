@@ -95,12 +95,8 @@ public static class DependencyInjection
         services.AddProblemDetails();
         services.AddSingleton<IAuthorizationMiddlewareResultHandler, ProblemDetailsDeAutorizacao>();
 
-        services.AddAuthorization(options =>
-        {
-            options.AddPolicy(Policies.PlatformAdmin, policy => policy.RequireClaim("roles", "platform-admin"));
-
-            options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
-        });
+        // As policies, a policy de fallback e a ordem dos handlers: um método só, que os testes unitários também usam.
+        services.AddAutorizacaoDaGateway();
 
         return services;
     }
