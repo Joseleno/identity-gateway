@@ -1690,8 +1690,8 @@ internal sealed class MemberRequirementHandler(IMemberQueries members) : Authori
             return;
         }
 
-        // O sub vai como o Keycloak o emite, sem normalizar. O CancellationToken é o da requisição: o
-        // AuthorizationHandlerContext não tem um.
+        // O sub vai como o Keycloak o emite, sem mudar a caixa (o ExternalUserId.From só apara as pontas). O
+        // CancellationToken é o da requisição: o AuthorizationHandlerContext não tem um.
         MemberStatus? status = await members.GetStatusAsync(
             new TenantId(tenantId), ExternalUserId.From(sub), http.RequestAborted);
 
@@ -2641,7 +2641,7 @@ Cada marco termina com algo demonstrável e testado.
 | **A · Fundação Keycloak**: Keycloak no compose e na CI, lado administrativo do realm, service account com `private_key_jwt`, `EnsureOrganizationAsync` | M0 + M1 | Entregue (PR #2) |
 | **B · Consumidor**: transporte, provisionamento, `ProvisioningFailed` | M1 | Entregue (PR #3) |
 | **C · Convite do admin inicial**: `EnsureInvitedUserAsync`, o `Member` mínimo, a vaga do admin na ativação, o e-mail pelo SMTP do Keycloak e o `mailpit` no compose | M1 | Entregue (PR #5) |
-| **D · Tokens do Keycloak**, em dois PRs. **D1:** a API aceita só access tokens do Keycloak (RS256, emissor, audiência, `azp`, `typ` e `sub`), o realm emite o token da §10.1, o primeiro platform-admin é convidado por e-mail, e a demonstração e a CI obtêm o token pelo device flow. **D2:** `GET /tenants/{tenantId}`, com a policy `TenantAdmin` e a pertença no banco (ADR-011) | M0 + M1 | Entregue (D1: PR #6; D2: nesta entrega) |
+| **D · Tokens do Keycloak**, em dois PRs. **D1:** a API aceita só access tokens do Keycloak (RS256, emissor, audiência, `azp`, `typ` e `sub`), o realm emite o token da §10.1, o primeiro platform-admin é convidado por e-mail, e a demonstração e a CI obtêm o token pelo device flow. **D2:** `GET /tenants/{tenantId}`, com a policy `TenantAdmin` e a pertença no banco (ADR-011) | M0 + M1 | Entregue (D1: PR #6; D2: PR #7) |
 
 **Pendente do M0 depois da fatia D (v2.7):** a tabela de auditoria — que o M0 promete "desde já" —, o armazenamento de eventos do realm e o RabbitMQ. Saíram da lista, entregues pela D1: os client scopes `gateway-roles`, `gateway-tenant` e `gateway-api`, o Audience Mapper, o catálogo de papéis completo, o `offline_access` fora do papel padrão, o primeiro platform-admin (sem senha gerada, por convite), a rotação do refresh token e a API validando tokens do Keycloak. **O critério "primeiro `curl`" do M0, com token do Keycloak, está fechado:** o JWT simétrico do template não existe mais. O armazenamento de eventos custa outro `docker compose down -v` quando entrar, e os eventos de login guardariam o username, que é o e-mail: a retenção é decidida junto.
 
