@@ -193,7 +193,10 @@ public sealed class TokensDoKeycloakNaApiTests(ApiComKeycloakFactory api)
         using HarnessDeLogin harness = api.Keycloak.CriarHarness();
         TokensDeUsuario tokens = await harness.TokenPorDispositivoAsync(admin.Email, admin.Senha, ct);
         using WebApplicationFactory<Program> comEmissorErrado = api.WithWebHostBuilder(builder =>
-            builder.UseSetting("Keycloak:Admin:PublicBaseUrl", "http://outro-endereco.test:8081"));
+        {
+            builder.UseSetting("Keycloak:Admin:PublicBaseUrl", "http://outro-endereco.test:8081");
+            builder.UseSetting("Outbox:Enabled", "false");
+        });
         using HttpClient client = comEmissorErrado.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
 

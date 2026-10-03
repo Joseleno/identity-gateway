@@ -66,8 +66,12 @@ public sealed class ApiComKeycloakFactory : WebApplicationFactory<Program>, IAsy
         builder.UseSetting("Database:ConnectionString", _postgres.GetConnectionString());
         builder.UseSetting("Redis:ConnectionString", _redis.GetConnectionString());
 
-        // Desligado na D1: nenhum teste daqui espera o provisionamento. A D2 o liga, para o admin convidado existir.
-        builder.UseSetting("Outbox:Enabled", "false");
+        // Ligado, ao contrário da factory do OIDC falso: aqui o provisionamento precisa acontecer, para o admin
+        // convidado existir no Keycloak e como Member no banco. O motivo de desligá-lo lá — a corrida com asserções
+        // sobre a tabela do Outbox — não vale para esta coleção, que roda em série e tem banco próprio. Um segundo de
+        // intervalo, o mínimo que a option aceita, para o teste não esperar os cinco do padrão.
+        builder.UseSetting("Outbox:Enabled", "true");
+        builder.UseSetting("Outbox:PollingIntervalSeconds", "1");
 
         // Os mesmos três valores do compose: transporte pela porta mapeada, emissor público pelo KC_HOSTNAME do
         // fixture, e a chave que o realm registrou.

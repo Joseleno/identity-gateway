@@ -204,8 +204,10 @@ jobs:
           docker compose run --rm -T --no-deps platform-admin-invite
           dotnet run --configuration Release tools/jornada-compose.cs -- convites --esperado 1
 
-      # O convite do platform-admin concluído pelo link, o token pelo device flow, a receita simétrica antiga recusada, o
-      # tenant registrado e provisionado, e o convite do admin do tenant no mailpit com um link que abre.
+      # O convite do platform-admin concluído pelo link, o token pelo device flow, a receita simétrica antiga recusada e
+      # o tenant registrado e provisionado. Depois, o admin do tenant: conclui o convite pelo link, entra por outro
+      # device flow e lê o próprio tenant (200, com exatamente as chaves do contrato); outro tenant e o
+      # platform-admin levam 403.
       - name: A jornada com token do Keycloak
         timeout-minutes: 5
         run: dotnet run --configuration Release tools/jornada-compose.cs -- jornada
