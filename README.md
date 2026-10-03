@@ -15,7 +15,7 @@ nenhum login e de nenhuma requisição de negócio.**
 ## Estado do projeto
 
 **M0/M1 em andamento — vertical de registro, fundação Keycloak, consumidor do provisionamento, convite do
-admin inicial e tokens do Keycloak (D1) entregues.**
+admin inicial e tokens do Keycloak (D1 e D2) entregues.**
 
 O repositório parte do template [CleanStart](https://github.com/Joseleno/CleanStart) e já traz a fundação
 funcionando — Clean Architecture em quatro camadas, Outbox transacional, cache de dois níveis, middlewares
@@ -28,11 +28,13 @@ fechou o provisionamento da §9.1 — o tenant só fica `Active` depois que o ad
 a primeira parte da fatia D trocou a autenticação: **a API aceita só access tokens do Keycloak** (RS256, com emissor, audiência,
 client de origem e forma conferidos), o JWT simétrico do template deixou de existir, o primeiro platform-admin
 nasce sem senha e é convidado por e-mail, e a demonstração obtém o token pelo device flow. Fecha o critério do
-M0 "primeiro `curl` com token do Keycloak". **Próximo passo:** a D2, a primeira rota de tenant
-(`GET /api/v1/tenants/{tenantId}`), em que o admin convidado lê o próprio tenant.
+M0 "primeiro `curl` com token do Keycloak". A segunda parte acrescentou a primeira rota de tenant,
+`GET /api/v1/tenants/{tenantId}`: o admin convidado lê o próprio tenant, e a autorização confere o token **e** a
+pertença no banco (ADR-011). **Próximo passo:** a decidir — a proposta do design é a auditoria, que destrava a
+leitura de tenant pelo platform-admin.
 O roadmap está em [`docs/especificacao-arquitetural-v2.7.md`](docs/especificacao-arquitetural-v2.7.md) §16
 (referência normativa atual — as anteriores ficam como registro histórico), e o estado detalhado no
-[handoff da D1](docs/superpowers/specs/2026-10-02-tokens-keycloak-d1-handoff.md).
+[handoff da D2](docs/superpowers/specs/2026-10-02-tokens-keycloak-d2-handoff.md).
 
 | Marco | Entrega | Estado |
 |---|---|---|
@@ -53,7 +55,7 @@ Precisa de .NET 10 e Docker. O Docker não é opcional: os testes de integraçã
 26.7.4 (um contêiner por assembly) por Testcontainers.
 
 ```bash
-# Toda a suíte — 680 testes, 0 skips (161 domínio, 70 application, 67 arquitetura, 237 integração, 145 funcional)
+# Toda a suíte — 776 testes, 0 skips (161 domínio, 72 application, 70 arquitetura, 244 integração, 229 funcional)
 dotnet test
 
 # As dependências, as migrations e a API junto (--build: a imagem da API acompanha o código)
@@ -343,7 +345,7 @@ Onze ADRs, com o texto completo na [especificação §4](docs/especificacao-arqu
 | 008 | Integração com o Keycloak isolada atrás de uma porta |
 | 009 | Na v1, um usuário pertence a um único tenant |
 | 010 | Um só executor por job de fundo, via advisory lock |
-| 011 | Nas rotas de governança, autorização é token mais pertença no banco (decidido; a rota que o usa chega com a D2) |
+| 011 | Nas rotas de governança, autorização é token mais pertença no banco |
 
 ---
 
