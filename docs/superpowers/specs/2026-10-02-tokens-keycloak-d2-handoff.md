@@ -1,12 +1,14 @@
 # Handoff — tokens do Keycloak, parte D2 entregue
 
-> **Data:** 2026-10-02 · **Marco:** M0 + M1 (fatia D, segunda parte) · **Status:** implementada, build e suíte
-> completa verdes. **A jornada nova no compose nunca rodou, e quatro provas por mutação não foram executadas** — as
-> mutações 2 e 3 da Tarefa 16 e as mutações 1 e 2 da Tarefa 11, pendentes desde a D1 —, negadas pelo sistema de
-> permissões do ambiente; o autor vai rodá-las (ver "Pendências"). A primeira execução da jornada nova será o job
-> `Compose` da CI do PR. Push e PR aguardam autorização do autor.
-> **Onde parou:** as Tarefas 13 a 17 estão commitadas na branch `feat/leitura-do-tenant`; falta a revisão final da
-> branch, rodar as provas pendentes, enviar, abrir o PR contra `main`, acompanhar a CI e mesclar.
+> **Data:** 2026-10-02 (atualizado às 22:35, horário local) · **Marco:** M0 + M1 (fatia D, segunda parte) ·
+> **Status:** implementada, build e suíte completa verdes, revisão final da branch feita ("pronto para o merge", sem
+> achado crítico nem importante), **enviada e aberta como [PR #7](https://github.com/Joseleno/identity-gateway/pull/7)**.
+> **A jornada nova no compose nunca rodou, e quatro provas por mutação não foram executadas**: o sistema de permissões
+> do ambiente negou a edição temporária da mutação 2 da Tarefa 16 e o `docker compose -p igverif up`, e as outras três
+> (a mutação 3 da Tarefa 16 e as mutações 1 e 2 da Tarefa 11, pendentes desde a D1) dependem do compose. O autor vai
+> rodá-las (ver "Pendências"). A primeira execução da jornada nova é o job `Compose` da CI do PR #7.
+> **Onde parou:** as Tarefas 13 a 17 e esta atualização estão na branch `feat/leitura-do-tenant`, enviada; falta rodar
+> as provas pendentes, ler a CI do PR #7 e mesclar.
 >
 > Sucede o [handoff da D1](2026-10-02-tokens-keycloak-d1-handoff.md). Design:
 > [`2026-09-30-tokens-keycloak-design.md`](2026-09-30-tokens-keycloak-design.md). Plano:
@@ -19,15 +21,15 @@
 
 | O quê | Estado |
 |---|---|
-| Branch | `feat/leitura-do-tenant`, 5 commits sobre `main` (`cb8b568`, o merge do PR #6): `cd46313`, `30167f9`, `28fac2a` e `4ac79c1` (Tarefas 13 a 16) e o desta tarefa |
+| Branch | `feat/leitura-do-tenant`, sobre `main` (`cb8b568`, o merge do PR #6): `cd46313`, `30167f9`, `28fac2a` e `4ac79c1` (Tarefas 13 a 16), `bea8893` (Tarefa 17) e o `docs` desta atualização |
 | `main` | Não tocada — recebe o merge pelo PR |
 | Working tree | Limpa depois do commit desta tarefa |
 | Realm, compose e one-shot | **Não tocados.** `git diff --stat main -- keycloak docker-compose.yml` vazio: quem já subiu o compose depois da D1 não precisa de `down -v` |
 | Docker | Na D2, só os Testcontainers da suíte, além da derrubada do `igverif` que a D1 deixara de pé (`down -v`, com autorização do autor, antes da Tarefa 16). Conferido só por leitura em 2026-10-02, 22:07 (horário local, UTC−3): nenhum contêiner nem volume `igverif`; os três volumes do autor (`identitygateway_gateway-keys`, `identitygateway_postgres-data`, `identitygateway_seq-data`) intactos; nenhum arquivo de estado `ig-jornada-estado.json` no diretório temporário |
-| Push / PR | **Pendentes de autorização** |
+| Push / PR | Autorizados pelo autor em 2026-10-03 (UTC). Branch enviada e [PR #7](https://github.com/Joseleno/identity-gateway/pull/7) aberto contra `main`; o corpo do PR diz o que não rodou. A CI do PR não foi lida nesta sessão |
 
-Três `feat` (Tarefas 13 a 15), um `test` (Tarefa 16) e um `docs` (esta tarefa). Nenhum toca o realm, o compose nem
-o one-shot. A mensagem do commit da Tarefa 14 foi corrigida por `--amend` antes de qualquer publicação
+Três `feat` (Tarefas 13 a 15), um `test` (Tarefa 16) e dois `docs` (a Tarefa 17 e esta atualização). Nenhum toca o
+realm, o compose nem o one-shot. A mensagem do commit da Tarefa 14 foi corrigida por `--amend` antes de qualquer publicação
 (`ecbf222` → `30167f9`, só a mensagem; o diff entre os dois é vazio): item 1 de "O que mudou em relação ao plano".
 
 ## O que a D2 entregou
@@ -205,9 +207,13 @@ mesclou o PR sem commits de correção.
 ## Pendências
 
 **Do autor — as provas que o sistema de permissões negou aos agentes.** O roteiro único está pronto, fora do
-repositório, e **até o commit desta tarefa não foi executado** (conferido em 2026-10-02, 22:07, horário local: nenhum
-contêiner nem volume `igverif`, nenhum arquivo de estado `ig-jornada-estado.json`). Tudo na raiz do repositório e
-**sempre com `-p igverif`**:
+repositório, em `.superpowers/sdd/2026-09-30-tokens-keycloak/provas-d2.sh` (pasta ignorada pelo git), e **até esta
+atualização não foi executado** (conferido em 2026-10-02, 22:34, horário local: nenhum contêiner nem volume
+`igverif`). Rode no Git Bash, com nenhuma suíte de testes rodando ao mesmo tempo (memória), a partir da raiz do
+repositório: `bash .superpowers/sdd/2026-09-30-tokens-keycloak/provas-d2.sh`. Leva de 25 a 35 minutos, recusa
+começar com a árvore suja, reverte toda edição ao sair (inclusive com Ctrl+C) e não faz commit. As quatro edições de
+mutação foram conferidas a seco: cada uma troca exatamente o trecho previsto. Ele faz, nesta ordem, sempre com
+`-p igverif`:
 
 1. **A jornada no compose isolado**, com a checagem de segredos na saída do app e, antes de qualquer `down`, nos logs
    de `api`, `keycloak` e `platform-admin-invite`, com controle positivo. Os comandos estão no relatório da Tarefa 16.
@@ -220,7 +226,26 @@ contêiner nem volume `igverif`, nenhum arquivo de estado `ig-jornada-estado.jso
    `identitygateway_*`) e a remoção do arquivo de estado da jornada.
 
 Se a jornada falhar quando rodar, o conserto vira um commit novo na branch. Quando as provas rodarem, um commit `docs`
-atualiza a "Prova por mutação" e a "Verificação ao vivo" deste handoff.
+atualiza a "Prova por mutação" e a "Verificação ao vivo" deste handoff, e corrige no mesmo commit as três frases
+imprecisas que a revisão final apontou (abaixo).
+
+**A revisão final da branch** (`cb8b568..bea8893`) concluiu "pronto para o merge": nenhum achado crítico nem
+importante, e nenhuma dívida das revisões por tarefa precisa ser corrigida antes do merge. Confirmou que as quatro
+camadas da policy vetam em todo ramo que não é sucesso, que o banco só é lido para quem passou nas três camadas do
+token, que a rota opera sobre o mesmo `Guid` que a policy autorizou, e que "não existe" e "não é seu" saem idênticos
+no corpo, nos cabeçalhos e no caminho percorrido. Deixou cinco achados menores:
+- **Três frases imprecisas, para o commit `docs` das provas:** o comentário "sem normalizar" em
+  `MemberRequirementHandler.cs:48` e na §11.7 da v2.7 (o `ExternalUserId.From` apara as pontas; na v2.7, editar por
+  script, porque o arquivo tem a sequência de escape do "e comercial" em duas linhas); o comentário de
+  `ProblemDetailsDeAutorizacao.cs:16-17`, da D1, que diz "desligado, na rota de tenant" quando a D2 tornou a opção
+  global; e a mensagem do commit `bea8893`, que generaliza "negadas pelo sistema de permissões" para as quatro provas
+  (o cabeçalho deste handoff já foi corrigido; a mensagem fica no histórico).
+- **Dívida para uma fatia transversal:** falta `Cache-Control: no-store` no `200` da leitura do tenant
+  (`TenantsModule.cs:57`). Não abre acesso entre tenants.
+- **Inócuo:** os `HttpResponseMessage` dos `403` da jornada não são descartados (`jornada-compose.cs:228-233`).
+
+Para a fatia E, a revisão recomenda levar: o teste do SQL da projeção, o método único da leitura do tenant da rota,
+o tipo do claim por comparação ordinal ao conceder, e a `TenantReadAccess` em `Policies.DeTenant`.
 
 **Para o autor decidir:**
 - A leitura do `tenantId` da rota: o plano implementou "qualquer formato de GUID na rota, só o formato `D` no claim"
@@ -275,9 +300,17 @@ renomeou para `AsRotasDeTenant_TemAPolicyEsperada`. O documento não foi editado
 
 ## Próximo passo
 
-1. O autor roda as provas pendentes ("Pendências", itens 1 a 5) e o resultado entra neste handoff.
-2. Revisão final da branch.
-3. Autorizar o push e abrir o PR contra `main`. Não há aviso de `down -v` desta vez.
-4. Acompanhar a CI e mesclar — o job `Compose` roda pela primeira vez a jornada nova, e o tempo dele entra na
-   "Verificação ao vivo"; depois, acrescentar o número do PR na linha da fatia D da §16 da v2.7.
+1. Ler a CI do [PR #7](https://github.com/Joseleno/identity-gateway/pull/7) (`gh pr checks 7`). O job `Compose` roda
+   pela primeira vez a jornada nova: olhar as quatro etapas novas e o tempo do passo `A jornada com token do Keycloak`
+   (teto de 5 minutos). Se algo falhar, o conserto vira um commit novo na branch.
+2. O autor roda o roteiro de provas ("Pendências", itens 1 a 5), com nenhuma suíte rodando ao mesmo tempo.
+3. Um commit `docs` com o resultado das provas, o tempo do job `Compose` e as três frases imprecisas da revisão final.
+4. Mesclar o PR #7. Não há aviso de `down -v`. Depois, acrescentar o número do PR na linha da fatia D da §16 da v2.7.
 5. Decidir a próxima fatia (o design propõe a auditoria, que destrava o `TenantReadAccess`).
+
+## Como retomar
+
+Na raiz do repositório: `git switch feat/leitura-do-tenant && git pull`, e leia este handoff. O livro de bordo da
+execução, com cada decisão e cada achado adiado, está em `.superpowers/sdd/2026-09-30-tokens-keycloak/progress.md`
+(seção "D2"); os relatórios e as revisões de cada tarefa estão na mesma pasta. A pasta é ignorada pelo git e existe
+só nesta máquina.
