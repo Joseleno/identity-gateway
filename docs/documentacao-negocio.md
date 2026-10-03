@@ -2,15 +2,15 @@
 
 > **Versão:** 1.4 · **Data:** 2026-10-02
 > **Fonte da verdade:** [`especificacao-arquitetural-v2.7.md`](especificacao-arquitetural-v2.7.md)
-> **Estado do projeto:** implementação em andamento — registro de tenant, fundação Keycloak, consumidor do provisionamento, convite do admin inicial e tokens do Keycloak (primeira parte, D1) entregues.
+> **Estado do projeto:** implementação em andamento — registro de tenant, fundação Keycloak, consumidor do provisionamento, convite do admin inicial e tokens do Keycloak (D1 e D2) entregues.
 >
 > **Nota da versão 1.4.** Alinha à v2.7 os trechos que a fatia D (tokens do Keycloak) tornou falsos: a API passa a
 > aceitar só tokens do Keycloak; o primeiro platform-admin nasce **sem senha**, convidado por e-mail, e não com
 > senha gerada e exibida em log; a demonstração obtém o token pelo device flow, com passos no navegador; e o
 > override do platform-admin na leitura de tenant fica adiado, como autorização própria. Entram duas regras, a
 > RN-028 (pertença do ator ao tenant) e a RN-029 (separação de funções). O que só a segunda parte da fatia
-> entrega — a rota `GET /tenants/{tenantId}` e as regras que a protegem — está marcado **"(D2, planejado)"**. As
-> citações `§N` continuam válidas.
+> entregava — a rota `GET /tenants/{tenantId}` e as regras que a protegem — ficou marcado como planejado até a D2
+> ser entregue, quando as marcas saíram. As citações `§N` continuam válidas.
 >
 > **Nota da versão 1.3.** Alinha à v2.6 os trechos que a fatia C (convite do admin inicial) tornou falsos: o
 > convidado nasce **habilitado**, não desabilitado; o e-mail do administrador inicial fica **temporariamente** no
@@ -127,14 +127,14 @@ A leitura ingênua de "autenticar usuários de forma centralizada" leva a Gatewa
 
 **Quem é:** a equipe do provedor do SaaS (comercial + operações). É quem assina contratos e opera a carteira de clientes.
 
-**O que faz:** registra tenants com `POST /tenants`, informando obrigatoriamente o `initialAdminEmail` (§8, §9.1); consulta o status do provisionamento de qualquer tenant (a leitura do tenant em si, `GET /tenants/{tenantId}`, responde `403` a ele **temporariamente**, até existir o override auditado — §10.1) (D2, planejado); altera nome e plano; suspende e reativa tenants; encerra contratos com `DELETE /tenants/{tenantId}` — operação que exige **step-up authentication** e só é possível a partir de `Suspended` (§6.2, §8, §9.8).
+**O que faz:** registra tenants com `POST /tenants`, informando obrigatoriamente o `initialAdminEmail` (§8, §9.1); consulta o status do provisionamento de qualquer tenant (a leitura do tenant em si, `GET /tenants/{tenantId}`, responde `403` a ele **temporariamente**, até existir o override auditado — §10.1); altera nome e plano; suspende e reativa tenants; encerra contratos com `DELETE /tenants/{tenantId}` — operação que exige **step-up authentication** e só é possível a partir de `Suspended` (§6.2, §8, §9.8).
 
 **O que NÃO pode:**
 - **Convidar membros dentro de um tenant.** Esta é a restrição mais contraintuitiva do desenho e é deliberada: convidar exige `tenant-admin` **daquele tenant**, e o platform-admin não satisfaz o `SameTenantRequirement` (§9.1, achado C9). Por isso o tenant nasce com um administrador, em vez de abrir uma exceção no mecanismo de isolamento.
 - Encerrar um tenant `Active` diretamente — precisa suspendê-lo antes (§6.2).
 - Ver senhas, tokens ou dados pessoais além do que o Keycloak expõe (ADR-003, §10.3).
 - Ser criado pela API: o papel **não é atribuível** pela `RoleAssignmentPolicy` e nasce no bootstrap do realm, **sem senha** — a pessoa recebe um e-mail de convite, uma vez, e define a própria senha no Keycloak pelo link, que vale 4 horas. Nenhuma senha é gerada nem exibida em log (§11.2, §15, achado C13; v2.7).
-- **Agir como tenant-admin.** Uma conta que traga `platform-admin` é negada nas rotas de tenant, mesmo que acumule o papel `tenant-admin`: é a separação de funções (RN-029) (D2, planejado).
+- **Agir como tenant-admin.** Uma conta que traga `platform-admin` é negada nas rotas de tenant, mesmo que acumule o papel `tenant-admin`: é a separação de funções (RN-029).
 
 #### 3.2. Tenant-admin — o administrador do cliente corporativo
 
@@ -142,7 +142,7 @@ A leitura ingênua de "autenticar usuários de forma centralizada" leva a Gatewa
 
 **O que faz, sempre dentro do próprio tenant:** convida membros, reenvia e cancela convites, desativa e reativa membros, exclui definitivamente um membro (LGPD, com step-up); atribui papéis sujeito à `RoleAssignmentPolicy`; cria e mantém permission sets; registra domínios de e-mail e IdPs federados; registra clients OIDC — SPA e mobile como `Public`, serviços M2M como `Confidential` — e rotaciona credenciais (com step-up) (§8).
 
-**A primeira rota dele já tem dono (v2.7) (D2, planejado).** `GET /tenants/{tenantId}` devolve ao administrador o próprio tenant — nome, slug, status, plano, vagas ocupadas e data de registro, nunca o e-mail. Quatro condições a protegem, e todas precisam valer: o token traz o papel `tenant-admin`; **não** traz `platform-admin`; o `tenant_id` do token é o da rota; e a pessoa é membro daquele tenant no banco da Gateway (RN-001, RN-028, RN-029). Qualquer outra combinação recebe `403`.
+**A primeira rota dele já tem dono (v2.7).** `GET /tenants/{tenantId}` devolve ao administrador o próprio tenant — nome, slug, status, plano, vagas ocupadas e data de registro, nunca o e-mail. Quatro condições a protegem, e todas precisam valer: o token traz o papel `tenant-admin`; **não** traz `platform-admin`; o `tenant_id` do token é o da rota; e a pessoa é membro daquele tenant no banco da Gateway (RN-001, RN-028, RN-029). Qualquer outra combinação recebe `403`.
 
 **O que NÃO pode:**
 - **Tocar em qualquer outro tenant.** Duas regras independentes garantem isso: o `SameTenantRequirement` compara o tenant da rota com o claim `tenant_id` do token, e o **pertencimento de sub-recurso** exige que todo member, client ou permission-set informado pertença ao tenant da rota. Um id alheio resulta em **404, não 403** — responder 403 confirmaria a existência do recurso em outro tenant (§6.4, §10.1).
@@ -483,7 +483,7 @@ As sete decisões abaixo foram fechadas no brainstorm que sucedeu a revisão cr�
 | **Alternativas rejeitadas** | Vídeo gravado ou conversa ao vivo |
 | **Por quê** | `curl` é verificável por quem lê, sem depender do autor estar presente. Vídeo e conversa não são auditáveis. Os passos no navegador não enfraquecem isso: são consequência do ADR-003 — a senha só é digitada no Keycloak —, e a alternativa seria um atalho de login por senha, que o projeto proíbe. O job de CI percorre a mesma jornada a cada PR |
 | **Consequência de negócio** | **Promove o M0 a peça crítica.** O README é o primeiro contato do avaliador, e uma falha ali encerra a leitura antes dos ADRs. O critério vira `git clone` + `docker compose up` + primeiro `curl` funcionando **na primeira tentativa** (§16) |
-| **O que o README precisa provar** | Duas demonstrações, porque provam competências difíceis em poucos comandos: (1) **consistência sem transação distribuída** — um `GET` autenticado, `docker compose stop keycloak` → `POST /tenants` responde `202` normalmente, dentro dos 5 minutos do token → `docker compose start keycloak` → o tenant vira `Active` sozinho; (2) **isolamento multi-tenant** — com token do tenant A, rota do tenant B responde 403, e um `memberId` do tenant B dentro da rota do tenant A responde 404. O 403 já é demonstrável com a primeira rota de tenant (D2, planejado), e o 404 chega no M2 (§16) |
+| **O que o README precisa provar** | Duas demonstrações, porque provam competências difíceis em poucos comandos: (1) **consistência sem transação distribuída** — um `GET` autenticado, `docker compose stop keycloak` → `POST /tenants` responde `202` normalmente, dentro dos 5 minutos do token → `docker compose start keycloak` → o tenant vira `Active` sozinho; (2) **isolamento multi-tenant** — com token do tenant A, rota do tenant B responde 403, e um `memberId` do tenant B dentro da rota do tenant A responde 404. O 403 já é demonstrável com a primeira rota de tenant, e o 404 chega no M2 (§16) |
 | **Consequência de engenharia** | Justifica investimentos que sem isso pareceriam exagero: o *smoke test* de Organizations no M0 — sem `organizationsEnabled` no realm o Keycloak sobe normalmente, o import passa sem erro, e o primeiro provisionamento falha com **404 silencioso** (§15, achado A3, corrigido na v2.4); e o **compose verificado na CI** a cada PR (§15) |
 
 #### 7.8. Leitura conjunta: o que as sete decisões têm em comum
@@ -545,11 +545,11 @@ entrada de auditoria sem valores de credencial, e ADR quando há decisão nova).
 | | |
 |---|---|
 | **Objetivo de negócio** | Acompanhar a entrada do cliente e dar visibilidade do inventário da plataforma. |
-| **Ator** | `platform-admin`: o status do provisionamento (`GET /tenants/{tenantId}/provisioning`); a lista completa chega com a auditoria. `tenant-admin`: apenas o próprio tenant, por `GET /tenants/{tenantId}` (§8) (D2, planejado). |
+| **Ator** | `platform-admin`: o status do provisionamento (`GET /tenants/{tenantId}/provisioning`); a lista completa chega com a auditoria. `tenant-admin`: apenas o próprio tenant, por `GET /tenants/{tenantId}` (§8). |
 | **Pré-condições** | Ator autenticado no realm com audiência correta (§10.1). |
-| **Regras de negócio** | O `tenant-admin` só enxerga o próprio tenant, e quatro condições precisam valer juntas: o papel `tenant-admin`, a ausência de `platform-admin` (RN-029), o tenant do token igual ao da rota (RN-001) e a pertença do ator ao tenant no banco da Gateway (RN-028) (D2, planejado). **O `platform-admin` recebe `403` nesta rota, temporariamente** (v2.7): o acesso dele à carteira de clientes será uma autorização própria, entregue junto com a trilha de auditoria — e não uma segunda verificação que "aprova por cima" da de tenant, que nunca funcionaria, porque a negação explícita da RN-001 veta qualquer aprovação alheia (§10.1). A resposta traz exatamente os campos do contrato, e nunca o e-mail do administrador inicial. |
+| **Regras de negócio** | O `tenant-admin` só enxerga o próprio tenant, e quatro condições precisam valer juntas: o papel `tenant-admin`, a ausência de `platform-admin` (RN-029), o tenant do token igual ao da rota (RN-001) e a pertença do ator ao tenant no banco da Gateway (RN-028). **O `platform-admin` recebe `403` nesta rota, temporariamente** (v2.7): o acesso dele à carteira de clientes será uma autorização própria, entregue junto com a trilha de auditoria — e não uma segunda verificação que "aprova por cima" da de tenant, que nunca funcionaria, porque a negação explícita da RN-001 veta qualquer aprovação alheia (§10.1). A resposta traz exatamente os campos do contrato, e nunca o e-mail do administrador inicial. |
 | **Pós-condições** | Leitura, sem efeito colateral. |
-| **Erros de negócio** | Tenant de outro cliente, **tenant inexistente**, ator sem o papel, ator que não é membro e `platform-admin`: todos `403`, com a mesma resposta, sem nada que distinga o motivo (v2.7) (D2, planejado). A rota não usa `404`: não há membro num tenant que não existe, e a negação acontece antes de qualquer consulta ao tenant — uma resposta diferente para "não existe" diria, a quem não é do tenant, quais identificadores existem. O `404` continua valendo para **sub-recurso** de outro tenant (RN-003). |
+| **Erros de negócio** | Tenant de outro cliente, **tenant inexistente**, ator sem o papel, ator que não é membro e `platform-admin`: todos `403`, com a mesma resposta, sem nada que distinga o motivo (v2.7). A rota não usa `404`: não há membro num tenant que não existe, e a negação acontece antes de qualquer consulta ao tenant — uma resposta diferente para "não existe" diria, a quem não é do tenant, quais identificadores existem. O `404` continua valendo para **sub-recurso** de outro tenant (RN-003). |
 
 ---
 
@@ -977,7 +977,7 @@ verde enquanto três vetores reais passavam" (§13, C2, CI-8). Uma suíte mais e
 princípio que ela deveria provar é pior que nenhuma suíte, porque produz confiança.
 
 As regras continuam três na v2.7. A pertença do ator ao tenant no banco (RN-028) reforça, na
-Gateway, a primeira delas — não é uma quarta regra (D2, planejado).
+Gateway, a primeira delas — não é uma quarta regra.
 
 ---
 
@@ -989,7 +989,7 @@ inclusive quando o claim está ausente e quando a rota não traz `{tenantId}`. U
 apenas deixa de aprovar não é *fail closed*: outra verificação registrada para o mesmo requisito
 poderia aprová-lo, e só uma negação explícita sobrevive a uma aprovação alheia (C11). Na v2.7, a
 comparação é por identificador, não por texto, e o token precisa trazer **um** `tenant_id` só:
-dois valores são recusados, qualquer que seja a ordem (§10.1) (D2, planejado).
+dois valores são recusados, qualquer que seja a ordem (§10.1).
 
 **RN-002 — Rota com policy de tenant precisa ter `{tenantId}` no template.**
 Um endpoint com policy de tenant e sem `{tenantId}` na rota — uma busca global "de conveniência
@@ -1019,7 +1019,7 @@ APIs usam para resolver permissões de qualquer tenant (§9.6).
 O client de plataforma é a **exceção nomeada** do anti-pattern 7 (§17) e, por sê-lo, exige
 `private_key_jwt`, rotação documentada e **auditoria por chamada**.
 
-**RN-028 — O ator precisa ser membro do tenant no banco da Gateway.** (D2, planejado)
+**RN-028 — O ator precisa ser membro do tenant no banco da Gateway.**
 Nas rotas de governança de tenant, o token certo não basta: quem chama precisa ser `Member`
 daquele tenant no banco da Gateway, em status `Invited` ou `Active` (ADR-011, §10.1). Todo outro
 status nega — `Deactivated`, `Expired`, `Revoked`, `Erased` e qualquer um que venha a existir. O
@@ -1031,7 +1031,7 @@ aceito porque o aceite do convite ainda não chega à Gateway (ADR-007).
 *Quando violada:* `403 Forbidden`, igual ao de qualquer outra negação da rota. *Limite declarado:*
 a regra não contém quem tem a chave da Gateway e toma a conta de um membro real (§19).
 
-**RN-029 — Separação de funções: conta de plataforma não age como tenant-admin.** (D2, planejado)
+**RN-029 — Separação de funções: conta de plataforma não age como tenant-admin.**
 Um token que traga o papel `platform-admin` é negado nas rotas de tenant, mesmo que traga também
 `tenant-admin` e o `tenant_id` certo (§10.1). Sem a regra, o `403` temporário do platform-admin
 na leitura de tenant só valeria para a conta que não acumula papéis.
@@ -1225,7 +1225,7 @@ emitir, e nada ali cria autoridade que o token não carregasse (CI-7).
 As APIs consumidoras validam o JWT localmente com as chaves públicas do Keycloak; permissões
 finas vêm de cache com invalidação por evento, nunca de uma chamada por requisição (§2,
 ADR-002, anti-pattern 2). A pertença no banco (RN-028) não muda isso: ela é consultada só nas
-rotas de governança da própria Gateway, nunca por uma API de negócio (ADR-011) (D2, planejado).
+rotas de governança da própria Gateway, nunca por uma API de negócio (ADR-011).
 *Quando violada:* a Gateway vira gargalo e ponto único de falha — um monólito distribuído.
 
 ---
@@ -1264,7 +1264,7 @@ Quem pode fazer o quê. As colunas são os quatro tipos de ator do sistema.
 **Notas**
 
 1. ⚠️ **Somente o próprio tenant** (§8). Garantido pela RN-001 e, na Gateway, pela pertença do
-   ator ao tenant no banco (RN-028) e pela separação de funções (RN-029) (D2, planejado).
+   ator ao tenant no banco (RN-028) e pela separação de funções (RN-029).
 2. ⚠️ **Exige step-up**: nível `acr` elevado. Faltando, a resposta é `401` com
    `insufficient_user_authentication` e o `acr_values` exigido, não `403` (RN-016).
 3. ❌ O `platform-admin` **não** opera dentro de um tenant. Ele não satisfaz a verificação de
@@ -1285,7 +1285,7 @@ Quem pode fazer o quê. As colunas são os quatro tipos de ator do sistema.
    exige `private_key_jwt` e é **auditada por chamada** (RN-004, §10.1).
 8. Endpoint **anônimo**, com rate limit mais restrito. Qualquer um pode chamar; a resposta tem
    sempre o mesmo formato, para não permitir enumeração de tenants (§9.2).
-9. ⚠️ **Temporário** (v2.7) (D2, planejado): o `platform-admin` consulta o status do provisionamento
+9. ⚠️ **Temporário** (v2.7): o `platform-admin` consulta o status do provisionamento
    de qualquer tenant, mas a leitura do tenant (`GET /tenants/{tenantId}`) responde `403` a ele até
    existir o override auditado, que chega com a trilha de auditoria (§10.1).
 
@@ -1335,7 +1335,7 @@ definir a senha e aprovar o código do dispositivo no Keycloak —, porque a sen
 2. **Isolamento multi-tenant.** Com token do tenant A, tentar a rota do tenant B (`403`); e
    tentar um `memberId` do tenant B **dentro da rota do tenant A** (`404`). São a RN-001 e a
    RN-003, lado a lado — a segunda é a que a maioria dos projetos não testa. O `403` já é
-   demonstrável com a primeira rota de tenant (D2, planejado); o `404` chega com as rotas de
+   demonstrável com a primeira rota de tenant; o `404` chega com as rotas de
    membro, no M2.
 
 ---
@@ -1450,7 +1450,7 @@ no ambiente local — clustering e multi-site estão documentados, não implemen
 **Da autenticação e do bootstrap (v2.7, §19)**
 
 - **O `platform-admin` não lê um tenant pela API, por enquanto.** `GET /tenants/{tenantId}`
-  responde `403` a ele até existir o override auditado (D2, planejado).
+  responde `403` a ele até existir o override auditado.
 - **A pertença no banco tem um limite declarado** (RN-028): ela não contém quem tem a chave da
   Gateway e toma a conta de um membro real, trocando a senha ou o e-mail dele. E as APIs de
   negócio não têm essa checagem: confiam no token e na regra de que o realm não tem grupos.
@@ -1459,7 +1459,7 @@ no ambiente local — clustering e multi-site estão documentados, não implemen
   de 7 dias do administrador do tenant é risco aceito, a tratar pela operação que trocar ou
   reenviar esse convite.
 - **E-mail digitado errado no registro do tenant** entrega o tenant a quem o recebe, e agora essa
-  pessoa também lê o tenant pela API (D2, planejado).
+  pessoa também lê o tenant pela API.
 - **Com o Keycloak fora do ar e a API recém-iniciada, um pedido com token responde `401`**, e não
   `503`: o sintoma aponta para o token, não para a dependência. Depois de validar o primeiro
   token, a API segue validando com o Keycloak parado.
@@ -2600,7 +2600,7 @@ São **três regras**, não uma (§3, princípio 5; §10.1):
 
 3. **Escopo de aplicação M2M.** Um token de Client Credentials **não carrega `tenant_id`**, então o `SameTenantRequirement` não tem o que comparar. A v2.1 separa *client de tenant* (recebe o `tenant_id` de quem o criou, sujeito à regra 1) de *client de plataforma* (acesso irrestrito **por desenho**, porque é a credencial que as APIs de negócio usam para resolver permissões de qualquer tenant — e por isso exige `private_key_jwt` e **auditoria por chamada**) (§10.1, correção CI-1).
 
-**Na Gateway, a regra 1 é conferida em duas fontes (v2.7) (D2, planejado).** O `tenant_id` do token pode
+**Na Gateway, a regra 1 é conferida em duas fontes (v2.7).** O `tenant_id` do token pode
 ser fabricado no Keycloak por quem tiver a chave da Gateway — por um grupo com esse atributo. Por isso,
 nas rotas de governança, além do token, o ator precisa ser membro do tenant no banco da Gateway (RN-028),
 e uma conta de plataforma não age como tenant-admin (RN-029). As regras continuam três: a pertença
@@ -2614,7 +2614,7 @@ dispensaria da regra 1. Não funcionaria: a negação explícita da regra 1 veta
 que é exatamente a propriedade que a correção C11 quis —, e o conserto "natural" seria afrouxar a negação.
 A v2.7 corrige o desenho: o override será uma **autorização própria**, entregue junto com a trilha de
 auditoria, e a negação da regra 1 fica intacta. Até lá, o platform-admin recebe `403` na leitura de
-tenant (D2, planejado) — um acesso cruzado entre tenants sem trilha seria pior que a espera.
+tenant — um acesso cruzado entre tenants sem trilha seria pior que a espera.
 
 O limite não é zelo excessivo: é o que sustenta a decisão de o tenant nascer com um administrador próprio.
 Se o platform-admin pudesse operar **dentro** do tenant, `initialAdminEmail` perderia a razão de existir —
@@ -2856,7 +2856,7 @@ O padrão vale ser notado: a maioria destes não é uma regra que alguém deve l
 
 #### Limites conhecidos (§19) — a seção que mais credibilidade dá
 
-A §19 da spec declara os limites reais, e a lista cresce a cada fatia, porque cada uma devolve a ela o que a execução encontrou. Entre eles: política de senha igual para todos os tenants; um usuário pertence a um único tenant, com o custo comercial nomeado; a queda do Keycloak degrada o Data Plane em até 5 minutos; a desativação de um membro não invalida o token já emitido; a sincronização pode perder eventos sob indisponibilidade prolongada; há uma janela sem `tenant_id` no primeiro login federado; um link de convite antigo continua trocando a senha até expirar; quem tem a chave da Gateway pode tomar a conta de um membro real, e a checagem de pertença não o contém; o platform-admin fica, por enquanto, sem ler um tenant pela API (D2, planejado); e, com o Keycloak fora e a API recém-iniciada, a resposta é `401`, e não `503` (v2.7).
+A §19 da spec declara os limites reais, e a lista cresce a cada fatia, porque cada uma devolve a ela o que a execução encontrou. Entre eles: política de senha igual para todos os tenants; um usuário pertence a um único tenant, com o custo comercial nomeado; a queda do Keycloak degrada o Data Plane em até 5 minutos; a desativação de um membro não invalida o token já emitido; a sincronização pode perder eventos sob indisponibilidade prolongada; há uma janela sem `tenant_id` no primeiro login federado; um link de convite antigo continua trocando a senha até expirar; quem tem a chave da Gateway pode tomar a conta de um membro real, e a checagem de pertença não o contém; o platform-admin fica, por enquanto, sem ler um tenant pela API; e, com o Keycloak fora e a API recém-iniciada, a resposta é `401`, e não `503` (v2.7).
 
 A frente adversarial da revisão atacou justamente essa seção, procurando um limite **real e não declarado** — o tipo de omissão que faz um avaliador desconfiar do documento inteiro. O veredito: nenhum dos custos é maquiado, e as omissões encontradas eram todas **consequências de decisões que a seção já assumia**. *"A seção está incompleta, não desonesta."*
 

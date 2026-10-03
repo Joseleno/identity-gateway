@@ -2,6 +2,7 @@ using Carter;
 using IdentityGateway.Api.Authorization;
 using IdentityGateway.Api.Extensions;
 using IdentityGateway.Application.Common.Abstractions;
+using IdentityGateway.Application.Tenants.GetTenant;
 using IdentityGateway.Application.Tenants.GetTenantProvisioning;
 using IdentityGateway.Application.Tenants.RegisterTenant;
 using IdentityGateway.Domain.Common;
@@ -52,6 +53,14 @@ public sealed class TenantsModule : ICarterModule
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden);
+
+        app.MapGet("/api/v1/tenants/{tenantId:guid}", ConsultarAsync)
+            .RequireAuthorization(Policies.TenantAdmin)
+            .WithName("ConsultarTenant")
+            .WithSummary("O tenant, para quem o administra.")
+            .Produces<TenantDetailsResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
     }
 
     /// <remarks>
@@ -82,8 +91,9 @@ public sealed class TenantsModule : ICarterModule
             correlationId: correlationId.CorrelationId);
     }
 
-    // Sempre 200 com o status, também quando Active: um 303 para o recurso do tenant pressupõe GET /tenants/{id}, que
-    // ainda não existe. A restrição :guid na rota faz um id malformado responder 404 sem chegar ao handler.
+    // Sempre 200 com o status, também quando Active, e não um 303 para o recurso do tenant: quem acompanha o
+    // provisionamento é o platform-admin, e GET /tenants/{id} responde 403 a ele. A restrição :guid na rota faz um id
+    // malformado responder 404 sem chegar ao handler.
     private static async Task<IResult> ConsultarProvisionamentoAsync(
         Guid tenantId,
         ISender sender,
@@ -94,5 +104,39 @@ public sealed class TenantsModule : ICarterModule
             new GetTenantProvisioningQuery(new TenantId(tenantId)), cancellationToken);
 
         return resultado.ParaOk(correlationId.CorrelationId);
+    }
+
+    /// <remarks>
+    /// Quem chega aqui já passou pela policy <c>TenantAdmin</c>: é administrador deste tenant, pelo token e pelo banco.
+    /// A rota não tem <c>404</c>: para quem não é membro, um tenant que não existe e um tenant alheio são a mesma
+    /// resposta, e a policy nega os dois antes de qualquer consulta ao tenant.
+    /// </remarks>
+    private static async Task<IResult> ConsultarAsync(
+        Guid tenantId,
+        ISender sender,
+        HttpContext contexto,
+        CancellationToken cancellationToken)
+    {
+        Result<TenantDetailsResponse> resultado = await sender.Send(
+            new GetTenantQuery(new TenantId(tenantId)), cancellationToken);
+
+        return ParaRespostaDoTenant(resultado, contexto);
+    }
+
+    /// <summary>
+    /// Traduz o resultado da leitura do tenant: <c>200</c> com o tenant, ou o mesmo <c>403</c> da autorização.
+    /// </summary>
+    /// <remarks>
+    /// <b>Não usa o <c>ParaOk</c>,</b> que traduziria "tenant não encontrado" em <c>404</c>. A policy torna esse
+    /// caminho inalcançável — não há <c>Member</c> de um tenant que não existe —, mas se um dia ele for alcançado (uma
+    /// corrida, um tenant removido à mão), a resposta não pode passar a distinguir "não existe" de "não é seu".
+    /// </remarks>
+    internal static IResult ParaRespostaDoTenant(Result<TenantDetailsResponse> resultado, HttpContext contexto)
+    {
+        ArgumentNullException.ThrowIfNull(resultado);
+
+        return resultado.Match(
+            onSuccess: tenant => Results.Ok(tenant),
+            onFailure: _ => RespostasDeAutorizacao.Proibido(contexto));
     }
 }

@@ -9,7 +9,8 @@
 // Fases, uma por invocação (o estado entre elas vai num arquivo, nunca em memória):
 //   convites --esperado N   conta os convites do platform-admin no mailpit: exatamente N
 //   jornada                 link do platform-admin → device flow → HS256 antigo recusado → POST /tenants → Active →
-//                           convite do admin do tenant no mailpit, com um link que abre
+//                           o admin do tenant conclui o convite, entra e lê o próprio tenant (200); outro tenant e o
+//                           platform-admin recebem 403
 //   antes-de-parar          renova o token e faz um GET autenticado (a api guarda as chaves do Keycloak)
 //   com-keycloak-parado     com o Keycloak parado: POST /tenants → 202, e o tenant fica Pending
 //   depois-de-voltar        com o Keycloak de volta: renova o token e espera o tenant ficar Active
@@ -31,6 +32,10 @@ using IdentityGateway.Testing.Keycloak;
 
 const string Realm = "identity-gateway";
 const string ClientDeDemonstracao = "identity-gateway-demo";
+
+// O contrato do 200 da leitura de tenant: exatamente estas chaves. Uma a mais (o e-mail do admin, por exemplo) reprova.
+string[] chavesDoTenant = ["tenantId", "name", "slug", "status", "plan", "occupiedSeats", "registeredAt"];
+string[] chavesDoPlano = ["tier", "maxUsers", "maxClients"];
 
 Uri api = new(Ambiente("IG_API", "http://127.0.0.1:8080"));
 Uri keycloakPublico = new(Ambiente("IG_KEYCLOAK_PUBLICO", "http://localhost:8081"));
@@ -182,7 +187,7 @@ async Task JornadaAsync()
     Etapa("o tenant chega a Active (até 90 s)");
     await EsperarStatusAsync(localizacao, tokens.AccessToken, "Active", TimeSpan.FromSeconds(90));
 
-    Etapa("o convite do admin do tenant está no mailpit, com um link que abre");
+    Etapa("o convite do admin do tenant está no mailpit, com o link no endereço público");
 
     // Ao menos uma mensagem, nunca exatamente uma: a entrega "pelo menos uma vez" pode mandar duas.
     if ((await mailpit.EsperarMensagensAsync(emailDoAdmin, 1, ct)).Count < 1)
@@ -193,14 +198,46 @@ async Task JornadaAsync()
 
     Uri linkDoAdmin = await mailpit.LinkDeAcoesAsync(emailDoAdmin, keycloakPublico, Realm, ct);
 
-    using (HarnessDeLogin navegador = NovoHarness())
+    // Um harness novo é uma janela anônima: sem o cookie de sessão do platform-admin, que faria o device flow seguinte
+    // sair com a conta dele — e o 403 pareceria defeito.
+    using HarnessDeLogin navegadorDoAdmin = NovoHarness();
+    string senhaDoAdmin = Mascarar(SenhasDeTeste.Gerar());
+
+    Etapa("o admin do tenant conclui o convite pelo link e obtém o token pelo device flow");
+    await navegadorDoAdmin.ConcluirLinkDeAcoesAsync(linkDoAdmin, senhaDoAdmin, ct);
+    TokensDeUsuario tokensDoAdmin = await navegadorDoAdmin.TokenPorDispositivoAsync(emailDoAdmin, senhaDoAdmin, ct);
+    Mascarar(tokensDoAdmin.AccessToken);
+    Mascarar(tokensDoAdmin.RefreshToken);
+
+    // O Location do 202 é /api/v1/tenants/{id}/provisioning; a leitura do tenant é o mesmo caminho sem o sufixo.
+    string rotaDoTenant = localizacao.ToString().Replace("/provisioning", string.Empty, StringComparison.Ordinal);
+
+    Etapa("o admin lê o próprio tenant: 200, Active, com exatamente as chaves do contrato");
+    using (HttpResponseMessage leitura = await ExigirAsync(
+               HttpStatusCode.OK, HttpMethod.Get, rotaDoTenant, tokensDoAdmin.AccessToken, corpo: null))
     {
-        if (!await navegador.LinkDeAcoesAbreAsync(linkDoAdmin, ct))
+        JsonElement tenant = await leitura.Content.ReadFromJsonAsync<JsonElement>(ct);
+        ExigirChaves(tenant, chavesDoTenant, "tenant");
+        ExigirChaves(tenant.GetProperty("plan"), chavesDoPlano, "plan");
+
+        if (tenant.GetProperty("status").GetString() != "Active")
         {
-            throw new FalhaDoHarnessException(
-                FamiliaDeFalha.Formulario, etapaAtual, "o link do convite não abriu a página de ações do Keycloak.");
+            throw new FalhaDoHarnessException(FamiliaDeFalha.Api, etapaAtual, "o tenant lido pelo admin não está Active.");
         }
     }
+
+    Etapa("o admin recebe 403 ao ler outro tenant");
+    await ExigirAsync(
+        HttpStatusCode.Forbidden, HttpMethod.Get, $"/api/v1/tenants/{Guid.NewGuid()}", tokensDoAdmin.AccessToken, corpo: null);
+
+    // O platform-admin registra e acompanha o provisionamento, mas não lê o tenant: sem auditoria, seria o único acesso
+    // entre tenants sem trilha. O token dele é do começo da jornada, e de lá para cá houve a espera do Active e o
+    // convite do admin: é renovado antes deste uso tardio. O refresh token novo é o que a fase grava no fim.
+    Etapa("o platform-admin renova o token e recebe 403 ao ler o tenant");
+    tokens = await harness.RenovarAsync(tokens.RefreshToken, ct);
+    Mascarar(tokens.AccessToken);
+    Mascarar(tokens.RefreshToken);
+    await ExigirAsync(HttpStatusCode.Forbidden, HttpMethod.Get, rotaDoTenant, tokens.AccessToken, corpo: null);
 
     GravarEstado(new Estado(tokens.RefreshToken, AccessToken: null, localizacao.ToString(), LocalizacaoPendente: null));
 }
@@ -348,6 +385,18 @@ async Task ExigirStatusEstavelAsync(Uri localizacao, string token, string espera
         await Task.Delay(TimeSpan.FromSeconds(3), ct);
     }
     while (DateTimeOffset.UtcNow < fim);
+}
+
+void ExigirChaves(JsonElement objeto, string[] esperadas, string nome)
+{
+    string[] vieram = [.. objeto.EnumerateObject().Select(chave => chave.Name).Order(StringComparer.Ordinal)];
+
+    if (!vieram.SequenceEqual(esperadas.Order(StringComparer.Ordinal), StringComparer.Ordinal))
+    {
+        throw new FalhaDoHarnessException(
+            FamiliaDeFalha.Api, etapaAtual,
+            $"{nome}: esperadas as chaves [{string.Join(", ", esperadas)}], vieram [{string.Join(", ", vieram)}].");
+    }
 }
 
 // Toda asserção de status é EXATA. "Diferente de 200" deixaria um 401 por token vencido passar por um 403 esperado.

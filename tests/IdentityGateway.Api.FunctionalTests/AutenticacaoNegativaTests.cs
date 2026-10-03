@@ -156,6 +156,7 @@ public sealed class AutenticacaoNegativaTests(IdentityGatewayApiFactory factory)
         [
             (HttpMethod.Post, "/api/v1/tenants"),
             (HttpMethod.Get, RotaDeConsulta()),
+            (HttpMethod.Get, $"/api/v1/tenants/{Guid.NewGuid()}"),
         ];
 
         foreach ((HttpMethod metodo, string rota) in rotas)
@@ -173,7 +174,7 @@ public sealed class AutenticacaoNegativaTests(IdentityGatewayApiFactory factory)
 
     [Theory]
     [MemberData(nameof(RecusadosPelaValidacao))]
-    public async Task TokenQueAValidacaoRecusa_Responde401SemDetalheNasDuasRotas(Func<IdentityGatewayApiFactory, string> token)
+    public async Task TokenQueAValidacaoRecusa_Responde401SemDetalheNasRotasProtegidas(Func<IdentityGatewayApiFactory, string> token)
     {
         ArgumentNullException.ThrowIfNull(token);
 
@@ -182,7 +183,7 @@ public sealed class AutenticacaoNegativaTests(IdentityGatewayApiFactory factory)
 
     [Theory]
     [MemberData(nameof(RecusadosPelaForma))]
-    public async Task TokenComAFormaErrada_Responde401SemDetalheNasDuasRotas(Func<IdentityGatewayApiFactory, string> token)
+    public async Task TokenComAFormaErrada_Responde401SemDetalheNasRotasProtegidas(Func<IdentityGatewayApiFactory, string> token)
     {
         ArgumentNullException.ThrowIfNull(token);
 
@@ -191,7 +192,7 @@ public sealed class AutenticacaoNegativaTests(IdentityGatewayApiFactory factory)
 
     [Theory]
     [MemberData(nameof(Aceitos))]
-    public async Task TokenAceito_PassaDaAutenticacaoNasDuasRotas(Func<IdentityGatewayApiFactory, string> token)
+    public async Task TokenAceito_PassaDaAutenticacaoNasRotasProtegidas(Func<IdentityGatewayApiFactory, string> token)
     {
         // Os controles: sem eles, "tudo responde 401" também deixaria as duas theories acima verdes. Passar da
         // autenticação e da policy é chegar ao endpoint: o POST sem corpo responde 400, e a consulta de um tenant que
@@ -201,9 +202,14 @@ public sealed class AutenticacaoNegativaTests(IdentityGatewayApiFactory factory)
 
         using HttpResponseMessage registro = await EnviarAsync(HttpMethod.Post, "/api/v1/tenants", token(factory), ct);
         using HttpResponseMessage consulta = await EnviarAsync(HttpMethod.Get, RotaDeConsulta(), token(factory), ct);
+        using HttpResponseMessage leitura = await EnviarAsync(
+            HttpMethod.Get, $"/api/v1/tenants/{Guid.NewGuid()}", token(factory), ct);
 
         registro.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         consulta.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        // Na leitura de tenant, o platform-admin passa da autenticação e para na autorização: 403, e não 401.
+        leitura.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]

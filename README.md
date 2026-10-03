@@ -15,7 +15,7 @@ nenhum login e de nenhuma requisição de negócio.**
 ## Estado do projeto
 
 **M0/M1 em andamento — vertical de registro, fundação Keycloak, consumidor do provisionamento, convite do
-admin inicial e tokens do Keycloak (D1) entregues.**
+admin inicial e tokens do Keycloak (D1 e D2) entregues.**
 
 O repositório parte do template [CleanStart](https://github.com/Joseleno/CleanStart) e já traz a fundação
 funcionando — Clean Architecture em quatro camadas, Outbox transacional, cache de dois níveis, middlewares
@@ -28,11 +28,13 @@ fechou o provisionamento da §9.1 — o tenant só fica `Active` depois que o ad
 a primeira parte da fatia D trocou a autenticação: **a API aceita só access tokens do Keycloak** (RS256, com emissor, audiência,
 client de origem e forma conferidos), o JWT simétrico do template deixou de existir, o primeiro platform-admin
 nasce sem senha e é convidado por e-mail, e a demonstração obtém o token pelo device flow. Fecha o critério do
-M0 "primeiro `curl` com token do Keycloak". **Próximo passo:** a D2, a primeira rota de tenant
-(`GET /api/v1/tenants/{tenantId}`), em que o admin convidado lê o próprio tenant.
+M0 "primeiro `curl` com token do Keycloak". A segunda parte acrescentou a primeira rota de tenant,
+`GET /api/v1/tenants/{tenantId}`: o admin convidado lê o próprio tenant, e a autorização confere o token **e** a
+pertença no banco (ADR-011). **Próximo passo:** a decidir — a proposta do design é a auditoria, que destrava a
+leitura de tenant pelo platform-admin.
 O roadmap está em [`docs/especificacao-arquitetural-v2.7.md`](docs/especificacao-arquitetural-v2.7.md) §16
 (referência normativa atual — as anteriores ficam como registro histórico), e o estado detalhado no
-[handoff da D1](docs/superpowers/specs/2026-10-02-tokens-keycloak-d1-handoff.md).
+[handoff da D2](docs/superpowers/specs/2026-10-02-tokens-keycloak-d2-handoff.md).
 
 | Marco | Entrega | Estado |
 |---|---|---|
@@ -53,7 +55,7 @@ Precisa de .NET 10 e Docker. O Docker não é opcional: os testes de integraçã
 26.7.4 (um contêiner por assembly) por Testcontainers.
 
 ```bash
-# Toda a suíte — 680 testes, 0 skips (161 domínio, 70 application, 67 arquitetura, 237 integração, 145 funcional)
+# Toda a suíte — 776 testes, 0 skips (161 domínio, 72 application, 70 arquitetura, 244 integração, 229 funcional)
 dotnet test
 
 # As dependências, as migrations e a API junto (--build: a imagem da API acompanha o código)
@@ -223,6 +225,45 @@ Agora volte ao mailpit: há um e-mail de convite para o endereço de `$EMAIL`, o
 vale 7 dias (`Invitations:LinkLifetime`). O e-mail do admin fica guardado no tenant só até a ativação: com o tenant
 `Active`, a coluna `tenants.initial_admin_email` volta a ser nula, e o endereço passa a existir só no Keycloak.
 
+**6. O administrador do tenant lê o próprio tenant — e só ele.** Abra o link do convite numa **janela anônima** do
+navegador, defina a senha e informe nome e sobrenome. Tem que ser janela anônima: na janela normal, a sessão do
+platform-admin continua aberta no Keycloak, e o device flow abaixo sairia com a conta dele — e o `403` que ele recebe
+pareceria defeito.
+
+```bash
+pedido=$(curl -s -X POST "$KC/auth/device" -d client_id=identity-gateway-demo -d scope=openid)
+DEVICE_CODE=$(echo "$pedido" | jq -r .device_code | tr -d '\r')
+echo "$pedido" | jq -r .verification_uri_complete
+# Abra o endereço na MESMA janela anônima, entre com o e-mail de $EMAIL e a senha nova, e aceite o consentimento.
+```
+
+Depois de aceitar, espere uns 5 segundos e troque o código pelo token do administrador:
+
+```bash
+TOKEN_ADMIN=$(curl -s -X POST "$KC/token" \
+  -d grant_type=urn:ietf:params:oauth:grant-type:device_code \
+  -d client_id=identity-gateway-demo -d device_code="$DEVICE_CODE" | jq -r .access_token | tr -d '\r')
+
+curl -s http://localhost:8080/api/v1/tenants/{id} -H "Authorization: Bearer $TOKEN_ADMIN"
+# {"tenantId":"…","name":"Acme","slug":"acme-…","status":"Active",
+#  "plan":{"tier":"Free","maxUsers":5,"maxClients":1},"occupiedSeats":1,"registeredAt":"…"}
+
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN_ADMIN" \
+  http://localhost:8080/api/v1/tenants/00000000-0000-0000-0000-000000000000
+# 403: não é o tenant dele. A resposta é a mesma para um tenant de outra pessoa e para um que não existe.
+
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8080/api/v1/tenants/{id}
+# 403: o platform-admin registra o tenant e acompanha o provisionamento, mas não o lê.
+```
+
+**Por que o platform-admin leva `403`.** A leitura de tenant pelo operador da plataforma é o único acesso entre
+tenants do produto, e só entra junto com a auditoria que registra cada um. Até lá, ele não lê. E a leitura do
+administrador não confia só no token: além do papel e do `tenant_id`, a API confere no próprio banco que ele é
+membro daquele tenant.
+
+Se o último comando responder `401`, o token do platform-admin venceu (5 minutos): renove-o como no passo 5 e repita.
+
 **Por que nessa ordem.** O passo 3 vem antes do `stop` porque, sem nenhum token validado, a API ainda não tem as
 chaves — e com o Keycloak parado ela não tem de onde buscá-las: todo token levaria `401`. E tudo entre o passo 2 e o
 `POST` do passo 4 precisa caber nos 5 minutos do access token.
@@ -238,8 +279,8 @@ dotnet run tools/jornada-compose.cs -- jornada
 ```
 
 O app conclui o convite pelo link do mailpit, faz o device flow submetendo as páginas do Keycloak, registra um tenant,
-espera ele ficar `Active` e confere o convite do admin do tenant no mailpit, com uma senha gerada em memória. Ele
-nunca imprime token, link, código nem senha.
+espera ele ficar `Active` e faz o passo 6 como o admin do tenant — conclui o convite dele, entra por outro device flow,
+lê o tenant e confere os dois `403` —, com senhas geradas em memória. Ele nunca imprime token, link, código nem senha.
 
 **Essa fase não para o Keycloak.** Os passos 3 a 5 acima são outras três fases do mesmo app — `antes-de-parar`,
 `com-keycloak-parado` e `depois-de-voltar` —, que o job intercala com `docker compose stop keycloak` e
@@ -304,7 +345,7 @@ Onze ADRs, com o texto completo na [especificação §4](docs/especificacao-arqu
 | 008 | Integração com o Keycloak isolada atrás de uma porta |
 | 009 | Na v1, um usuário pertence a um único tenant |
 | 010 | Um só executor por job de fundo, via advisory lock |
-| 011 | Nas rotas de governança, autorização é token mais pertença no banco (decidido; a rota que o usa chega com a D2) |
+| 011 | Nas rotas de governança, autorização é token mais pertença no banco |
 
 ---
 
