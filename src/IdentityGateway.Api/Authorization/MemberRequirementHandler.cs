@@ -45,8 +45,8 @@ internal sealed class MemberRequirementHandler(IMemberQueries members) : Authori
             return;
         }
 
-        // O sub vai como o Keycloak o emite, sem normalizar. O CancellationToken é o da requisição: o contexto de
-        // autorização não tem um.
+        // O sub vai como o Keycloak o emite, sem mudar a caixa (o ExternalUserId.From só apara as pontas). O
+        // CancellationToken é o da requisição: o contexto de autorização não tem um.
         MemberStatus? status = await members.GetStatusAsync(
             new TenantId(tenantId), ExternalUserId.From(sub), http.RequestAborted);
 

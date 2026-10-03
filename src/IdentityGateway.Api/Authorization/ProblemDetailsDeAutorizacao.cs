@@ -14,7 +14,7 @@ namespace IdentityGateway.Api.Authorization;
 /// </para>
 /// <para>
 /// <b>É também onde a auditoria de negação vai nascer.</b> Os handlers de autorização param no primeiro que falha
-/// (<c>InvokeHandlersAfterFailure</c> desligado, na rota de tenant), e por isso não servem para registrar negação;
+/// (<c>InvokeHandlersAfterFailure</c> desligado em todas as policies), e por isso não servem para registrar negação;
 /// este ponto vê todas.
 /// </para>
 /// </remarks>
